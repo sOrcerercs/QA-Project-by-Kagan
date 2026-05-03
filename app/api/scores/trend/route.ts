@@ -35,7 +35,7 @@ function getWeekStart(date: Date): Date {
 }
 
 const avg = (arr: number[]) =>
-  Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
+  arr.length === 0 ? 0 : Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
 
 type Section = "A" | "B" | "C";
 type DropIndicator = {
@@ -70,14 +70,15 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
 
   const agentId = req.nextUrl.searchParams.get("agentId") || user.id;
-  const range = (req.nextUrl.searchParams.get("range") || "4w") as Range;
+  const rawRange = req.nextUrl.searchParams.get("range") || "4w";
 
   if (user.role === "AGENT" && agentId !== user.id) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
-  if (!["4w", "3m", "6m", "all"].includes(range)) {
+  if (!["4w", "3m", "6m", "all"].includes(rawRange)) {
     return NextResponse.json({ error: "Geçersiz range." }, { status: 400 });
   }
+  const range = rawRange as Range;
 
   const rangeStart = getRangeStart(range);
   const allEvals = await prisma.evaluation.findMany({
@@ -98,14 +99,17 @@ export async function GET(req: NextRequest) {
 
   for (const e of evaluations) {
     const key = getISOWeekKey(e.createdAt);
-    const ss = e.sectionScores as { A: number; B: number; C: number };
+    const raw = e.sectionScores as Record<string, unknown>;
+    const numA = typeof raw?.A === "number" ? raw.A : 0;
+    const numB = typeof raw?.B === "number" ? raw.B : 0;
+    const numC = typeof raw?.C === "number" ? raw.C : 0;
     if (!weekMap.has(key)) {
       weekMap.set(key, { weekStart: getWeekStart(e.createdAt), A: [], B: [], C: [] });
     }
     const bucket = weekMap.get(key)!;
-    bucket.A.push(ss.A || 0);
-    bucket.B.push(ss.B || 0);
-    bucket.C.push(ss.C || 0);
+    bucket.A.push(numA);
+    bucket.B.push(numB);
+    bucket.C.push(numC);
   }
 
   const weeks = Array.from(weekMap.entries())
