@@ -106,6 +106,8 @@ model Evaluation {
   score        Int
   callType     CallType  @default(SECOND_CALL)
   promptId     String?
+  sectionScores Json?
+  weakCriteria  Json?
   callDate     DateTime  @default(now())
   createdAt    DateTime  @default(now())
 }
