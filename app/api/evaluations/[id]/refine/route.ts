@@ -83,13 +83,31 @@ Bu notu dikkate alarak değerlendirmeyi yeniden yap ve ZORUNLU ÇIKTI FORMATINDA
   const groqData = await groqResponse.json();
   const reportText: string = groqData.choices[0].message.content;
 
-  const scoreMatch = reportText.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
+  // Parse JSON_DATA block from refine response
+  const refineJsonMatch = reportText.match(/===JSON_DATA===([\s\S]*?)===END_JSON===/);
+  let refinedSectionScores = null;
+  let refinedWeakCriteria = null;
+  if (refineJsonMatch) {
+    try {
+      const parsed = JSON.parse(refineJsonMatch[1].trim());
+      if (parsed.sectionScores) refinedSectionScores = parsed.sectionScores;
+      if (Array.isArray(parsed.weakCriteria)) refinedWeakCriteria = parsed.weakCriteria;
+    } catch { /* parse failed — keep existing values */ }
+  }
+  const cleanRefineReport = reportText.replace(/\n*===JSON_DATA===[\s\S]*?===END_JSON===/g, "").trim();
+
+  const scoreMatch = cleanRefineReport.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
   const rawScore = scoreMatch ? Math.round(parseFloat(scoreMatch[1].replace(",", "."))) : null;
   const score = rawScore !== null && rawScore >= 0 && rawScore <= 100 ? rawScore : evaluation.score;
 
   const updated = await prisma.evaluation.update({
     where: { id },
-    data: { report: reportText, score },
+    data: {
+      report: cleanRefineReport,
+      score,
+      ...(refinedSectionScores && { sectionScores: refinedSectionScores }),
+      ...(refinedWeakCriteria && refinedWeakCriteria.length > 0 && { weakCriteria: refinedWeakCriteria }),
+    },
   });
 
   return NextResponse.json({ report: updated.report, score: updated.score });
