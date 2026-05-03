@@ -19,11 +19,13 @@ interface ScoreData {
   weeklyProgress: { week: string; score: number; calls: number }[];
   recentCalls: { id: string; date: string; customer: string; score: number; callType: string; duration: string }[];
   isDemo?: boolean;
+  avgSectionScores?: { A: number; B: number; C: number } | null;
+  topWeakCriteria?: Array<{ id: string; label: string; avgScore: number; count: number }> | null;
 }
 
 export default function ScoreView({ data, lang = "tr" }: { data: ScoreData; lang?: "tr" | "en" }) {
   const t = translations[lang];
-  const { agent, rank, totalAgents, stats, weeklyProgress, recentCalls, isDemo } = data;
+  const { agent, rank, totalAgents, stats, weeklyProgress, recentCalls, isDemo, avgSectionScores, topWeakCriteria } = data;
 
   return (
     <div className="space-y-6">
@@ -60,6 +62,67 @@ export default function ScoreView({ data, lang = "tr" }: { data: ScoreData; lang
           </div>
         ))}
       </div>
+
+      {/* Section Scores */}
+      {avgSectionScores && (
+        <div className="bg-surface-container rounded-3xl p-8">
+          <h3 className="font-headline text-lg font-bold mb-6 flex items-center gap-2">
+            <MIcon name="analytics" className="text-primary" />
+            Bölüm Analizi
+            <span className="text-xs text-slate-500 font-normal ml-1">({stats.totalCalls} çağrı ortalaması)</span>
+          </h3>
+          <div className="space-y-4">
+            {([
+              { key: "A" as const, label: "A — Giriş & Profilleme", weight: "%20" },
+              { key: "B" as const, label: "B — Çözüm & Otorite", weight: "%45" },
+              { key: "C" as const, label: "C — Kapanış & Köprü", weight: "%35" },
+            ]).map(({ key, label, weight }) => {
+              const val = avgSectionScores[key];
+              const barColor = val >= 85 ? "bg-emerald-500" : val >= 70 ? "bg-primary" : val >= 55 ? "bg-amber-500" : "bg-red-500";
+              const textColor = val >= 85 ? "text-emerald-400" : val >= 70 ? "text-primary" : val >= 55 ? "text-amber-400" : "text-error";
+              return (
+                <div key={key}>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm text-slate-400">
+                      {label} <span className="text-xs text-slate-600">{weight}</span>
+                    </span>
+                    <span className={`font-bold text-sm ${textColor}`}>%{val}</span>
+                  </div>
+                  <div className="h-2 bg-surface-container-lowest rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${barColor}`}
+                      style={{ width: `${Math.min(100, Math.max(0, val))}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {topWeakCriteria && topWeakCriteria.length > 0 && (
+            <div className="mt-6 pt-5 border-t border-outline-variant">
+              <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-3">En Zayıf Kriterler</p>
+              <div className="space-y-2">
+                {topWeakCriteria.map(c => {
+                  const isRed = c.avgScore < 55;
+                  const isOrange = c.avgScore >= 55 && c.avgScore < 70;
+                  const cardClass = isRed
+                    ? "bg-red-500/10 border-red-500/30"
+                    : isOrange
+                    ? "bg-amber-500/10 border-amber-500/30"
+                    : "bg-yellow-500/10 border-yellow-500/30";
+                  const textClass = isRed ? "text-red-400" : isOrange ? "text-amber-400" : "text-yellow-400";
+                  return (
+                    <div key={c.id} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${cardClass}`}>
+                      <span className={`text-xs font-medium ${textClass}`}>{c.id} — {c.label}</span>
+                      <span className={`text-xs font-bold ${textClass}`}>%{c.avgScore}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Weekly Progress */}
       <div className="bg-surface-container rounded-3xl p-8">
