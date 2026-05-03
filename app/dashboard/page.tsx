@@ -72,7 +72,7 @@ function DashboardInner() {
     onLogout:      handleLogout,
   };
 
-  if (user.role === "ADMIN")       return <AdminDashboard user={user} initialTab={initialTab} />;
+  if (user.role === "ADMIN" || user.role === "MANAGER") return <AdminDashboard user={user} initialTab={initialTab} />;
   if (user.role === "AGENT")       return <AgentDashboard {...sharedProps} />;
   if (user.role === "TEAM_LEADER") return <TeamLeaderDashboard {...sharedProps} />;
 

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import WeeklyEvaluationReport from "@/components/WeeklyEvaluationReport";
+import ManagementComparisonView from "@/app/components/shared/ManagementComparisonView";
 
 // Material icon helper
 const MIcon = ({ name, className = "" }: { name: string; className?: string }) => (
@@ -315,6 +316,7 @@ export default function AdminDashboard({ user: initialUser, initialTab = "home" 
     { key: "status", icon: "analytics", label: t.nav_status },
     { key: "reports", icon: "assessment", label: t.nav_reports },
     { key: "scores", icon: "star", label: t.nav_scores },
+    { key: "compare", icon: "compare_arrows", label: "Karşılaştırma" },
   ];
 
   return (
@@ -1070,6 +1072,10 @@ export default function AdminDashboard({ user: initialUser, initialTab = "home" 
                 {reportsSubTab === "lost" && (<div className="py-16 text-center"><MIcon name="warning" className="text-6xl opacity-10 block mx-auto mb-4" /><p className="text-slate-500">{t.lostDealsSoon}</p></div>)}
               </div>
             </div>
+          )}
+
+          {activeTab === "compare" && (
+            <ManagementComparisonView />
           )}
 
           {/* ═══ BATCH ═══ */}
