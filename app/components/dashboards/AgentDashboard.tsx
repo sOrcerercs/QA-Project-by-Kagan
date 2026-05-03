@@ -10,6 +10,7 @@ import { motion } from "motion/react";
 import { translations } from "@/app/lib/i18n";
 import UserMenu from "@/app/components/shared/UserMenu";
 import NotificationBell from "@/app/components/shared/NotificationBell";
+import PeerComparisonView from "@/app/components/shared/PeerComparisonView";
 
 const FB = {
   tr: {
@@ -109,6 +110,7 @@ export default function AgentDashboard({ user, isDark, lang, initialTab = "home"
     { key: "calls", icon: "call", label: t.nav_myCalls },
     { key: "scores", icon: "star", label: t.nav_scores },
     { key: "reports", icon: "assessment", label: t.nav_myReports },
+    { key: "peer", icon: "compare_arrows", label: "Nasıl Gidiyorum?" },
     { key: "feedback", icon: "feedback", label: fb.title },
   ];
 
@@ -226,6 +228,12 @@ export default function AgentDashboard({ user, isDark, lang, initialTab = "home"
               </motion.div>
               <ReportsView agentId={user.id} lang={lang} />
             </>
+          )}
+
+          {activeTab === "peer" && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+              <PeerComparisonView agentId={user.id} />
+            </motion.div>
           )}
 
           {activeTab === "feedback" && (
