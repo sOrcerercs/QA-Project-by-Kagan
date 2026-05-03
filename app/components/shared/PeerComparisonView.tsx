@@ -311,10 +311,23 @@ export default function PeerComparisonView({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/scores/peer")
-      .then(r => r.json())
+    const controller = new AbortController();
+    setLoading(true);
+
+    fetch("/api/scores/peer", { signal: controller.signal })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(setData)
+      .catch(err => {
+        if (err.name !== "AbortError") {
+          setData(null);
+        }
+      })
       .finally(() => setLoading(false));
+
+    return () => controller.abort();
   }, [agentId]);
 
   if (loading) {
