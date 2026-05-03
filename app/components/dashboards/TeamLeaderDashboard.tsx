@@ -357,45 +357,15 @@ export default function TeamLeaderDashboard({ user, isDark, lang, initialTab = "
               </div>
             </>
           )}
-        </div>
-      </main>
 
-      {/* Member Detail Modal */}
-      <AnimatePresence>
-        {memberModalOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-start justify-end bg-black/60 backdrop-blur-sm"
-            onClick={() => setMemberModalOpen(false)}>
-            <motion.div initial={{ x: 400 }} animate={{ x: 0 }} exit={{ x: 400 }}
-              onClick={(e) => e.stopPropagation()}
-              className="h-full w-full max-w-2xl bg-surface overflow-y-auto p-8 shadow-2xl">
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="font-headline text-2xl font-bold text-white">{t.consultantDetail}</h2>
-                <button onClick={() => setMemberModalOpen(false)} className="text-slate-400 hover:text-white transition-colors">
-                  <MIcon name="close" className="text-2xl" />
-                </button>
-              </div>
-              {memberScoreLoading ? (
-                <div className="py-24 text-center"><div className="w-5 h-5 border-2 border-white/20 border-t-primary rounded-full animate-spin mx-auto" /></div>
-              ) : selectedMemberScore ? (
-                <ScoreView data={selectedMemberScore} lang={lang} />
-              ) : (
-                <div className="py-24 text-center">
-                  <MIcon name="error_outline" className="text-5xl text-slate-600 block mx-auto mb-3" />
-                  <p className="text-slate-500 text-sm">{memberScoreError || "Veri bulunamadı."}</p>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+          {/* PEER */}
           {activeTab === "peer" && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
               <PeerComparisonView agentId={user.id} />
             </motion.div>
           )}
 
+          {/* FEEDBACK */}
           {activeTab === "feedback" && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="max-w-lg space-y-6">
               <div>
@@ -454,6 +424,38 @@ export default function TeamLeaderDashboard({ user, isDark, lang, initialTab = "
               </button>
             </motion.div>
           )}
+        </div>
+      </main>
+
+      {/* Member Detail Modal */}
+      <AnimatePresence>
+        {memberModalOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-start justify-end bg-black/60 backdrop-blur-sm"
+            onClick={() => setMemberModalOpen(false)}>
+            <motion.div initial={{ x: 400 }} animate={{ x: 0 }} exit={{ x: 400 }}
+              onClick={(e) => e.stopPropagation()}
+              className="h-full w-full max-w-2xl bg-surface overflow-y-auto p-8 shadow-2xl">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="font-headline text-2xl font-bold text-white">{t.consultantDetail}</h2>
+                <button onClick={() => setMemberModalOpen(false)} className="text-slate-400 hover:text-white transition-colors">
+                  <MIcon name="close" className="text-2xl" />
+                </button>
+              </div>
+              {memberScoreLoading ? (
+                <div className="py-24 text-center"><div className="w-5 h-5 border-2 border-white/20 border-t-primary rounded-full animate-spin mx-auto" /></div>
+              ) : selectedMemberScore ? (
+                <ScoreView data={selectedMemberScore} lang={lang} />
+              ) : (
+                <div className="py-24 text-center">
+                  <MIcon name="error_outline" className="text-5xl text-slate-600 block mx-auto mb-3" />
+                  <p className="text-slate-500 text-sm">{memberScoreError || "Veri bulunamadı."}</p>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
