@@ -12,6 +12,7 @@ import MIcon from "@/app/components/shared/MIcon";
 import { translations } from "@/app/lib/i18n";
 import UserMenu from "@/app/components/shared/UserMenu";
 import NotificationBell from "@/app/components/shared/NotificationBell";
+import PeerComparisonView from "@/app/components/shared/PeerComparisonView";
 
 interface TeamLeaderDashboardProps {
   user: { id: string; name: string; role: string; email: string };
@@ -132,6 +133,7 @@ export default function TeamLeaderDashboard({ user, isDark, lang, initialTab = "
     { key: "scores", icon: "star", label: t.nav_scores },
     { key: "reports", icon: "assessment", label: t.nav_myReports },
     { key: "team", icon: "group", label: t.nav_myTeam },
+    { key: "peer", icon: "compare_arrows", label: "Nasıl Gidiyorum?" },
     { key: "feedback", icon: "feedback", label: fb.title },
   ];
 
@@ -387,6 +389,12 @@ export default function TeamLeaderDashboard({ user, isDark, lang, initialTab = "
           </motion.div>
         )}
       </AnimatePresence>
+
+          {activeTab === "peer" && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+              <PeerComparisonView agentId={user.id} />
+            </motion.div>
+          )}
 
           {activeTab === "feedback" && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="max-w-lg space-y-6">
