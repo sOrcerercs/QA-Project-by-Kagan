@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  AGENT
+  TEAM_LEADER
+  MANAGER
+  ADMIN
+}
+
+enum CallType {
+  FIRST_CALL
+  SECOND_CALL
+  FOLLOW_UP
+  GENERAL
+}
+
+model Team {
+  id       String  @id @default(cuid())
+  name     String
+  leaderId String? @unique
+  leader   User?   @relation("TeamLeader", fields: [leaderId], references: [id])
+  members  User[]  @relation("TeamMembers")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  role          Role           @default(AGENT)
+  teamId        String?
+  team          Team?          @relation("TeamMembers", fields: [teamId], references: [id])
+  leadingTeam   Team?          @relation("TeamLeader")
+  evaluations   Evaluation[]   @relation("EvaluatedAgent")
+  activityLogs  ActivityLog[]
+  feedbacks     Feedback[]
+  notifications Notification[]
+  createdAt     DateTime       @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  createdAt DateTime @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  category  String
+  comment   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  type        String
+  message     String
+  isRead      Boolean  @default(false)
+  referenceId String?
+  createdAt   DateTime @default(now())
+}
+
+model Prompt {
+  id        String   @id @default(cuid())
+  name      String
+  callType  CallType
+  content   String
+  version   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  title     String
+  type      String
+  startDate DateTime
+  endDate   DateTime
+  data      String
+  createdAt DateTime @default(now())
+}
+
+model Evaluation {
+  id           String    @id @default(cuid())
+  agentId      String
+  agent        User      @relation("EvaluatedAgent", fields: [agentId], references: [id])
+  customerName String
+  callDuration String
+  transcript   String
+  report       String
+  score        Int
+  callType     CallType  @default(SECOND_CALL)
+  promptId     String?
+  callDate     DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+}

@@ -1,0 +1,14 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  transition: background 120ms;
+  cursor: default;
+}
+.row:hover {
+  background: rgba(128,128,128,.06);
+}
