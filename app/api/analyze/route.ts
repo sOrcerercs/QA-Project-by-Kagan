@@ -110,15 +110,39 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
     const groqData = await groqResponse.json();
     const reportText = groqData.choices[0].message.content;
 
+    // JSON_DATA bloğunu çek ve rapor metninden temizle
+    const jsonBlockMatch = reportText.match(/===JSON_DATA===([\s\S]*?)===END_JSON===/);
+    let sectionScores: { A: number; B: number; C: number } | null = null;
+    let weakCriteria: Array<{ id: string; label: string; score: number; coachingNote: string }> | null = null;
+
+    if (jsonBlockMatch) {
+      try {
+        const parsed = JSON.parse(jsonBlockMatch[1].trim());
+        if (parsed.sectionScores && typeof parsed.sectionScores === "object") {
+          sectionScores = parsed.sectionScores;
+        }
+        if (Array.isArray(parsed.weakCriteria)) {
+          weakCriteria = parsed.weakCriteria;
+        }
+      } catch {
+        // JSON parse başarısız — sectionScores ve weakCriteria null kalır
+      }
+    }
+
+    // JSON bloğunu görüntülenen rapordan çıkar
+    const cleanReport = reportText.replace(/\n*===JSON_DATA===[\s\S]*?===END_JSON===/g, "").trim();
+
     // 5. Skorun LLM yanıtından çıkarılması
-    const scoreMatch = reportText.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
+    const scoreMatch = cleanReport.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
     const score = scoreMatch ? Math.round(parseFloat(scoreMatch[1].replace(",", "."))) : 0;
 
     return NextResponse.json({
-      report: reportText,
+      report: cleanReport,
       score,
       callType,
       promptId: activePrompt.id,
+      sectionScores,
+      weakCriteria,
     });
 
   } catch (error: any) {
