@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface AgentResult {
   id: string;
@@ -38,22 +38,30 @@ export default function ManagementComparisonView() {
   const [loading, setLoading] = useState(true);
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
 
+  const abortRef = useRef<AbortController | null>(null);
+
   const fetchData = useCallback((teamIds: string[]) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
-    const params =
-      teamIds.length > 0 ? `?teamIds=${teamIds.join(",")}` : "";
-    fetch(`/api/scores/compare${params}`)
+    const params = teamIds.length > 0 ? `?teamIds=${teamIds.join(",")}` : "";
+    fetch(`/api/scores/compare${params}`, { signal: controller.signal })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then(setData)
-      .catch(() => setData(null))
+      .catch(err => {
+        if (err.name !== "AbortError") setData(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     fetchData([]);
+    return () => abortRef.current?.abort();
   }, [fetchData]);
 
   const toggleTeam = (id: string) => {
@@ -150,7 +158,7 @@ export default function ManagementComparisonView() {
             {[
               {
                 label: "GENEL ORT.",
-                value: `%${data.aggregate.overallAvg}`,
+                value: `%${Math.round(data.aggregate.overallAvg)}`,
                 color: "#818cf8",
               },
               {
@@ -160,7 +168,7 @@ export default function ManagementComparisonView() {
               },
               {
                 label: "ORT. DEĞERLENDİRME",
-                value: String(data.aggregate.callCountAvg),
+                value: String(Math.round(data.aggregate.callCountAvg)),
                 color: "#4ade80",
               },
             ].map(card => (
@@ -249,7 +257,7 @@ export default function ManagementComparisonView() {
                         flexShrink: 0,
                       }}
                     >
-                      {agent.name.charAt(0)}
+                      {(agent.name?.charAt(0) || "?")}
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div
@@ -279,7 +287,7 @@ export default function ManagementComparisonView() {
                   >
                     <div
                       style={{
-                        width: `${agent.overallAvg}%`,
+                        width: `${Math.min(100, Math.max(0, agent.overallAvg))}%`,
                         height: "100%",
                         background: scoreColor(agent.overallAvg),
                         borderRadius: 99,
@@ -290,7 +298,7 @@ export default function ManagementComparisonView() {
                         style={{
                           position: "absolute",
                           top: -2,
-                          left: `${data.aggregate.overallAvg}%`,
+                          left: `${Math.min(100, Math.max(0, data.aggregate.overallAvg))}%`,
                           width: 2,
                           height: 10,
                           background: "#475569",
@@ -308,7 +316,7 @@ export default function ManagementComparisonView() {
                       color: scoreColor(agent.overallAvg),
                     }}
                   >
-                    %{agent.overallAvg}
+                    %{Math.round(agent.overallAvg)}
                   </div>
                   {(["A", "B", "C"] as const).map(s => (
                     <div key={s} style={{ textAlign: "center" }}>
@@ -330,7 +338,7 @@ export default function ManagementComparisonView() {
                         }}
                       >
                         {agent.sectionAvg
-                          ? `%${agent.sectionAvg[s]}`
+                          ? `%${Math.round(agent.sectionAvg[s])}`
                           : "—"}
                       </div>
                     </div>
