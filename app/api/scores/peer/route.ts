@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
     });
     teamMembers = team?.members ?? [];
   } else if (user.role === "TEAM_LEADER") {
+    // Team members excludes the leader themselves (separate DB relation),
+    // so team avg is purely the direct reports' average.
     const team = await prisma.team.findUnique({
       where: { leaderId: user.id },
       select: { members: { select: { id: true } } },
@@ -140,20 +142,19 @@ export async function GET(req: NextRequest) {
 
     criteriaBreakdown = Object.entries(myCriteriaMap)
       .filter(([, v]) => v.count >= 2)
-      .map(([id, v]) => {
-        const mineAvg = Math.round(v.totalScore / v.count);
+      .flatMap(([id, v]) => {
         const teamEntry = teamCriteriaMap[id];
-        const teamAvg = teamEntry
-          ? Math.round(teamEntry.totalScore / teamEntry.count)
-          : mineAvg;
-        return {
+        if (!teamEntry) return [];
+        const mineAvg = Math.round(v.totalScore / v.count);
+        const teamAvg = Math.round(teamEntry.totalScore / teamEntry.count);
+        return [{
           id,
           label: v.label,
           section: v.section,
           mine: mineAvg,
           teamAvg,
           delta: mineAvg - teamAvg,
-        };
+        }];
       });
 
     teamData = {
