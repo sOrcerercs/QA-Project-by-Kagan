@@ -113,6 +113,45 @@ export async function GET(req: NextRequest) {
     duration: e.callDuration,
   }));
 
+  // Ortalama bölüm skorları
+  const evalsWithSections = evaluations.filter(e => e.sectionScores);
+  let avgSectionScores: { A: number; B: number; C: number } | null = null;
+  if (evalsWithSections.length > 0) {
+    const totals = evalsWithSections.reduce(
+      (acc, e) => {
+        const ss = e.sectionScores as { A: number; B: number; C: number };
+        return { A: acc.A + (ss.A || 0), B: acc.B + (ss.B || 0), C: acc.C + (ss.C || 0) };
+      },
+      { A: 0, B: 0, C: 0 }
+    );
+    const n = evalsWithSections.length;
+    avgSectionScores = {
+      A: Math.round(totals.A / n),
+      B: Math.round(totals.B / n),
+      C: Math.round(totals.C / n),
+    };
+  }
+
+  // Frekans bazlı en zayıf kriterler
+  const criteriaMap: Record<string, { label: string; totalScore: number; count: number }> = {};
+  evaluations.forEach(e => {
+    if (!e.weakCriteria || !Array.isArray(e.weakCriteria)) return;
+    (e.weakCriteria as Array<{ id: string; label: string; score: number }>).forEach(c => {
+      if (!criteriaMap[c.id]) criteriaMap[c.id] = { label: c.label, totalScore: 0, count: 0 };
+      criteriaMap[c.id].totalScore += c.score;
+      criteriaMap[c.id].count += 1;
+    });
+  });
+  const topWeakCriteria = Object.entries(criteriaMap)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 3)
+    .map(([id, v]) => ({
+      id,
+      label: v.label,
+      avgScore: Math.round(v.totalScore / v.count),
+      count: v.count,
+    }));
+
   // Gercek veri varsa dondur
   if (totalCalls > 0) {
     return NextResponse.json({
@@ -120,6 +159,8 @@ export async function GET(req: NextRequest) {
       rank, totalAgents: allAgents.length,
       stats: { totalCalls, avgScore, highestScore },
       weeklyProgress, recentCalls, isDemo: false,
+      avgSectionScores,
+      topWeakCriteria,
     });
   }
 
@@ -181,5 +222,7 @@ export async function GET(req: NextRequest) {
     rank: demo.rank, totalAgents: demoTotalAgents,
     stats: { totalCalls: demo.calls, avgScore: demo.avg, highestScore: demo.highest },
     weeklyProgress: demoWeeklyProgress, recentCalls: demoRecentCalls, isDemo: true,
+    avgSectionScores: null,
+    topWeakCriteria: [],
   });
 }
