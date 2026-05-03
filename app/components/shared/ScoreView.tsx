@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import MIcon from "@/app/components/shared/MIcon";
 import { translations } from "@/app/lib/i18n";
+import TrendChart from "@/app/components/shared/TrendChart";
 
 const scoreColor = (s: number) =>
   s >= 85 ? "text-emerald-400" : s >= 70 ? "text-primary" : s >= 55 ? "text-amber-400" : "text-error";
@@ -123,6 +124,8 @@ export default function ScoreView({ data, lang = "tr" }: { data: ScoreData; lang
           )}
         </div>
       )}
+
+      <TrendChart agentId={agent.id} />
 
       {/* Weekly Progress */}
       <div className="bg-surface-container rounded-3xl p-8">
