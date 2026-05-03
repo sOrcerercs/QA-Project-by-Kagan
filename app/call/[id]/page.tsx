@@ -102,6 +102,8 @@ export default function CallAnalysisPage() {
             score: data.score || 0,
             callType: data.callType,
             promptId: data.promptId,
+            sectionScores: data.sectionScores ?? null,
+            weakCriteria: data.weakCriteria ?? null,
           }),
         });
       }

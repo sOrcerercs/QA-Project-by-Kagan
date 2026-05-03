@@ -8,13 +8,15 @@ export async function POST(req: NextRequest) {
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
 
-  const { agentId, customerName, callDuration, transcript, report, score, callType, promptId } = await req.json();
+  const { agentId, customerName, callDuration, transcript, report, score, callType, promptId, sectionScores, weakCriteria } = await req.json();
 
   const evaluation = await prisma.evaluation.create({
     data: {
       agentId, customerName, callDuration, transcript, report, score,
       ...(callType && { callType }),
       ...(promptId && { promptId }),
+      ...(sectionScores && { sectionScores }),
+      ...(weakCriteria && weakCriteria.length > 0 && { weakCriteria }),
     },
     include: { agent: { select: { teamId: true } } },
   });
@@ -35,7 +37,9 @@ export async function POST(req: NextRequest) {
     data: notifyIds.map((uid) => ({
       userId: uid,
       type: "EVALUATION",
-      message: `${customerName} müşterisi için değerlendirme tamamlandı. Skor: %${score}`,
+      message: Array.isArray(weakCriteria) && weakCriteria.length > 0
+          ? `${customerName} müşterisi değerlendirmen hazır (%${score}). ${weakCriteria.length} gelişim alanın var.`
+          : `${customerName} müşterisi için değerlendirme tamamlandı. Skor: %${score}`,
       referenceId: evaluation.id,
     })),
     skipDuplicates: true,
