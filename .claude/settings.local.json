@@ -40,7 +40,9 @@
       "Bash(cp /tmp/design_bundle.bin /tmp/design_new.gz)",
       "Bash(gunzip -f /tmp/design_new.gz)",
       "Bash(mkdir -p /tmp/design_new_extracted)",
-      "Bash(tar -xf /tmp/design_new -C /tmp/design_new_extracted)"
+      "Bash(tar -xf /tmp/design_new -C /tmp/design_new_extracted)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }
