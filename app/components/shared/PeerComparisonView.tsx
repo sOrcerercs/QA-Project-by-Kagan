@@ -33,7 +33,7 @@ const SECTION_CONFIG = {
   C: { label: "C · Kapanış & Köprü", color: "#f87171" },
 } as const;
 
-function DeltaBadge({ delta }: { delta: number }) {
+function DeltaBadge({ delta, variant }: { delta: number; variant?: "large" }) {
   const color =
     delta > 0 ? "#4ade80" : delta < 0 ? "#f87171" : "#94a3b8";
   const bg =
@@ -42,6 +42,26 @@ function DeltaBadge({ delta }: { delta: number }) {
       : delta < 0
       ? "rgba(248,113,113,0.1)"
       : "rgba(148,163,184,0.1)";
+
+  if (variant === "large") {
+    const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "";
+    const sign = delta > 0 ? "+" : "";
+    return (
+      <span
+        style={{
+          background: bg,
+          color,
+          fontSize: 14,
+          fontWeight: 700,
+          padding: "4px 12px",
+          borderRadius: 20,
+        }}
+      >
+        {arrow} {sign}{delta} puan
+      </span>
+    );
+  }
+
   return (
     <span
       style={{
@@ -328,9 +348,24 @@ export default function PeerComparisonView({ agentId }: { agentId: string }) {
         <p className="text-sm text-slate-400 mt-1">
           {hasTeam
             ? "Takım ortalamasıyla karşılaştırma"
-            : "Henüz bir takıma atanmamışsın — kendi skorların gösteriliyor."}
+            : "Kendi skorların gösteriliyor."}
         </p>
       </div>
+
+      {!hasTeam && (
+        <div
+          style={{
+            background: "#131723",
+            border: "1px solid #1e2535",
+            borderRadius: 14,
+            padding: "14px 16px",
+            fontSize: 13,
+            color: "#64748b",
+          }}
+        >
+          Henüz bir takıma atanmamışsın. Aşağıda yalnızca kendi skorların gösteriliyor.
+        </div>
+      )}
 
       {/* Summary banner */}
       <div className="bg-surface-container rounded-3xl p-6 flex items-center gap-5">
@@ -351,7 +386,7 @@ export default function PeerComparisonView({ agentId }: { agentId: string }) {
           >
             GENEL SKORUN
           </div>
-          {overallDelta !== null && <DeltaBadge delta={overallDelta} />}
+          {overallDelta !== null && <DeltaBadge delta={overallDelta} variant="large" />}
           {team && (
             <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>
               Takım ortalaması{" "}
