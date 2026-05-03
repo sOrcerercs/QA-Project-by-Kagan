@@ -60,10 +60,15 @@ export async function GET(req: NextRequest) {
       ? teamIdsParam.split(",").filter(Boolean)
       : allTeams.map(t => t.id);
 
-  let agents = await prisma.user.findMany({
+  const agentIdFilter = agentIdsParam
+    ? agentIdsParam.split(",").filter(Boolean)
+    : null;
+
+  const agents = await prisma.user.findMany({
     where: {
       role: "AGENT",
       teamId: { in: targetTeamIds },
+      ...(agentIdFilter ? { id: { in: agentIdFilter } } : {}),
     },
     select: {
       id: true,
@@ -72,11 +77,6 @@ export async function GET(req: NextRequest) {
       team: { select: { name: true } },
     },
   });
-
-  if (agentIdsParam) {
-    const agentIdFilter = agentIdsParam.split(",").filter(Boolean);
-    agents = agents.filter(a => agentIdFilter.includes(a.id));
-  }
 
   const agentResults = await Promise.all(
     agents.map(async a => {
