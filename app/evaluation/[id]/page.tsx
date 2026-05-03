@@ -367,6 +367,39 @@ export default function EvaluationDetailPage({
       <div className="flex-1 min-h-0 px-6 pb-6 grid grid-cols-2 gap-4">
         {/* Left: Report */}
         <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6 leading-relaxed">
+          {evaluation.weakCriteria && Array.isArray(evaluation.weakCriteria) && (evaluation.weakCriteria as any[]).length > 0 && (
+            <div className="mb-6 bg-surface-container-high border border-primary/20 rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-1 rounded-full border border-primary/20 tracking-wide">
+                  COACHING
+                </span>
+                <span className="text-sm font-bold text-on-surface">Bu Çağrıda Yapılabilecek 3 Şey</span>
+              </div>
+              <div className="space-y-3">
+                {(evaluation.weakCriteria as Array<{ id: string; label: string; score: number; coachingNote: string }>).map(
+                  (c, idx) => {
+                    const palette = [
+                      { card: "bg-red-500/10 border-red-500/30", num: "bg-red-500/20 text-red-400", label: "text-red-300" },
+                      { card: "bg-orange-500/10 border-orange-500/30", num: "bg-orange-500/20 text-orange-400", label: "text-orange-300" },
+                      { card: "bg-yellow-500/10 border-yellow-500/30", num: "bg-yellow-500/20 text-yellow-400", label: "text-yellow-300" },
+                    ];
+                    const p = palette[idx % palette.length];
+                    return (
+                      <div key={c.id} className={`flex gap-3 p-3 rounded-xl border ${p.card}`}>
+                        <span className={`flex-shrink-0 w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center ${p.num}`}>
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <p className={`text-[11px] font-semibold mb-1 ${p.label}`}>{c.id} — {c.label}</p>
+                          <p className="text-[11px] text-on-surface-variant leading-relaxed">{c.coachingNote}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            </div>
+          )}
           {isTranslating ? (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-on-surface-variant">
               <div className="w-5 h-5 border-2 border-outline border-t-primary rounded-full animate-spin" />
