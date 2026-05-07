@@ -93,7 +93,7 @@ async function analyzeWithRetry(
   return { ok: false, error: "max_retries_exceeded" };
 }
 
-async function processTranscript(transcript: FirefliesTranscript, unassignedUserId: string) {
+async function processTranscript(transcript: FirefliesTranscript, unassignedUserId: string, baseUrl: string) {
   const externalCallId = `ff_${transcript.id}`;
 
   // Mükerrer kontrolü
@@ -116,7 +116,6 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
   formData.append("callDuration", duration);
   formData.append("callType", "AUTO");
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const result = await analyzeWithRetry(formData, baseUrl);
   if (!result.ok) {
     return { status: "failed" as const, reason: `analyze_error: ${result.error}` };
@@ -217,6 +216,7 @@ export async function runSync(req: NextRequest, trigger: "MANUAL" | "CRON") {
   });
 
   try {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.get("host")}`;
     const transcripts = await fetchTranscriptsByDate(date);
     const analyzable = filterAnalyzableTranscripts(transcripts);
     const unassignedUser = await getOrCreateUnassignedUser();
@@ -225,7 +225,7 @@ export async function runSync(req: NextRequest, trigger: "MANUAL" | "CRON") {
     const errors: string[] = [];
 
     for (let i = 0; i < analyzable.length; i++) {
-      const result = await processTranscript(analyzable[i], unassignedUser.id);
+      const result = await processTranscript(analyzable[i], unassignedUser.id, baseUrl);
       if (result.status === "imported") imported++;
       else if (result.status === "unassigned") { imported++; unassigned++; }
       else if (result.status === "skipped") skipped++;
