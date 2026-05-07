@@ -43,6 +43,7 @@ model User {
   feedbacks     Feedback[]
   notifications Notification[]
   createdAt     DateTime       @default(now())
+  lastLoginAt   DateTime?
 }
 
 model ActivityLog {
@@ -50,6 +51,7 @@ model ActivityLog {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   action    String
+  section   String?
   createdAt DateTime @default(now())
 }
 
@@ -96,18 +98,40 @@ model Report {
 }
 
 model Evaluation {
-  id           String    @id @default(cuid())
-  agentId      String
-  agent        User      @relation("EvaluatedAgent", fields: [agentId], references: [id])
-  customerName String
-  callDuration String
-  transcript   String
-  report       String
-  score        Int
-  callType     CallType  @default(SECOND_CALL)
-  promptId     String?
-  sectionScores Json?
-  weakCriteria  Json?
-  callDate     DateTime  @default(now())
-  createdAt    DateTime  @default(now())
+  id              String    @id @default(cuid())
+  agentId         String
+  agent           User      @relation("EvaluatedAgent", fields: [agentId], references: [id])
+  customerName    String
+  callDuration    String
+  transcript      String
+  report          String
+  score           Int
+  callType        CallType  @default(SECOND_CALL)
+  promptId        String?
+  sectionScores   Json?
+  weakCriteria    Json?
+  callDate        DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  // Kriko entegrasyonu
+  externalCallId  String?   @unique          // kriko id, mükerrer import koruması
+  externalAgentName String?                   // kriko'dan gelen ham agent adı (eşleşmeyenler için)
+  recordingUrl    String?                     // audio URL (Kriko ekleyince doldurulacak)
+  unassigned      Boolean   @default(false)   // agent eşleşmedi → admin atayacak
+  source          String    @default("MANUAL") // MANUAL | KRIKO | FIREFLIES
+}
+
+model SyncLog {
+  id           String   @id @default(cuid())
+  source       String                          // KRIKO | FIREFLIES
+  startedAt    DateTime @default(now())
+  finishedAt   DateTime?
+  date         String                          // hangi tarih senkronize edildi (YYYY-MM-DD)
+  totalFetched Int      @default(0)
+  imported     Int      @default(0)
+  skipped      Int      @default(0)
+  unassigned   Int      @default(0)
+  failed       Int      @default(0)
+  error        String?
+  trigger      String   @default("MANUAL")     // MANUAL | CRON
 }

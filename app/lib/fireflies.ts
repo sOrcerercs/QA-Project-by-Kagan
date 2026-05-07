@@ -70,6 +70,9 @@ export async function fetchTranscriptsByDate(date: string): Promise<FirefliesTra
     throw new Error(`Fireflies GraphQL hatası: ${JSON.stringify(json.errors).slice(0, 200)}`);
   }
 
+  if (!json.data?.transcripts) {
+    throw new Error("Fireflies API yanıtında 'data.transcripts' yok.");
+  }
   return json.data.transcripts as FirefliesTranscript[];
 }
 

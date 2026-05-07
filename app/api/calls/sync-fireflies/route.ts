@@ -11,6 +11,7 @@ import {
   isFirefliesConfigured,
   FirefliesTranscript,
 } from "@/app/lib/fireflies";
+import { todayInTR } from "@/app/lib/kriko";
 
 const UNASSIGNED_EMAIL = "unassigned@estenove.local";
 const UNASSIGNED_NAME = "Atanmamış";
@@ -105,10 +106,6 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
   const isUnassigned = !matched;
 
   const transcriptText = buildTranscriptText(transcript.sentences);
-  if (transcriptText.trim().length < 50) {
-    return { status: "skipped" as const, reason: "no_transcript" };
-  }
-
   const agentName = matched?.name || speakerNames[0] || "Belirtilmedi";
   const duration = formatFirefliesDuration(transcript.duration);
 
@@ -206,11 +203,7 @@ export async function runSync(req: NextRequest, trigger: "MANUAL" | "CRON") {
   let body: any = {};
   try { body = await req.json(); } catch {}
 
-  // Bugünün tarihi (Turkey TZ: UTC+3)
-  const now = new Date();
-  const tr = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-  const todayTR = tr.toISOString().slice(0, 10);
-  const date = body.date || todayTR;
+  const date = body.date || todayInTR();
 
   if (!isFirefliesConfigured()) {
     return NextResponse.json(
