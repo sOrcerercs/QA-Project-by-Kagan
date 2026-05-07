@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-calls",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-fireflies",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
