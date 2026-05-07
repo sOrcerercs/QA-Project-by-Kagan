@@ -1,3 +1,6 @@
+// Fireflies.ai GraphQL API client (server-side only)
+// API: https://api.fireflies.ai/graphql
+
 export interface FirefliesSentence {
   speaker_name: string;
   text: string;
