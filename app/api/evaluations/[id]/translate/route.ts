@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
 
+const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -9,7 +12,7 @@ export async function POST(
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
-  if (!process.env.GROQ_API_KEY) {
+  if (!process.env.GOOGLE_AI_API_KEY) {
     return NextResponse.json({ error: "Server configuration error." }, { status: 500 });
   }
 
@@ -40,26 +43,28 @@ Rules:
 Report:
 ${evaluation.report}`;
 
-  const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const geminiRes = await fetch(`${GEMINI_ENDPOINT}?key=${process.env.GOOGLE_AI_API_KEY}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 4000,
-      temperature: 0.1,
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 4000, temperature: 0.1 },
     }),
   });
 
-  if (!groqRes.ok) {
-    return NextResponse.json({ error: "Translation service unavailable." }, { status: 500 });
+  if (!geminiRes.ok) {
+    const errText = await geminiRes.text().catch(() => "");
+    console.error("Gemini translate error:", geminiRes.status, errText);
+    return NextResponse.json({ error: "Translation service unavailable.", detail: errText }, { status: 500 });
   }
 
-  const data = await groqRes.json();
-  const translated: string = data.choices[0].message.content;
+  const data = await geminiRes.json();
+  const translated: string = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!translated) {
+    console.error("Gemini translate: boş yanıt", JSON.stringify(data).slice(0, 200));
+    return NextResponse.json({ error: "Translation service returned empty response." }, { status: 500 });
+  }
 
   return NextResponse.json({ report: translated });
 }
