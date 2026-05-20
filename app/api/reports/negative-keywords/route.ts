@@ -3,6 +3,7 @@ import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
 
 function extractSnippet(transcript: string, word: string): string {
+  if (!word) return "";
   const lower = transcript.toLowerCase();
   const idx = lower.indexOf(word);
   if (idx === -1) return "";
@@ -12,6 +13,7 @@ function extractSnippet(transcript: string, word: string): string {
 }
 
 function countHits(transcript: string, word: string): number {
+  if (!word) return 0;
   const lower = transcript.toLowerCase();
   let count = 0;
   let pos = 0;
@@ -46,11 +48,17 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const toEndOfDay = (s: string): Date => {
+      const d = new Date(s);
+      d.setUTCHours(23, 59, 59, 999);
+      return d;
+    };
+
     const dateFilter = startDate || endDate
       ? {
           callDate: {
             ...(startDate && { gte: new Date(startDate) }),
-            ...(endDate && { lte: new Date(endDate + "T23:59:59.999Z") }),
+            ...(endDate && { lte: toEndOfDay(endDate) }),
           },
         }
       : {};
