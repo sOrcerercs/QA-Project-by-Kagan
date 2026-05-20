@@ -27,6 +27,11 @@ export async function POST(req: NextRequest) {
 
   const { name, email, password, role, teamId, leaderId } = await req.json();
 
+  // MANAGER can only create AGENT or TEAM_LEADER accounts
+  if (currentUser.role === "MANAGER" && !["AGENT", "TEAM_LEADER"].includes(role)) {
+    return NextResponse.json({ error: "Yöneticiler sadece Danışman veya Takım Lideri hesabı oluşturabilir." }, { status: 403 });
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
 
   let resolvedTeamId: string | null = teamId || null;

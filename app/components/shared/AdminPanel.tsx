@@ -659,7 +659,8 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     </div>
   );
 
-  const tabs: { key: AdminTab; label: string; icon: string }[] = [
+  const isAdmin = user.role === "ADMIN";
+  const allTabs: { key: AdminTab; label: string; icon: string }[] = [
     { key: "users", label: t.tabs.users, icon: "users" },
     { key: "prompts", label: t.tabs.prompts, icon: "spark" },
     { key: "logs", label: t.tabs.logs, icon: "history" },
@@ -669,6 +670,8 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     { key: "recentCalls", label: t.tabs.recentCalls, icon: "phone" },
     { key: "reclassify", label: t.tabReclassify, icon: "refresh" },
   ];
+  const adminOnlyTabs: AdminTab[] = ["feedbacks", "sync", "syncHistory", "recentCalls", "reclassify"];
+  const tabs = isAdmin ? allTabs : allTabs.filter(tb => !adminOnlyTabs.includes(tb.key));
 
   const unreadCount = feedbacks.filter(f => !f.isRead).length;
 

@@ -324,6 +324,7 @@ export default function EvaluationDetailPage({
   };
 
   const canEdit = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
+  const canReclassify = currentUser?.role === "ADMIN";
 
   const scoreColor = (score: number) =>
     score >= 85
@@ -496,7 +497,7 @@ export default function EvaluationDetailPage({
                 {isRescoring ? "..." : "⚡ Skoru Düzelt"}
               </button>
             )}
-            {canEdit && (
+            {canReclassify && (
               <div className="flex items-center gap-2">
                 <div className="relative" data-reclassify-menu>
                   <button
