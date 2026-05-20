@@ -11,6 +11,7 @@ import TeamMemberPicker from "@/app/components/shared/TeamMemberPicker";
 import NotificationBell from "@/app/components/shared/NotificationBell";
 import PeerComparisonView from "@/app/components/shared/PeerComparisonView";
 import NegativeKeywordsReport from "@/app/components/shared/NegativeKeywordsReport";
+import LeaderboardView from "@/app/components/shared/LeaderboardView";
 
 /* ── Theme tokens ── */
 const DARK_THEME = {
@@ -37,6 +38,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     feedbacks: "Geri Bildirimler", sync: "Senkronizasyon",
     recentCalls: "Son Çağrılar",
     negKeywords: "Negatif Kelimeler",
+    leaderboard: "Sıralama",
   },
   en: {
     home: "Home", evaluations: "Evaluations", scores: "My Scores",
@@ -46,6 +48,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     feedbacks: "Feedbacks", sync: "Synchronization",
     recentCalls: "Recent Calls",
     negKeywords: "Negative Keywords",
+    leaderboard: "Rankings",
   },
 };
 
@@ -81,6 +84,7 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
     case "compare": return <svg {...p}><path d="M7 16V4M7 4L3 8M7 4l4 4M17 8v12M17 20l4-4M17 20l-4-4"/></svg>;
     case "inbox": return <svg {...p}><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>;
     case "sync": return <svg {...p}><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>;
+    case "trophy": return <svg {...p}><path d="M6 9H4a2 2 0 01-2-2V5a2 2 0 012-2h2M18 9h2a2 2 0 002-2V5a2 2 0 00-2-2h-2M6 2h12v7a6 6 0 11-12 0V2zM12 15v7M8 22h8"/></svg>;
     default: return null;
   }
 }
@@ -560,6 +564,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   if (user.role === "AGENT" || user.role === "TEAM_LEADER") {
     mainNavItems.push({ key: "peer", icon: "compare" });
   }
+  mainNavItems.push({ key: "leaderboard", icon: "trophy" });
   if (user.role !== "ADMIN") {
     mainNavItems.push({ key: "feedback", icon: "flag" });
   }
@@ -2024,6 +2029,12 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {activeTab === "leaderboard" && (
+              <div className={styles.page}>
+                <LeaderboardView lang={lang} userRole={user.role as "AGENT" | "TEAM_LEADER" | "MANAGER" | "ADMIN"} />
               </div>
             )}
 
