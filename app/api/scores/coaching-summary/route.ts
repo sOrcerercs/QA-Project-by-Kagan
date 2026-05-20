@@ -18,13 +18,17 @@ export async function GET(req: NextRequest) {
   }
   // TEAM_LEADER sadece kendi takımını görebilir
   if (user.role === "TEAM_LEADER" && agentId !== user.id) {
-    const leadingTeam = await prisma.team.findUnique({
-      where: { leaderId: user.id },
-      select: { id: true },
-    });
-    const target = await prisma.user.findUnique({ where: { id: agentId }, select: { teamId: true } });
-    if (!leadingTeam || target?.teamId !== leadingTeam.id) {
-      return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
+    try {
+      const leadingTeam = await prisma.team.findUnique({
+        where: { leaderId: user.id },
+        select: { id: true },
+      });
+      const target = await prisma.user.findUnique({ where: { id: agentId }, select: { teamId: true } });
+      if (!leadingTeam || target?.teamId !== leadingTeam.id) {
+        return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json({ error: "Sunucu hatası." }, { status: 500 });
     }
   }
 
