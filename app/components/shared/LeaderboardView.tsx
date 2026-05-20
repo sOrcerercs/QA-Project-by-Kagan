@@ -49,7 +49,7 @@ export default function LeaderboardView({
   userRole,
 }: {
   lang: "tr" | "en";
-  userRole: string;
+  userRole: "AGENT" | "TEAM_LEADER" | "MANAGER" | "ADMIN";
 }) {
   const t = L[lang];
   const canChoosePeriod = userRole === "ADMIN" || userRole === "MANAGER";
@@ -60,15 +60,17 @@ export default function LeaderboardView({
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setLoading(true);
     setError(false);
-    fetch(`/api/leaderboard?period=${period}`)
+    fetch(`/api/leaderboard?period=${period}`, { signal: controller.signal })
       .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
-      .then((d) => { if (active) setData(d); })
-      .catch(() => { if (active) setError(true); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      .then((d) => setData(d))
+      .catch((e: unknown) => {
+        if ((e as { name?: string })?.name !== "AbortError") setError(true);
+      })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
   }, [period]);
 
   const periodLabel =
