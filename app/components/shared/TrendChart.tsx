@@ -74,7 +74,7 @@ function polylinePoints(weeks: TrendWeek[], key: "A" | "B" | "C"): string {
 }
 
 function heatColor(count: number): string {
-  if (count === 1) return "#7f1d1d";
+  if (count >= 3) return "#7f1d1d";
   if (count === 2) return "#991b1b";
   return "#b91c1c";
 }
