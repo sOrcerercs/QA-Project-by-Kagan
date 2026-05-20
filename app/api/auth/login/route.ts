@@ -20,7 +20,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Hatalı şifre." }, { status: 401 });
     }
 
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      console.error("[login] JWT_SECRET is not configured");
+      return NextResponse.json({ error: "Sunucu yapılandırma hatası." }, { status: 500 });
+    }
+    const secret = new TextEncoder().encode(jwtSecret);
     const token = await new SignJWT({
       id: user.id,
       name: user.name,
@@ -32,8 +37,11 @@ export async function POST(request: Request) {
       .setExpirationTime("7d")
       .sign(secret);
 
-    // Activity log (fire-and-forget)
-    prisma.activityLog.create({ data: { userId: user.id, action: "LOGIN" } }).catch(() => {});
+    // Activity log + lastLoginAt (fire-and-forget)
+    prisma.activityLog.create({ data: { userId: user.id, action: "LOGIN" } })
+      .catch(err => console.error("[login] activityLog write failed:", err));
+    prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
+      .catch(err => console.error("[login] lastLoginAt update failed:", err));
 
     const response = NextResponse.json({
       success: true,
@@ -43,13 +51,14 @@ export async function POST(request: Request) {
     response.cookies.set("estenove_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
 
     return response;
   } catch (error: any) {
-    console.error("Login hatası:", error.message);
-    return NextResponse.json({ error: "Sunucu hatası: " + error.message }, { status: 500 });
+    console.error("[login] Unexpected error:", error);
+    return NextResponse.json({ error: "Sunucu hatası." }, { status: 500 });
   }
 }

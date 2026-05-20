@@ -44,7 +44,7 @@ async function callGemini(
     if (response.ok) break;
     if (response.status === 429 && attempt < 4) {
       const retryAfter = response.headers.get("retry-after");
-      const wait = retryAfter ? (parseInt(retryAfter) + 3) * 1000 : 15000;
+      const wait = retryAfter ? (parseInt(retryAfter, 10) + 3) * 1000 : 15000;
       await sleep(wait);
       continue;
     }
@@ -149,8 +149,8 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
         const parsed = JSON.parse(jsonBlockMatch[1].trim());
         if (parsed.sectionScores && typeof parsed.sectionScores === "object") sectionScores = parsed.sectionScores;
         if (Array.isArray(parsed.weakCriteria)) weakCriteria = parsed.weakCriteria;
-      } catch {
-        // JSON parse başarısız
+      } catch (err) {
+        console.warn("[analyze] JSON_DATA block parse failed — sectionScores and weakCriteria will be null:", err);
       }
     }
 
@@ -171,10 +171,7 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
     });
 
   } catch (error: any) {
-    console.error("API Hatası:", error.message);
-    return NextResponse.json(
-      { error: "API hatası: " + error.message },
-      { status: 500 }
-    );
+    console.error("[analyze] Unexpected error:", error);
+    return NextResponse.json({ error: "Analiz sırasında sunucu hatası oluştu." }, { status: 500 });
   }
 }

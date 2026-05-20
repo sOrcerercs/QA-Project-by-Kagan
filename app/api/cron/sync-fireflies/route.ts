@@ -7,8 +7,13 @@ import { isFirefliesConfigured } from "@/app/lib/fireflies";
  * vercel.json schedule: "0 2 * * *" (her gece 02:00 UTC = 05:00 TR)
  */
 export async function GET(req: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error("[cron/sync-fireflies] CRON_SECRET is not configured — refusing to run");
+    return NextResponse.json({ error: "Sunucu yapılandırma hatası." }, { status: 500 });
+  }
   const auth = req.headers.get("authorization");
-  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
   }
 
