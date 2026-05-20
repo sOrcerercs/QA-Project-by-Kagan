@@ -86,23 +86,29 @@ const L = {
 
 function highlightWord(text: string, word: string): React.ReactNode {
   const lower = text.toLowerCase();
-  const idx = lower.indexOf(word.toLowerCase());
-  if (idx === -1) return text;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark style={{ background: "rgba(239,68,68,.25)", color: "inherit", borderRadius: 2, padding: "0 2px" }}>
+  const lword = word.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let idx: number;
+  while ((idx = lower.indexOf(lword, last)) !== -1) {
+    if (idx > last) parts.push(text.slice(last, idx));
+    parts.push(
+      <mark key={idx} style={{ background: "rgba(239,68,68,.25)", color: "inherit", borderRadius: 2, padding: "0 2px" }}>
         {text.slice(idx, idx + word.length)}
       </mark>
-      {text.slice(idx + word.length)}
-    </>
-  );
+    );
+    last = idx + word.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length ? <>{parts}</> : text;
 }
 
 export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) {
   const t = L[lang];
 
   const [keywords, setKeywords] = useState<Keyword[]>([]);
+  const [fetchError, setFetchError] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [newWord, setNewWord] = useState("");
   const [addError, setAddError] = useState("");
   const [addLoading, setAddLoading] = useState(false);
@@ -118,10 +124,13 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
   useEffect(() => { fetchKeywords(); }, []);
 
   const fetchKeywords = async () => {
+    setFetchError(false);
     const res = await fetch("/api/negative-keywords");
     if (res.ok) {
       const d = await res.json();
       setKeywords(d.keywords || []);
+    } else {
+      setFetchError(true);
     }
   };
 
@@ -146,8 +155,13 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
   };
 
   const deleteKeyword = async (id: string) => {
+    setDeleteError("");
     const res = await fetch(`/api/negative-keywords/${id}`, { method: "DELETE" });
-    if (res.ok) setKeywords(prev => prev.filter(k => k.id !== id));
+    if (res.ok) {
+      setKeywords(prev => prev.filter(k => k.id !== id));
+    } else {
+      setDeleteError(lang === "tr" ? "Silinemedi." : "Delete failed.");
+    }
   };
 
   const runReport = async () => {
@@ -186,7 +200,14 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
           {t.kwSection}
         </p>
 
-        {keywords.length === 0 ? (
+        {fetchError ? (
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: 13, color: "#f87171" }}>{lang === "tr" ? "Keyword listesi yüklenemedi." : "Could not load keywords."}</p>
+            <button onClick={fetchKeywords} style={{ fontSize: 12, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 4 }}>
+              {lang === "tr" ? "Tekrar dene" : "Retry"}
+            </button>
+          </div>
+        ) : keywords.length === 0 ? (
           <p style={{ fontSize: 13, color: "var(--fg-faint)", marginBottom: 14 }}>{t.kwEmpty}</p>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
@@ -237,6 +258,7 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
           </button>
         </div>
         {addError && <p style={{ fontSize: 12, color: "#f87171", marginTop: 6 }}>{addError}</p>}
+        {deleteError && <p style={{ fontSize: 12, color: "#f87171", marginTop: 6 }}>{deleteError}</p>}
       </div>
 
       {/* Section 2: Date Filter + Run */}
@@ -335,8 +357,8 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
                                 </tr>
                               </thead>
                               <tbody>
-                                {r.matches.map((m, i) => (
-                                  <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                                {r.matches.map((m) => (
+                                  <tr key={m.evaluationId} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
                                     <td style={{ padding: "6px 8px", color: "var(--fg)", whiteSpace: "nowrap" }}>{m.agentName}</td>
                                     <td style={{ padding: "6px 8px", color: "var(--fg-dim)", whiteSpace: "nowrap" }}>
                                       {new Date(m.callDate).toLocaleDateString(lang === "tr" ? "tr-TR" : "en-GB")}
