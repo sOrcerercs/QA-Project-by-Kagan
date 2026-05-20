@@ -1146,7 +1146,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   {scoresLoading ? (
                     <div className={styles.spinner}><div /></div>
                   ) : scoresData ? (
-                    <ScoreView data={scoresData} lang={lang} />
+                    <ScoreView data={scoresData} lang={lang} canRefresh={user.role !== "AGENT"} />
                   ) : (
                     <div className={styles.emptyMsg}>
                       {lang === "tr" ? "Skorları yüklemek için sekmeye tıklayın." : "Click the tab to load scores."}
@@ -1347,7 +1347,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                           <>
                             {/* Single agent → full ScoreView */}
                             {teamReportSelectedIds.length === 1 && teamReportScores[teamReportSelectedIds[0]] && (
-                              <ScoreView data={teamReportScores[teamReportSelectedIds[0]]} lang={lang} />
+                              <ScoreView data={teamReportScores[teamReportSelectedIds[0]]} lang={lang} canRefresh={true} />
                             )}
 
                             {/* Multiple agents → comparison cards */}
