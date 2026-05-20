@@ -183,21 +183,28 @@ export async function GET(req: NextRequest) {
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/\s*```$/, "")
       .trim();
-    const parsed = JSON.parse(cleaned) as { summary: string; actionItems: string[] };
+    const parsed = JSON.parse(cleaned) as { summary?: unknown; actionItems?: unknown };
+    if (typeof parsed.summary !== "string" || parsed.summary.trim() === "") {
+      throw new Error("Gemini yanıtı geçersiz: summary eksik veya boş.");
+    }
+    if (!Array.isArray(parsed.actionItems)) {
+      throw new Error("Gemini yanıtı geçersiz: actionItems dizi değil.");
+    }
+    const validParsed = { summary: parsed.summary, actionItems: parsed.actionItems as string[] };
 
     // 7. Upsert to DB
     const record = await prisma.coachingSummary.upsert({
       where: { agentId },
       create: {
         agentId,
-        summary: parsed.summary,
-        actionItems: parsed.actionItems,
+        summary: validParsed.summary,
+        actionItems: validParsed.actionItems,
         generatedAt: new Date(),
         evalCount: evals.length,
       },
       update: {
-        summary: parsed.summary,
-        actionItems: parsed.actionItems,
+        summary: validParsed.summary,
+        actionItems: validParsed.actionItems,
         generatedAt: new Date(),
         evalCount: evals.length,
       },
