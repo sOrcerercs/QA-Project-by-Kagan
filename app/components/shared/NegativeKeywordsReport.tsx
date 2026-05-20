@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import DateRangePicker from "@/app/components/shared/DateRangePicker";
 
 interface Keyword {
@@ -140,8 +140,7 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
       setKeywords(prev => [...prev, d.keyword]);
       setNewWord("");
     } else {
-      const d = await res.json().catch(() => ({}));
-      setAddError(d.error === "Bu kelime zaten mevcut." ? t.kwDuplicate : t.kwError);
+      setAddError(res.status === 409 ? t.kwDuplicate : t.kwError);
     }
     setAddLoading(false);
   };
@@ -295,9 +294,8 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
                 </thead>
                 <tbody>
                   {reportData.results.map(r => (
-                    <>
+                    <React.Fragment key={r.keywordId}>
                       <tr
-                        key={r.keywordId}
                         onClick={() => r.callCount > 0 && setExpandedKeyword(expandedKeyword === r.keywordId ? null : r.keywordId)}
                         style={{ cursor: r.callCount > 0 ? "pointer" : "default", borderBottom: "1px solid var(--glass-border)", transition: "background 0.1s" }}
                         onMouseEnter={e => r.callCount > 0 && ((e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,.03)")}
@@ -358,7 +356,7 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
