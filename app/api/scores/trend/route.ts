@@ -34,6 +34,12 @@ function getWeekStart(date: Date): Date {
   return d;
 }
 
+function getWeekEnd(weekStart: Date): Date {
+  const d = new Date(weekStart);
+  d.setDate(d.getDate() + 6);
+  return d;
+}
+
 const avg = (arr: number[]) =>
   arr.length === 0 ? 0 : Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
 
@@ -75,6 +81,12 @@ export async function GET(req: NextRequest) {
   if (user.role === "AGENT" && agentId !== user.id) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
+  if (user.role === "TEAM_LEADER" && agentId !== user.id) {
+    const teamMember = await prisma.user.findFirst({
+      where: { id: agentId, team: { leaderId: user.id } },
+    });
+    if (!teamMember) return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
+  }
   if (!["4w", "3m", "6m", "all"].includes(rawRange)) {
     return NextResponse.json({ error: "Geçersiz range." }, { status: 400 });
   }
@@ -84,44 +96,92 @@ export async function GET(req: NextRequest) {
   const allEvals = await prisma.evaluation.findMany({
     where: {
       agentId,
-      ...(rangeStart && { createdAt: { gte: rangeStart } }),
+      ...(rangeStart && { callDate: { gte: rangeStart } }),
     },
-    select: { createdAt: true, sectionScores: true },
-    orderBy: { createdAt: "asc" },
+    select: { callDate: true, sectionScores: true, weakCriteria: true },
+    orderBy: { callDate: "asc" },
   });
 
   const evaluations = allEvals.filter((e) => e.sectionScores !== null);
 
+  type CriteriaBucket = { label: string; count: number; scoreSum: number };
   const weekMap = new Map<
     string,
-    { weekStart: Date; A: number[]; B: number[]; C: number[] }
+    { weekStart: Date; A: number[]; B: number[]; C: number[]; criteriaMap: Map<string, CriteriaBucket> }
   >();
 
   for (const e of evaluations) {
-    const key = getISOWeekKey(e.createdAt);
+    const key = getISOWeekKey(e.callDate);
     const raw = e.sectionScores as Record<string, unknown>;
     const numA = typeof raw?.A === "number" ? raw.A : 0;
     const numB = typeof raw?.B === "number" ? raw.B : 0;
     const numC = typeof raw?.C === "number" ? raw.C : 0;
     if (!weekMap.has(key)) {
-      weekMap.set(key, { weekStart: getWeekStart(e.createdAt), A: [], B: [], C: [] });
+      weekMap.set(key, { weekStart: getWeekStart(e.callDate), A: [], B: [], C: [], criteriaMap: new Map() });
     }
     const bucket = weekMap.get(key)!;
     bucket.A.push(numA);
     bucket.B.push(numB);
     bucket.C.push(numC);
+
+    const wc = e.weakCriteria as Array<{ id: string; label: string; score: number }> | null;
+    if (Array.isArray(wc)) {
+      for (const c of wc) {
+        if (!c.id || !c.label) continue;
+        const existing = bucket.criteriaMap.get(c.id);
+        if (existing) {
+          existing.count++;
+          existing.scoreSum += c.score ?? 0;
+        } else {
+          bucket.criteriaMap.set(c.id, { label: c.label, count: 1, scoreSum: c.score ?? 0 });
+        }
+      }
+    }
   }
 
-  const weeks = Array.from(weekMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, v], idx) => ({
-      week: `H${idx + 1}`,
-      date: v.weekStart.toLocaleDateString("tr-TR", { day: "numeric", month: "short" }),
-      A: avg(v.A),
-      B: avg(v.B),
-      C: avg(v.C),
-      callCount: v.A.length,
-    }));
+  const locale = "tr-TR";
+  const dateOpts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
+  const sortedEntries = Array.from(weekMap.entries()).sort(([a], [b]) => a.localeCompare(b));
+
+  const weeks = sortedEntries.map(([, v], idx) => ({
+    week: `H${idx + 1}`,
+    date: v.weekStart.toLocaleDateString(locale, dateOpts),
+    A: avg(v.A),
+    B: avg(v.B),
+    C: avg(v.C),
+    callCount: v.A.length,
+  }));
+
+  const weakCriteriaTrend = sortedEntries.map(([, v], idx) => {
+    const weekEnd = getWeekEnd(v.weekStart);
+    const dateRange = `${v.weekStart.toLocaleDateString(locale, dateOpts)}–${weekEnd.toLocaleDateString(locale, dateOpts)}`;
+    const topCriteria = Array.from(v.criteriaMap.entries())
+      .map(([id, c]) => ({
+        id,
+        label: c.label,
+        count: c.count,
+        avgScore: c.count > 0 ? Math.round(c.scoreSum / c.count) : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+    return { week: `H${idx + 1}`, date: dateRange, topCriteria };
+  });
+
+  const overallMap = new Map<string, { label: string; totalCount: number }>();
+  for (const [, v] of sortedEntries) {
+    for (const [id, c] of v.criteriaMap.entries()) {
+      const existing = overallMap.get(id);
+      if (existing) {
+        existing.totalCount += c.count;
+      } else {
+        overallMap.set(id, { label: c.label, totalCount: c.count });
+      }
+    }
+  }
+  const topCriteriaOverall = Array.from(overallMap.entries())
+    .map(([id, c]) => ({ id, label: c.label, totalCount: c.totalCount }))
+    .sort((a, b) => b.totalCount - a.totalCount)
+    .slice(0, 8);
 
   const hasEnoughData = weeks.length >= 2;
 
@@ -146,5 +206,7 @@ export async function GET(req: NextRequest) {
     weeks,
     trendIndicators: { periodDrop, lastWeekDrop },
     hasEnoughData,
+    weakCriteriaTrend,
+    topCriteriaOverall,
   });
 }
