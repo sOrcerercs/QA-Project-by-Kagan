@@ -2,6 +2,12 @@
 
 import { useState, useEffect } from "react";
 
+interface SectionScores {
+  A: number;
+  B: number;
+  C: number;
+}
+
 interface LeaderboardEntry {
   rank: number;
   agentId: string;
@@ -9,10 +15,20 @@ interface LeaderboardEntry {
   teamName: string | null;
   avgScore: number;
   callCount: number;
+  sectionScores: SectionScores | null;
+}
+
+interface TeamEntry {
+  rank: number;
+  teamId: string;
+  teamName: string;
+  avgScore: number;
+  agentCount: number;
 }
 
 interface LeaderboardData {
   entries: LeaderboardEntry[];
+  teams: TeamEntry[];
   period: string;
   totalAgents: number;
 }
@@ -22,27 +38,94 @@ type Period = "30d" | "3m" | "all";
 const L = {
   tr: {
     title: "Sıralama",
+    teamsTitle: "Takım Sıralaması",
     period30d: "Son 30 Gün",
     period3m: "Son 3 Ay",
     periodAll: "Tüm Zamanlar",
     calls: "çağrı",
+    agents: "danışman",
     among: (n: number) => `${n} danışman arasından`,
     empty: "Henüz yeterli değerlendirme yok.",
+    teamsEmpty: "Henüz takım verisi yok.",
     error: "Sıralama yüklenemedi.",
+    sectionA: "Giriş",
+    sectionB: "Çözüm",
+    sectionC: "Kapanış",
   },
   en: {
     title: "Rankings",
+    teamsTitle: "Team Rankings",
     period30d: "Last 30 Days",
     period3m: "Last 3 Months",
     periodAll: "All Time",
     calls: "calls",
+    agents: "agents",
     among: (n: number) => `Among ${n} agents`,
     empty: "Not enough evaluations yet.",
+    teamsEmpty: "No team data yet.",
     error: "Could not load rankings.",
+    sectionA: "Intro",
+    sectionB: "Solution",
+    sectionC: "Close",
   },
 };
 
 const MEDALS = ["🥇", "🥈", "🥉"];
+
+const SECTION_COLORS: Record<keyof SectionScores, string> = {
+  A: "#60a5fa",
+  B: "#34d399",
+  C: "#f97316",
+};
+
+function SectionBars({ scores, t }: { scores: SectionScores; t: typeof L["tr"] }) {
+  const sections: Array<{ key: keyof SectionScores; label: string }> = [
+    { key: "A", label: t.sectionA },
+    { key: "B", label: t.sectionB },
+    { key: "C", label: t.sectionC },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+      {sections.map(({ key, label }) => (
+        <div key={key} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 48 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
+            <span style={{ fontSize: 9, color: "var(--fg-faint)", letterSpacing: "0.03em" }}>
+              {label}
+            </span>
+            <span style={{ fontSize: 9, fontWeight: 600, color: SECTION_COLORS[key] }}>
+              {scores[key]}
+            </span>
+          </div>
+          <div
+            style={{
+              height: 3,
+              borderRadius: 2,
+              background: "var(--glass-border)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${scores[key]}%`,
+                background: SECTION_COLORS[key],
+                borderRadius: 2,
+                opacity: 0.8,
+              }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function LeaderboardView({
   lang,
@@ -83,8 +166,10 @@ export default function LeaderboardView({
     padding: "8px 0",
   };
 
+  const skeletonCount = canChoosePeriod ? 8 : 5;
+
   return (
-    <div style={{ maxWidth: 520 }}>
+    <div style={{ maxWidth: 560 }}>
       {/* Header */}
       <div
         style={{
@@ -94,16 +179,9 @@ export default function LeaderboardView({
           marginBottom: 20,
         }}
       >
-        <h1
-          style={{
-            fontSize: 22,
-            fontWeight: 700,
-            color: "var(--fg)",
-            margin: 0,
-          }}
-        >
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--fg)", margin: 0 }}>
           {t.title}
-        </h1>
+        </h2>
         {canChoosePeriod && (
           <select
             value={period}
@@ -125,10 +203,10 @@ export default function LeaderboardView({
         )}
       </div>
 
+      {/* Agent leaderboard */}
       <div style={card}>
         {loading ? (
-          /* Skeleton */
-          Array.from({ length: canChoosePeriod ? 8 : 5 }, (_, i) => i + 1).map((i, _, arr) => (
+          Array.from({ length: skeletonCount }, (_, i) => i + 1).map((i, _, arr) => (
             <div
               key={i}
               style={{
@@ -136,68 +214,24 @@ export default function LeaderboardView({
                 gap: 14,
                 alignItems: "center",
                 padding: "14px 20px",
-                borderBottom:
-                  i < arr.length ? "1px solid var(--glass-border)" : "none",
+                borderBottom: i < arr.length ? "1px solid var(--glass-border)" : "none",
               }}
             >
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  background: "var(--glass-border)",
-                  flexShrink: 0,
-                }}
-              />
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--glass-border)", flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
-                <div
-                  style={{
-                    height: 12,
-                    background: "var(--glass-border)",
-                    borderRadius: 4,
-                    width: "55%",
-                    marginBottom: 6,
-                  }}
-                />
-                <div
-                  style={{
-                    height: 10,
-                    background: "var(--glass-border)",
-                    borderRadius: 4,
-                    width: "30%",
-                  }}
-                />
+                <div style={{ height: 12, background: "var(--glass-border)", borderRadius: 4, width: "55%", marginBottom: 6 }} />
+                <div style={{ height: 8, background: "var(--glass-border)", borderRadius: 4, width: "80%", marginBottom: 5 }} />
+                <div style={{ height: 3, background: "var(--glass-border)", borderRadius: 2, width: "70%" }} />
               </div>
-              <div
-                style={{
-                  width: 36,
-                  height: 28,
-                  background: "var(--glass-border)",
-                  borderRadius: 4,
-                }}
-              />
+              <div style={{ width: 36, height: 28, background: "var(--glass-border)", borderRadius: 4 }} />
             </div>
           ))
         ) : error ? (
-          <p
-            style={{
-              fontSize: 13,
-              color: "#f87171",
-              textAlign: "center",
-              padding: "28px 20px",
-            }}
-          >
+          <p style={{ fontSize: 13, color: "#f87171", textAlign: "center", padding: "28px 20px" }}>
             {t.error}
           </p>
         ) : !data || data.entries.length === 0 ? (
-          <p
-            style={{
-              fontSize: 13,
-              color: "var(--fg-faint)",
-              textAlign: "center",
-              padding: "28px 20px",
-            }}
-          >
+          <p style={{ fontSize: 13, color: "var(--fg-faint)", textAlign: "center", padding: "28px 20px" }}>
             {t.empty}
           </p>
         ) : (
@@ -207,13 +241,10 @@ export default function LeaderboardView({
                 key={entry.agentId}
                 style={{
                   display: "flex",
-                  alignItems: "center",
+                  alignItems: "flex-start",
                   gap: 14,
                   padding: "14px 20px",
-                  borderBottom:
-                    i < data.entries.length - 1
-                      ? "1px solid var(--glass-border)"
-                      : "none",
+                  borderBottom: i < data.entries.length - 1 ? "1px solid var(--glass-border)" : "none",
                 }}
               >
                 {/* Rank badge */}
@@ -229,21 +260,19 @@ export default function LeaderboardView({
                     fontWeight: 700,
                     color: entry.rank <= 3 ? "var(--fg)" : "var(--fg-faint)",
                     background:
-                      entry.rank === 1
-                        ? "rgba(251,191,36,.15)"
-                        : entry.rank === 2
-                        ? "rgba(148,163,184,.12)"
-                        : entry.rank === 3
-                        ? "rgba(180,120,60,.12)"
-                        : "transparent",
+                      entry.rank === 1 ? "rgba(251,191,36,.15)"
+                      : entry.rank === 2 ? "rgba(148,163,184,.12)"
+                      : entry.rank === 3 ? "rgba(180,120,60,.12)"
+                      : "transparent",
                     border: "1px solid var(--glass-border)",
                     flexShrink: 0,
+                    marginTop: 2,
                   }}
                 >
                   {entry.rank <= 3 ? MEDALS[entry.rank - 1] : entry.rank}
                 </div>
 
-                {/* Name + team */}
+                {/* Name + team + section bars */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
@@ -258,43 +287,31 @@ export default function LeaderboardView({
                     {entry.name}
                   </div>
                   {entry.teamName && (
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--fg-faint)",
-                        marginTop: 2,
-                      }}
-                    >
+                    <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 1 }}>
                       {entry.teamName}
                     </div>
+                  )}
+                  {entry.sectionScores && (
+                    <SectionBars scores={entry.sectionScores} t={t} />
                   )}
                 </div>
 
                 {/* Score + calls */}
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ textAlign: "right", flexShrink: 0, marginTop: 2 }}>
                   <div
                     style={{
                       fontSize: 16,
                       fontWeight: 700,
                       color:
-                        entry.rank === 1
-                          ? "#fbbf24"
-                          : entry.rank === 2
-                          ? "#94a3b8"
-                          : entry.rank === 3
-                          ? "#b47a3c"
-                          : "var(--fg)",
+                        entry.rank === 1 ? "#fbbf24"
+                        : entry.rank === 2 ? "#94a3b8"
+                        : entry.rank === 3 ? "#b47a3c"
+                        : "var(--fg)",
                     }}
                   >
                     {entry.avgScore}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--fg-faint)",
-                      marginTop: 1,
-                    }}
-                  >
+                  <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 1 }}>
                     {entry.callCount} {t.calls}
                   </div>
                 </div>
@@ -314,12 +331,116 @@ export default function LeaderboardView({
               <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>
                 {t.among(data.totalAgents)}
               </span>
-              <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>
-                {periodLabel}
-              </span>
+              <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>{periodLabel}</span>
             </div>
           </>
         )}
+      </div>
+
+      {/* Team leaderboard */}
+      <div style={{ marginTop: 28 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--fg)", margin: "0 0 14px" }}>
+          {t.teamsTitle}
+        </h2>
+        <div style={card}>
+          {loading ? (
+            [1, 2, 3].map((i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  padding: "12px 20px",
+                  borderBottom: i < 3 ? "1px solid var(--glass-border)" : "none",
+                }}
+              >
+                <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--glass-border)", flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ height: 11, background: "var(--glass-border)", borderRadius: 4, width: "40%", marginBottom: 5 }} />
+                  <div style={{ height: 9, background: "var(--glass-border)", borderRadius: 4, width: "20%" }} />
+                </div>
+                <div style={{ width: 32, height: 22, background: "var(--glass-border)", borderRadius: 4 }} />
+              </div>
+            ))
+          ) : !data || data.teams.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--fg-faint)", textAlign: "center", padding: "20px" }}>
+              {t.teamsEmpty}
+            </p>
+          ) : (
+            data.teams.map((team, i) => (
+              <div
+                key={team.teamId}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  padding: "12px 20px",
+                  borderBottom: i < data.teams.length - 1 ? "1px solid var(--glass-border)" : "none",
+                }}
+              >
+                {/* Rank badge */}
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: team.rank <= 3 ? 14 : 11,
+                    fontWeight: 700,
+                    color: team.rank <= 3 ? "var(--fg)" : "var(--fg-faint)",
+                    background:
+                      team.rank === 1 ? "rgba(251,191,36,.15)"
+                      : team.rank === 2 ? "rgba(148,163,184,.12)"
+                      : team.rank === 3 ? "rgba(180,120,60,.12)"
+                      : "transparent",
+                    border: "1px solid var(--glass-border)",
+                    flexShrink: 0,
+                  }}
+                >
+                  {team.rank <= 3 ? MEDALS[team.rank - 1] : team.rank}
+                </div>
+
+                {/* Team name + agent count */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "var(--fg)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {team.teamName}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--fg-faint)", marginTop: 1 }}>
+                    {team.agentCount} {t.agents}
+                  </div>
+                </div>
+
+                {/* Avg score */}
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color:
+                      team.rank === 1 ? "#fbbf24"
+                      : team.rank === 2 ? "#94a3b8"
+                      : team.rank === 3 ? "#b47a3c"
+                      : "var(--fg)",
+                    flexShrink: 0,
+                  }}
+                >
+                  {team.avgScore}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
