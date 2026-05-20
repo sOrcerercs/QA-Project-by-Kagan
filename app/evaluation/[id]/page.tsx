@@ -177,7 +177,11 @@ export default function EvaluationDetailPage({
 
   useEffect(() => {
     if (!reclassifyOpen) return;
-    const close = () => setReclassifyOpen(false);
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-reclassify-menu]")) {
+        setReclassifyOpen(false);
+      }
+    };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [reclassifyOpen]);
@@ -479,7 +483,7 @@ export default function EvaluationDetailPage({
             )}
             {canEdit && (
               <div className="flex items-center gap-2">
-                <div className="relative">
+                <div className="relative" data-reclassify-menu>
                   <button
                     onClick={() => !isReclassifying && setReclassifyOpen((o) => !o)}
                     disabled={isReclassifying}
