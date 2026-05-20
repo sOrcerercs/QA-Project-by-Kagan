@@ -25,32 +25,32 @@ export async function GET(
     return NextResponse.json({ error: "Server configuration error." }, { status: 500 });
   }
 
-  const upstreamHeaders: HeadersInit = { "X-API-Key": apiKey };
-  const rangeHeader = req.headers.get("range");
-  if (rangeHeader) upstreamHeaders["Range"] = rangeHeader;
-
-  let upstream: Response;
+  // Step 1: fetch the recordings manifest (returns JSON with expiring signed URLs)
+  let manifest: Response;
   try {
-    upstream = await fetch(evaluation.recordingUrl, { headers: upstreamHeaders });
+    manifest = await fetch(evaluation.recordingUrl, {
+      headers: { "X-API-Key": apiKey },
+    });
   } catch {
     return NextResponse.json({ error: "Ses dosyası alınamadı." }, { status: 502 });
   }
 
-  if (!upstream.ok && upstream.status !== 206) {
-    return NextResponse.json({ error: "Ses dosyası alınamadı." }, { status: upstream.status });
+  if (!manifest.ok) {
+    return NextResponse.json({ error: "Ses dosyası alınamadı." }, { status: manifest.status });
   }
 
-  const responseHeaders = new Headers();
-  for (const key of ["content-type", "content-length", "accept-ranges", "content-range"]) {
-    const val = upstream.headers.get(key);
-    if (val) responseHeaders.set(key, val);
-  }
-  if (!responseHeaders.get("content-type")) {
-    responseHeaders.set("content-type", "audio/mpeg");
+  let data: { recordings?: Array<{ download_url: string }> };
+  try {
+    data = await manifest.json();
+  } catch {
+    return NextResponse.json({ error: "Ses dosyası alınamadı." }, { status: 502 });
   }
 
-  return new NextResponse(upstream.body, {
-    status: upstream.status,
-    headers: responseHeaders,
-  });
+  const downloadUrl = data.recordings?.[0]?.download_url;
+  if (!downloadUrl) {
+    return NextResponse.json({ error: "Ses kaydı bulunamadı." }, { status: 404 });
+  }
+
+  // Step 2: redirect browser to the signed download URL (token-authenticated, no API key needed)
+  return NextResponse.redirect(downloadUrl, { status: 302 });
 }
