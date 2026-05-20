@@ -148,6 +148,6 @@ model SyncLog {
 model NegativeKeyword {
   id          String   @id @default(cuid())
   word        String   @unique
-  createdById String
+  createdById String                    // audit only — no FK, user deletion does not cascade
   createdAt   DateTime @default(now())
 }
