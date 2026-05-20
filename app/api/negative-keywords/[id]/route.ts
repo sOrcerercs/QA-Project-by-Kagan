@@ -16,7 +16,10 @@ export async function DELETE(
   try {
     await prisma.negativeKeyword.delete({ where: { id } });
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Keyword bulunamadı." }, { status: 404 });
+  } catch (e: any) {
+    if (e.code === "P2025") {
+      return NextResponse.json({ error: "Keyword bulunamadı." }, { status: 404 });
+    }
+    return NextResponse.json({ error: "Sunucu hatası." }, { status: 500 });
   }
 }
