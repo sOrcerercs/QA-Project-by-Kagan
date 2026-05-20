@@ -53,7 +53,8 @@ export async function GET(req: NextRequest) {
     );
     valid.sort((a, b) => b.avgScore - a.avgScore || b.callCount - a.callCount);
 
-    const entries = valid.slice(0, 5).map((entry, i) => ({
+    const limit = canChoosePeriod ? valid.length : 5;
+    const entries = valid.slice(0, limit).map((entry, i) => ({
       rank: i + 1,
       ...entry,
     }));

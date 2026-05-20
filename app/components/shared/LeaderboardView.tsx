@@ -128,7 +128,7 @@ export default function LeaderboardView({
       <div style={card}>
         {loading ? (
           /* Skeleton */
-          [1, 2, 3, 4, 5].map((i) => (
+          Array.from({ length: canChoosePeriod ? 8 : 5 }, (_, i) => i + 1).map((i, _, arr) => (
             <div
               key={i}
               style={{
@@ -137,7 +137,7 @@ export default function LeaderboardView({
                 alignItems: "center",
                 padding: "14px 20px",
                 borderBottom:
-                  i < 5 ? "1px solid var(--glass-border)" : "none",
+                  i < arr.length ? "1px solid var(--glass-border)" : "none",
               }}
             >
               <div
