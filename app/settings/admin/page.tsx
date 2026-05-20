@@ -70,6 +70,7 @@ const ADMIN_T = {
     reclassifyFixed: "Düzeltildi",
     reclassifyHeader: ["Danışman", "Müşteri", "Mevcut", "Öneri", "Aksiyon"] as string[],
     reclassifyScanDesc: "Transkriptlerde anahtar kelimeler aranır. Gemini kullanılmaz, API maliyeti yoktur.",
+    reclassifyScanResult: (total: number, count: number) => `${total} değerlendirme tarandı, ${count} şüpheli bulundu.`,
     fillAllFields: "Tüm alanları doldurun.", userCreated: "Kullanıcı oluşturuldu!",
     userUpdated: "Kullanıcı güncellendi!", updateFailed: "Güncelleme başarısız.", errorOccurred: "Hata oluştu.",
     promptCreated: "Prompt oluşturuldu!", promptUpdated: "Prompt güncellendi!",
@@ -130,6 +131,7 @@ const ADMIN_T = {
     reclassifyFixed: "Fixed",
     reclassifyHeader: ["Consultant", "Customer", "Current", "Suggestion", "Action"] as string[],
     reclassifyScanDesc: "Keywords are scanned in transcripts. No Gemini calls, no API cost.",
+    reclassifyScanResult: (total: number, count: number) => `${total} evaluations scanned, ${count} suspicious found.`,
     fillAllFields: "Please fill in all fields.", userCreated: "User created!",
     userUpdated: "User updated!", updateFailed: "Update failed.", errorOccurred: "An error occurred.",
     promptCreated: "Prompt created!", promptUpdated: "Prompt updated!",
@@ -542,7 +544,7 @@ export default function AdminSettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || ADMIN_T[lang].errorOccurred);
       setSuspiciousItems(data.items ?? []);
-      setScanMsg(`${data.total} değerlendirme tarandı, ${data.items?.length ?? 0} şüpheli bulundu.`);
+      setScanMsg(ADMIN_T[lang].reclassifyScanResult(data.total, data.items?.length ?? 0));
     } catch (err: any) {
       setScanMsg(err.message);
     } finally {
