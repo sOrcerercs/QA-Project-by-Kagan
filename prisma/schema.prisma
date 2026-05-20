@@ -119,6 +119,15 @@ model Evaluation {
   recordingUrl    String?                     // audio URL (Kriko ekleyince doldurulacak)
   unassigned      Boolean   @default(false)   // agent eşleşmedi → admin atayacak
   source          String    @default("MANUAL") // MANUAL | KRIKO | FIREFLIES
+
+  // Takip alanları
+  agentRead       Boolean   @default(false)
+  agentReadAt     DateTime?
+  coachingDone    Boolean   @default(false)
+  coachingDoneAt  DateTime?
+  coachingNotes   String?
+  coachingById    String?
+  coachingByName  String?
 }
 
 model SyncLog {
@@ -134,4 +143,11 @@ model SyncLog {
   failed       Int      @default(0)
   error        String?
   trigger      String   @default("MANUAL")     // MANUAL | CRON
+}
+
+model NegativeKeyword {
+  id          String   @id @default(cuid())
+  word        String   @unique
+  createdById String
+  createdAt   DateTime @default(now())
 }
