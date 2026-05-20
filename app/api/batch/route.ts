@@ -185,6 +185,17 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
         skipDuplicates: true,
       });
 
+      // Coaching summary cache invalidation
+      try {
+        await prisma.coachingSummary.upsert({
+          where: { agentId: resolvedAgentId },
+          create: { agentId: resolvedAgentId, summary: null, evalCount: 0 },
+          update: { summary: null },
+        });
+      } catch (e) {
+        console.warn("[batch] coaching summary invalidation failed:", e);
+      }
+
       results.push({ index: i, success: true, score });
 
       if (i < calls.length - 1) await new Promise(r => setTimeout(r, 1000));
