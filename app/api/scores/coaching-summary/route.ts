@@ -35,10 +35,10 @@ export async function GET(req: NextRequest) {
   try {
     // 1. Cache check
     const cached = await prisma.coachingSummary.findUnique({ where: { agentId } });
-    if (cached?.summary) {
+    if (cached && cached.summary != null && cached.summary !== "") {
       return NextResponse.json({
         summary: cached.summary,
-        actionItems: cached.actionItems as string[],
+        actionItems: Array.isArray(cached.actionItems) ? (cached.actionItems as string[]) : [],
         generatedAt: cached.generatedAt,
         evalCount: cached.evalCount,
       });
@@ -65,19 +65,20 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. avgSectionScores
-    const withSections = evals.filter(
-      (e) => e.sectionScores && typeof e.sectionScores === "object"
-    );
     let avgSectionScores: { A: number; B: number; C: number } | null = null;
-    if (withSections.length > 0) {
-      const totals = withSections.reduce(
-        (acc, e) => {
-          const ss = e.sectionScores as { A: number; B: number; C: number };
-          return { A: acc.A + (ss.A || 0), B: acc.B + (ss.B || 0), C: acc.C + (ss.C || 0) };
-        },
+    const validSections: { A: number; B: number; C: number }[] = [];
+    for (const e of evals) {
+      if (!e.sectionScores || typeof e.sectionScores !== "object" || Array.isArray(e.sectionScores)) continue;
+      const ss = e.sectionScores as Record<string, unknown>;
+      if (typeof ss.A !== "number" || typeof ss.B !== "number" || typeof ss.C !== "number") continue;
+      validSections.push({ A: ss.A, B: ss.B, C: ss.C });
+    }
+    if (validSections.length > 0) {
+      const totals = validSections.reduce(
+        (acc, ss) => ({ A: acc.A + ss.A, B: acc.B + ss.B, C: acc.C + ss.C }),
         { A: 0, B: 0, C: 0 }
       );
-      const n = withSections.length;
+      const n = validSections.length;
       avgSectionScores = {
         A: Math.round(totals.A / n),
         B: Math.round(totals.B / n),
@@ -125,10 +126,11 @@ export async function GET(req: NextRequest) {
     const weeklyProgress = [];
     for (let w = 3; w >= 0; w--) {
       const weekStart = new Date(now);
-      weekStart.setDate(weekStart.getDate() - (w * 7 + now.getDay()));
+      weekStart.setDate(weekStart.getDate() - (w + 1) * 7);
       weekStart.setHours(0, 0, 0, 0);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
+      const weekEnd = new Date(now);
+      weekEnd.setDate(weekEnd.getDate() - w * 7);
+      weekEnd.setHours(0, 0, 0, 0);
       const weekEvals = evals.filter((e) => {
         const d = new Date(e.callDate);
         return d >= weekStart && d < weekEnd;
@@ -203,7 +205,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       summary: record.summary,
-      actionItems: record.actionItems as string[],
+      actionItems: Array.isArray(record.actionItems) ? (record.actionItems as string[]) : [],
       generatedAt: record.generatedAt,
       evalCount: record.evalCount,
     });
