@@ -171,7 +171,7 @@ async function notifyAdminsOfUnassigned(count: number) {
 /** POST: belirli bir tarihi (default: bugün) senkronize et */
 export async function POST(req: NextRequest) {
   const user = await getUserFromToken(req);
-  if (!user || !["ADMIN", "MANAGER"].includes(user.role)) {
+  if (!user || user.role !== "ADMIN") {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
   return runSync(req, "MANUAL");
@@ -180,7 +180,7 @@ export async function POST(req: NextRequest) {
 /** GET: senkron durumu + son log'lar. ?debug=true ile Kriko'dan ham veriyi döndürür. */
 export async function GET(req: NextRequest) {
   const user = await getUserFromToken(req);
-  if (!user || !["ADMIN", "MANAGER"].includes(user.role)) {
+  if (!user || user.role !== "ADMIN") {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 

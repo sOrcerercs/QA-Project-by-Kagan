@@ -61,7 +61,7 @@ export async function DELETE(
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
 
-  if (!["ADMIN", "MANAGER"].includes(user.role)) {
+  if (user.role !== "ADMIN") {
     return NextResponse.json({ error: "Bu işlem için yetkiniz yok." }, { status: 403 });
   }
 

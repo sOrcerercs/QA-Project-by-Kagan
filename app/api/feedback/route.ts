@@ -4,7 +4,7 @@ import { getUserFromToken } from "@/app/lib/auth";
 
 export async function GET(req: NextRequest) {
   const user = await getUserFromToken(req);
-  if (!user || !["ADMIN", "MANAGER"].includes(user.role)) {
+  if (!user || user.role !== "ADMIN") {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 

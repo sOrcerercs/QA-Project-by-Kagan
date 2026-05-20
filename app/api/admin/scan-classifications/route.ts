@@ -7,7 +7,7 @@ import { keywordDetectCallType } from "@/app/lib/callTypeDetector";
 export async function GET(req: NextRequest) {
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
-  if (user.role !== "ADMIN" && user.role !== "MANAGER") {
+  if (user.role !== "ADMIN") {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 

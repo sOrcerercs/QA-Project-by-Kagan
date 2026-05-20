@@ -42,7 +42,7 @@ export async function POST(
 ) {
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "Yetkisiz erişim." }, { status: 401 });
-  if (user.role !== "ADMIN" && user.role !== "MANAGER") {
+  if (user.role !== "ADMIN") {
     return NextResponse.json({ error: "Yetkisiz erişim." }, { status: 403 });
   }
 
