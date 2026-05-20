@@ -2,6 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { $Enums } from "@prisma/client";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { detectCallType } from "@/app/lib/callTypeDetector";
+
+const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+async function callGemini(
+  systemPrompt: string,
+  userMessage: string,
+  maxOutputTokens: number,
+  temperature = 0.3
+): Promise<string> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) throw new Error("GOOGLE_AI_API_KEY tanımlı değil.");
+
+  const res = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userMessage }] }],
+      generationConfig: { maxOutputTokens, temperature, thinkingConfig: { thinkingBudget: 0 } },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Gemini API hatası: ${res.status} — ${errText.slice(0, 150)}`);
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Gemini boş yanıt döndürdü.");
+  return text;
+}
 
 // Batch durumu sorgula
 export async function GET(req: NextRequest) {
@@ -11,10 +45,8 @@ export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Batch ID gerekli." }, { status: 400 });
 
-  // Batch durumunu evaluation sayısından hesapla
-  // BatchJob modeli yerine basit bir yaklaşım: evaluations üzerinden takip
   const evaluations = await prisma.evaluation.findMany({
-    where: { promptId: id }, // batchId olarak promptId alanını geçici kullanıyoruz
+    where: { promptId: id },
     select: { id: true, score: true },
   });
 
@@ -28,6 +60,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
+  if (!process.env.GOOGLE_AI_API_KEY) {
+    return NextResponse.json({ error: "Sunucu yapılandırma hatası." }, { status: 500 });
+  }
+
   const { calls } = await req.json();
 
   if (!calls || !Array.isArray(calls) || calls.length === 0) {
@@ -38,7 +74,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Maksimum 50 çağrı gönderilebilir." }, { status: 400 });
   }
 
-  // Her çağrıyı sırayla analiz et
   const results: { index: number; success: boolean; score?: number; error?: string }[] = [];
 
   for (let i = 0; i < calls.length; i++) {
@@ -53,7 +88,6 @@ export async function POST(req: NextRequest) {
       let callType = call.callType || "AUTO";
       let activePrompt: Awaited<ReturnType<typeof prisma.prompt.findFirst>> | null = null;
 
-      // promptId doğrudan geldiyse call type tespitini atla
       if (call.promptId) {
         activePrompt = await prisma.prompt.findUnique({ where: { id: call.promptId } });
         if (!activePrompt) {
@@ -62,39 +96,10 @@ export async function POST(req: NextRequest) {
         }
         callType = activePrompt.callType;
       } else {
-        // Çağrı tipini belirle
         if (callType === "AUTO") {
-          const classifyRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-            },
-            body: JSON.stringify({
-              model: "llama-3.3-70b-versatile",
-              messages: [
-                {
-                  role: "system",
-                  content: "Sen bir satış çağrısı sınıflandırıcısısın. YALNIZCA şu kelimelerden birini yaz: FIRST_CALL, SECOND_CALL, FOLLOW_UP, GENERAL",
-                },
-                { role: "user", content: call.transcript.slice(0, 500) },
-              ],
-              max_tokens: 10,
-              temperature: 0,
-            }),
-          });
-
-          if (classifyRes.ok) {
-            const classifyData = await classifyRes.json();
-            const detected = classifyData.choices[0].message.content.trim();
-            const validTypes = ["FIRST_CALL", "SECOND_CALL", "FOLLOW_UP", "GENERAL"];
-            callType = validTypes.includes(detected) ? detected : "SECOND_CALL";
-          } else {
-            callType = "SECOND_CALL";
-          }
+          callType = await detectCallType(call.transcript);
         }
 
-        // Aktif prompt'u çek — yoksa herhangi bir aktif prompta fall back yap
         activePrompt = await prisma.prompt.findFirst({
           where: { callType: callType as $Enums.CallType, isActive: true },
         });
@@ -109,7 +114,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Agent ve takım bilgisini çöz
       const resolvedAgent = call.agentId
         ? await prisma.user.findUnique({ where: { id: call.agentId }, include: { team: true } })
         : call.agentName
@@ -118,7 +122,6 @@ export async function POST(req: NextRequest) {
       const resolvedAgentId = resolvedAgent?.id ?? user.id;
       const resolvedTeamName = resolvedAgent?.team?.name || "Belirtilmedi";
 
-      // Analiz yap
       const fullPrompt = `${activePrompt.content}
 
 === DEĞERLENDİRİLECEK GÖRÜŞME BİLGİLERİ ===
@@ -126,91 +129,29 @@ Temsilci Adı: ${call.agentName || "Belirtilmedi"}
 Takım: ${resolvedTeamName}
 Müşteri Adı: ${call.customerName || "Belirtilmedi"}
 Görüşme Süresi: ${call.callDuration || "Belirtilmedi"}
-Değerlendirme Tarihi: Nisan 2026
+Değerlendirme Tarihi: ${new Date().toLocaleString("tr-TR", { month: "long", year: "numeric" })}
 
 === TRANSKRİPT ===
 ${call.transcript}
 
 Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATINDA Türkçe rapor üret.`;
 
-      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: "user", content: fullPrompt }],
-          max_tokens: 4000,
-          temperature: 0.3,
-        }),
-      });
+      const reportText = await callGemini("Sen bir satış koçusun.", fullPrompt, 65536);
 
-      if (!groqRes.ok) {
-        // Rate limit — retry once after 3s
-        if (groqRes.status === 429) {
-          await new Promise(r => setTimeout(r, 3000));
-          const retryRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-            },
-            body: JSON.stringify({
-              model: "llama-3.3-70b-versatile",
-              messages: [{ role: "user", content: fullPrompt }],
-              max_tokens: 4000,
-              temperature: 0.3,
-            }),
-          });
-          if (!retryRes.ok) {
-            results.push({ index: i, success: false, error: "Rate limit" });
-            continue;
-          }
-          const retryData = await retryRes.json();
-          const reportText = retryData.choices[0].message.content;
-          const scoreMatch = reportText.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
-          const score = scoreMatch ? Math.round(parseFloat(scoreMatch[1].replace(",", "."))) : 0;
-
-          const retryEval = await prisma.evaluation.create({
-            data: {
-              agentId: resolvedAgentId,
-              customerName: call.customerName || "Belirtilmedi",
-              callDuration: call.callDuration || "Belirtilmedi",
-              transcript: call.transcript,
-              report: reportText,
-              score,
-              callType: callType as $Enums.CallType,
-              promptId: activePrompt.id,
-            },
-          });
-          const retryNotifyIds = new Set<string>([resolvedAgentId]);
-          const retryTlId = resolvedAgent?.team
-            ? (await prisma.team.findUnique({ where: { id: resolvedAgent.team.id }, select: { leaderId: true } }))?.leaderId
-            : null;
-          if (retryTlId) retryNotifyIds.add(retryTlId);
-          await prisma.notification.createMany({
-            data: [...retryNotifyIds].map((uid) => ({
-              userId: uid,
-              type: "EVALUATION",
-              message: `${call.customerName || "Müşteri"} için değerlendirme tamamlandı. Skor: %${score}`,
-              referenceId: retryEval.id,
-            })),
-            skipDuplicates: true,
-          });
-          results.push({ index: i, success: true, score });
-          continue;
-        }
-        const errBody = await groqRes.text().catch(() => "");
-        const errDetail = errBody ? ` (${groqRes.status}: ${errBody.slice(0, 120)})` : ` (${groqRes.status})`;
-        results.push({ index: i, success: false, error: `API hatası${errDetail}` });
-        continue;
+      // JSON_DATA bloğunu parse et
+      const jsonBlockMatch = reportText.match(/===JSON_DATA===([\s\S]*?)===END_JSON===/);
+      let sectionScores = null;
+      let weakCriteria = null;
+      if (jsonBlockMatch) {
+        try {
+          const parsed = JSON.parse(jsonBlockMatch[1].trim());
+          if (parsed.sectionScores && typeof parsed.sectionScores === "object") sectionScores = parsed.sectionScores;
+          if (Array.isArray(parsed.weakCriteria)) weakCriteria = parsed.weakCriteria;
+        } catch { /* sessiz hata */ }
       }
 
-      const groqData = await groqRes.json();
-      const reportText = groqData.choices[0].message.content;
-      const scoreMatch = reportText.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
+      const cleanReport = reportText.replace(/\n*===JSON_DATA===[\s\S]*?===END_JSON===/g, "").trim();
+      const scoreMatch = cleanReport.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
       const score = scoreMatch ? Math.round(parseFloat(scoreMatch[1].replace(",", "."))) : 0;
 
       const evaluation = await prisma.evaluation.create({
@@ -219,14 +160,15 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
           customerName: call.customerName || "Belirtilmedi",
           callDuration: call.callDuration || "Belirtilmedi",
           transcript: call.transcript,
-          report: reportText,
+          report: cleanReport,
           score,
           callType: callType as $Enums.CallType,
           promptId: activePrompt.id,
+          ...(sectionScores && { sectionScores }),
+          ...(weakCriteria && weakCriteria.length > 0 && { weakCriteria }),
         },
       });
 
-      // Notify agent + team leader
       const notifyIds = new Set<string>([resolvedAgentId]);
       const teamLeaderId = resolvedAgent?.team
         ? (await prisma.team.findUnique({ where: { id: resolvedAgent.team.id }, select: { leaderId: true } }))?.leaderId
@@ -245,10 +187,7 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
 
       results.push({ index: i, success: true, score });
 
-      // Rate limit koruması: çağrılar arası 2sn bekle
-      if (i < calls.length - 1) {
-        await new Promise(r => setTimeout(r, 2000));
-      }
+      if (i < calls.length - 1) await new Promise(r => setTimeout(r, 1000));
 
     } catch (err) {
       results.push({ index: i, success: false, error: err instanceof Error ? err.message : "Bilinmeyen hata" });
@@ -258,10 +197,5 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
   const successCount = results.filter(r => r.success).length;
   const failCount = results.filter(r => !r.success).length;
 
-  return NextResponse.json({
-    total: calls.length,
-    success: successCount,
-    failed: failCount,
-    results,
-  });
+  return NextResponse.json({ total: calls.length, success: successCount, failed: failCount, results });
 }
