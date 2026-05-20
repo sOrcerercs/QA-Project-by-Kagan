@@ -103,8 +103,23 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.avgScore - a.avgScore || b.agentCount - a.agentCount)
       .map((t, i) => ({ rank: i + 1, ...t }));
 
+    // Section-based rankings (only agents with sectionScores)
+    const withSection = valid.filter((a) => a.sectionScores !== null);
+    const makeSection = (key: "A" | "B" | "C") => {
+      const sorted = [...withSection].sort(
+        (a, b) => b.sectionScores![key] - a.sectionScores![key] || b.callCount - a.callCount
+      );
+      return sorted.slice(0, limit).map((e, i) => ({ rank: i + 1, ...e }));
+    };
+    const sectionRankings = {
+      A: makeSection("A"),
+      B: makeSection("B"),
+      C: makeSection("C"),
+    };
+
     return NextResponse.json({
       entries,
+      sectionRankings,
       teams,
       period,
       totalAgents: valid.length,
