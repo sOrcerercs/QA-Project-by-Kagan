@@ -442,6 +442,61 @@ export default function LeaderboardView({
           )}
         </div>
       </div>
+
+      {/* Legend */}
+      <div
+        style={{
+          marginTop: 24,
+          padding: "16px 20px",
+          background: "var(--glass-bg)",
+          border: "1px solid var(--glass-border)",
+          borderRadius: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-faint)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          {lang === "tr" ? "Gösterge" : "Legend"}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {/* Score */}
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)", minWidth: 28 }}>
+              {lang === "tr" ? "Ort." : "Avg"}
+            </span>
+            <span style={{ fontSize: 12, color: "var(--fg-faint)", lineHeight: 1.4 }}>
+              {lang === "tr"
+                ? "Seçilen dönemdeki tüm değerlendirmelerin ortalama kalite skoru (0–100)."
+                : "Average quality score across all evaluations in the selected period (0–100)."}
+            </span>
+          </div>
+          {/* Section bars */}
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <div style={{ display: "flex", gap: 4, minWidth: 28, paddingTop: 2 }}>
+              {(["A", "B", "C"] as const).map((k) => (
+                <div key={k} style={{ width: 6, height: 6, borderRadius: 1, background: SECTION_COLORS[k] }} />
+              ))}
+            </div>
+            <span style={{ fontSize: 12, color: "var(--fg-faint)", lineHeight: 1.4 }}>
+              {lang === "tr"
+                ? "Bölüm barları: mavi = Giriş & Profilleme (%20) · yeşil = Çözüm & Otorite (%45) · turuncu = Kapanış & Köprü (%35). Her bölümün ortalama skoru, değerlendirme formundaki ağırlıklı puanlara göre hesaplanır."
+                : "Section bars: blue = Intro & Profiling (20%) · green = Solution & Authority (45%) · orange = Close & Bridge (35%). Each bar shows the avg score for that section, weighted per the evaluation form."}
+            </span>
+          </div>
+          {/* Team score */}
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)", minWidth: 28 }}>
+              {lang === "tr" ? "Takım" : "Team"}
+            </span>
+            <span style={{ fontSize: 12, color: "var(--fg-faint)", lineHeight: 1.4 }}>
+              {lang === "tr"
+                ? "Takım skoru, o takımdaki tüm danışmanların bireysel ortalama skorlarının ortalamasıdır."
+                : "Team score is the average of each member's individual average score within the period."}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
