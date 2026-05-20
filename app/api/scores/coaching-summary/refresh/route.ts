@@ -6,10 +6,6 @@ export async function POST(req: NextRequest) {
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
 
-  if (user.role === "AGENT") {
-    return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
-  }
-
   let agentId: string | undefined;
   try {
     const body = await req.json();
@@ -18,6 +14,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Geçersiz istek gövdesi." }, { status: 400 });
   }
   if (!agentId) return NextResponse.json({ error: "agentId zorunlu." }, { status: 400 });
+
+  if (user.role === "AGENT") {
+    return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
+  }
+
+  if (user.role === "TEAM_LEADER") {
+    try {
+      const leadingTeam = await prisma.team.findUnique({
+        where: { leaderId: user.id },
+        select: { id: true },
+      });
+      const target = await prisma.user.findUnique({ where: { id: agentId }, select: { teamId: true } });
+      if (!leadingTeam || target?.teamId !== leadingTeam.id) {
+        return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json({ error: "Sunucu hatası." }, { status: 500 });
+    }
+  }
 
   try {
     await prisma.coachingSummary.upsert({

@@ -1701,7 +1701,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
 
                 {/* Single agent — full-width ScoreView, same as My Scores */}
                 {!teamScoresLoading && selectedIds.length === 1 && teamMemberScores[selectedIds[0]] && (
-                  <ScoreView data={teamMemberScores[selectedIds[0]]} lang={lang} />
+                  <ScoreView data={teamMemberScores[selectedIds[0]]} lang={lang} canRefresh={user.role !== "AGENT"} />
                 )}
 
                 {/* Multiple agents — full-width comparison grid */}

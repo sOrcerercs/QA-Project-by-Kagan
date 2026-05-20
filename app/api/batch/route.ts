@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
   }
 
   const results: { index: number; success: boolean; score?: number; error?: string }[] = [];
+  const invalidatedAgentIds = new Set<string>();
 
   for (let i = 0; i < calls.length; i++) {
     const call = calls[i];
@@ -185,16 +186,8 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
         skipDuplicates: true,
       });
 
-      // Coaching summary cache invalidation
-      try {
-        await prisma.coachingSummary.upsert({
-          where: { agentId: resolvedAgentId },
-          create: { agentId: resolvedAgentId, summary: null, evalCount: 0 },
-          update: { summary: null },
-        });
-      } catch (e) {
-        console.warn("[batch] coaching summary invalidation failed:", e);
-      }
+      // Coaching summary cache invalidation (deferred, collected per agent)
+      invalidatedAgentIds.add(resolvedAgentId);
 
       results.push({ index: i, success: true, score });
 
@@ -202,6 +195,19 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
 
     } catch (err) {
       results.push({ index: i, success: false, error: err instanceof Error ? err.message : "Bilinmeyen hata" });
+    }
+  }
+
+  // Invalidate coaching summary cache for all affected agents (once per agent)
+  for (const aid of invalidatedAgentIds) {
+    try {
+      await prisma.coachingSummary.upsert({
+        where: { agentId: aid },
+        create: { agentId: aid, summary: null, evalCount: 0 },
+        update: { summary: null },
+      });
+    } catch (e) {
+      console.warn("[batch] coaching summary invalidation failed:", e);
     }
   }
 
