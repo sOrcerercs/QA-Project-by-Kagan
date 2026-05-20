@@ -21,6 +21,7 @@ const L = {
     copied: "Kopyalandı!",
     edit: "Düzenle",
     transcript: "💬 Konuşma Transkripti",
+    listenOnFireflies: "🎧 Fireflies'ta Dinle",
     noTranscript: "Transkript bulunamadı.",
     editTitle: "✏️ Değerlendirmeyi Yeniden Düzenle",
     editHint: "AI'ya düzeltme talimatı ver — değerlendirme buna göre yeniden üretilecek",
@@ -32,6 +33,25 @@ const L = {
     refineError: "Yeniden değerlendirme başarısız.",
     translating: "Rapor çevriliyor...",
     translateError: "Çeviri başarısız — orijinal rapor gösteriliyor.",
+    readTitle: "Değerlendirme Okundu Mu?",
+    readBtn: "Evet, Okudum",
+    readDone: "Okundu",
+    readPending: "Danışman henüz okumadı",
+    coachingTitle: "Coaching Yapıldı Mı?",
+    coachingBtn: "Evet, Coaching Yaptım",
+    coachingDoneLabel: "Coaching Yapıldı",
+    coachingPending: "Coaching henüz yapılmadı",
+    coachingNotesPlaceholder: "Coaching notlarını buraya yazın...",
+    coachingBy: "Koç",
+    coachingSave: "Kaydet",
+    coachingSaving: "Kaydediliyor...",
+    coachingEdit: "Düzenle",
+    coachingCards: "Bu Çağrıda Yapılabilecek 3 Şey",
+    reclassify: "Yeniden Değerlendir",
+    reclassifying: "Değerlendiriliyor...",
+    firstCallPrompt: "🔵 First Call Promptu",
+    secondCallPrompt: "🟣 Second Call Promptu",
+    reclassifyError: "Yeniden değerlendirme başarısız.",
   },
   en: {
     title: "Evaluation Detail",
@@ -44,6 +64,7 @@ const L = {
     copied: "Copied!",
     edit: "Edit",
     transcript: "💬 Conversation Transcript",
+    listenOnFireflies: "🎧 Listen on Fireflies",
     noTranscript: "Transcript not found.",
     editTitle: "✏️ Re-evaluate",
     editHint: "Give the AI a correction — the evaluation will be regenerated accordingly",
@@ -55,6 +76,25 @@ const L = {
     refineError: "Re-evaluation failed.",
     translating: "Translating report...",
     translateError: "Translation failed — showing original report.",
+    readTitle: "Was the Evaluation Read?",
+    readBtn: "Yes, I've Read It",
+    readDone: "Read",
+    readPending: "Agent hasn't read yet",
+    coachingTitle: "Was Coaching Done?",
+    coachingBtn: "Yes, I Did Coaching",
+    coachingDoneLabel: "Coaching Done",
+    coachingPending: "Coaching not yet done",
+    coachingNotesPlaceholder: "Enter coaching notes here...",
+    coachingBy: "Coach",
+    coachingSave: "Save",
+    coachingSaving: "Saving...",
+    coachingEdit: "Edit",
+    coachingCards: "3 Things to Improve This Call",
+    reclassify: "Re-evaluate",
+    reclassifying: "Evaluating...",
+    firstCallPrompt: "🔵 First Call Prompt",
+    secondCallPrompt: "🟣 Second Call Prompt",
+    reclassifyError: "Re-evaluation failed.",
   },
 };
 
@@ -76,8 +116,12 @@ export default function EvaluationDetailPage({
   const [isDark, setIsDark] = useState(true);
   const [lang, setLang] = useState<"tr" | "en">("tr");
   const [translatedReport, setTranslatedReport] = useState<string | null>(null);
+  const [translatedWeakCriteria, setTranslatedWeakCriteria] = useState<Array<{ id: string; label: string; score: number; coachingNote: string }> | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translateError, setTranslateError] = useState(false);
+  const [reclassifyOpen, setReclassifyOpen] = useState(false);
+  const [isReclassifying, setIsReclassifying] = useState(false);
+  const [reclassifyError, setReclassifyError] = useState("");
 
   const t = L[lang];
 
@@ -90,7 +134,9 @@ export default function EvaluationDetailPage({
     const savedLang = localStorage.getItem("estenove-lang");
     if (savedLang === "en" || savedLang === "tr") setLang(savedLang);
 
-    fetchEvaluation();
+    fetchEvaluation().then((ev: any) => {
+      if (ev?.coachingNotes) setCoachingNotes(ev.coachingNotes);
+    });
     fetchCurrentUser();
   }, [id]);
 
@@ -115,6 +161,7 @@ export default function EvaluationDetailPage({
       const data = await res.json();
       if (!res.ok) throw new Error();
       setTranslatedReport(data.report);
+      if (Array.isArray(data.weakCriteria)) setTranslatedWeakCriteria(data.weakCriteria);
     } catch {
       setTranslateError(true);
     } finally {
@@ -127,6 +174,13 @@ export default function EvaluationDetailPage({
       translateReport(evaluation.id);
     }
   }, [lang, evaluation]);
+
+  useEffect(() => {
+    if (!reclassifyOpen) return;
+    const close = () => setReclassifyOpen(false);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [reclassifyOpen]);
 
   const fetchCurrentUser = async () => {
     try {
@@ -142,8 +196,10 @@ export default function EvaluationDetailPage({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Değerlendirme bulunamadı.");
       setEvaluation(data.evaluation);
+      return data.evaluation;
     } catch (err: any) {
       setError(err.message);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -178,6 +234,46 @@ export default function EvaluationDetailPage({
     }
   };
 
+  const [isAcknowledging, setIsAcknowledging] = useState(false);
+  const [coachingExpanded, setCoachingExpanded] = useState(false);
+  const [coachingNotes, setCoachingNotes] = useState("");
+  const [coachingSaving, setCoachingSaving] = useState(false);
+
+  const handleAcknowledge = async () => {
+    if (!evaluation || isAcknowledging) return;
+    setIsAcknowledging(true);
+    try {
+      const res = await fetch(`/api/evaluations/${id}/acknowledge`, { method: "POST" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setEvaluation((prev: any) => ({ ...prev, agentRead: data.agentRead, agentReadAt: data.agentReadAt }));
+    } catch {
+      // silent fail
+    } finally {
+      setIsAcknowledging(false);
+    }
+  };
+
+  const handleCoachingSave = async (done: boolean) => {
+    if (!evaluation || coachingSaving) return;
+    setCoachingSaving(true);
+    try {
+      const res = await fetch(`/api/evaluations/${id}/coaching`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done, notes: coachingNotes }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setEvaluation((prev: any) => ({ ...prev, ...data }));
+      if (done) setCoachingExpanded(false);
+    } catch {
+      // silent fail
+    } finally {
+      setCoachingSaving(false);
+    }
+  };
+
   const [isRescoring, setIsRescoring] = useState(false);
   const handleRescore = async () => {
     setIsRescoring(true);
@@ -190,6 +286,36 @@ export default function EvaluationDetailPage({
       setRefineError(err.message);
     } finally {
       setIsRescoring(false);
+    }
+  };
+
+  const handleReclassify = async (callType: "FIRST_CALL" | "SECOND_CALL") => {
+    if (isReclassifying) return;
+    setReclassifyOpen(false);
+    setIsReclassifying(true);
+    setReclassifyError("");
+    try {
+      const res = await fetch(`/api/evaluations/${id}/re-classify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callType }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || t.reclassifyError);
+      setEvaluation((prev: any) => ({
+        ...prev,
+        callType: data.callType,
+        report: data.report,
+        score: data.score,
+        sectionScores: data.sectionScores ?? prev.sectionScores,
+        weakCriteria: data.weakCriteria ?? prev.weakCriteria,
+      }));
+      setTranslatedReport(null);
+      setTranslatedWeakCriteria(null);
+    } catch (err: any) {
+      setReclassifyError(err.message);
+    } finally {
+      setIsReclassifying(false);
     }
   };
 
@@ -352,19 +478,61 @@ export default function EvaluationDetailPage({
               </button>
             )}
             {canEdit && (
-              <button
-                onClick={() => setFeedbackOpen(true)}
-                className="flex items-center gap-2 bg-surface-container hover:bg-surface-container-high border border-outline-variant hover:border-primary/50 text-on-surface-variant hover:text-on-surface px-4 py-2 rounded-lg text-sm transition-all"
-              >
-                ✏️ {t.edit}
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <button
+                    onClick={() => !isReclassifying && setReclassifyOpen((o) => !o)}
+                    disabled={isReclassifying}
+                    className="flex items-center gap-2 bg-surface-container hover:bg-surface-container-high border border-outline-variant hover:border-secondary/50 text-on-surface-variant hover:text-on-surface px-4 py-2 rounded-lg text-sm transition-all disabled:opacity-50"
+                  >
+                    {isReclassifying ? (
+                      <>
+                        <span className="w-3 h-3 border border-on-surface-variant/40 border-t-on-surface rounded-full animate-spin" />
+                        {t.reclassifying}
+                      </>
+                    ) : (
+                      `↩ ${t.reclassify} ▾`
+                    )}
+                  </button>
+                  {reclassifyOpen && (
+                    <div className="absolute right-0 top-full mt-1 w-52 bg-surface-container-high border border-outline-variant rounded-xl shadow-xl z-50 overflow-hidden">
+                      {(["FIRST_CALL", "SECOND_CALL"] as const).map((ct) => (
+                        <button
+                          key={ct}
+                          onClick={() => handleReclassify(ct)}
+                          disabled={evaluation.callType === ct}
+                          className={`w-full text-left px-4 py-3 text-sm transition-all ${
+                            evaluation.callType === ct
+                              ? "text-on-surface-variant/40 cursor-default"
+                              : "hover:bg-surface-container text-on-surface"
+                          }`}
+                        >
+                          {ct === "FIRST_CALL" ? t.firstCallPrompt : t.secondCallPrompt}
+                          {evaluation.callType === ct && (
+                            <span className="ml-2 text-[10px] text-primary/60">✓ mevcut</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {reclassifyError && (
+                  <span className="text-error text-xs">{reclassifyError}</span>
+                )}
+                <button
+                  onClick={() => setFeedbackOpen(true)}
+                  className="flex items-center gap-2 bg-surface-container hover:bg-surface-container-high border border-outline-variant hover:border-primary/50 text-on-surface-variant hover:text-on-surface px-4 py-2 rounded-lg text-sm transition-all"
+                >
+                  ✏️ {t.edit}
+                </button>
+              </div>
             )}
           </div>
         </div>
       </div>
 
       {/* Split Content */}
-      <div className="flex-1 min-h-0 px-6 pb-6 grid grid-cols-2 gap-4">
+      <div className="flex-1 min-h-0 px-6 pb-2 grid grid-cols-2 gap-4">
         {/* Left: Report */}
         <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6 leading-relaxed">
           {evaluation.weakCriteria && Array.isArray(evaluation.weakCriteria) && (evaluation.weakCriteria as any[]).length > 0 && (
@@ -373,10 +541,13 @@ export default function EvaluationDetailPage({
                 <span className="bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-1 rounded-full border border-primary/20 tracking-wide">
                   COACHING
                 </span>
-                <span className="text-sm font-bold text-on-surface">Bu Çağrıda Yapılabilecek 3 Şey</span>
+                <span className="text-sm font-bold text-on-surface">{t.coachingCards}</span>
               </div>
               <div className="space-y-3">
-                {(evaluation.weakCriteria as Array<{ id: string; label: string; score: number; coachingNote: string }>).map(
+                {(
+                  (lang === "en" && translatedWeakCriteria) ||
+                  (evaluation.weakCriteria as Array<{ id: string; label: string; score: number; coachingNote: string }>)
+                ).map(
                   (c, idx) => {
                     const palette = [
                       { card: "bg-red-500/10 border-red-500/30", num: "bg-red-500/20 text-red-400", label: "text-red-300" },
@@ -417,13 +588,133 @@ export default function EvaluationDetailPage({
 
         {/* Right: Transcript */}
         <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6">
-          <div className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-4">
-            {t.transcript}
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+              {t.transcript}
+            </div>
+            {evaluation.recordingUrl && (
+              <a
+                href={evaluation.recordingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-primary hover:opacity-80 transition-opacity font-semibold"
+              >
+                {t.listenOnFireflies} ↗
+              </a>
+            )}
           </div>
           {evaluation.transcript ? (
             <div className="leading-relaxed">{formatTranscript(evaluation.transcript)}</div>
           ) : (
             <p className="text-outline italic text-sm">{t.noTranscript}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Agent Read + Coaching Row */}
+      <div className="px-6 pb-4 grid grid-cols-2 gap-4 flex-shrink-0">
+        {/* Agent Read Section */}
+        <div className="bg-surface-container border border-outline-variant rounded-2xl px-5 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <MIcon name="menu_book" className={`text-xl flex-shrink-0 ${evaluation.agentRead ? "text-emerald-400" : "text-slate-500"}`} />
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.readTitle}</p>
+              {evaluation.agentRead ? (
+                <p className="text-xs text-emerald-400 font-semibold mt-0.5">
+                  ✓ {t.readDone}
+                  {evaluation.agentReadAt && (
+                    <span className="text-slate-500 font-normal ml-1.5">
+                      {new Date(evaluation.agentReadAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 mt-0.5">{t.readPending}</p>
+              )}
+            </div>
+          </div>
+          {!evaluation.agentRead && currentUser?.id === evaluation.agentId && (
+            <button
+              onClick={handleAcknowledge}
+              disabled={isAcknowledging}
+              className="flex-shrink-0 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
+            >
+              {isAcknowledging ? "..." : t.readBtn}
+            </button>
+          )}
+        </div>
+
+        {/* Coaching Section */}
+        <div className="bg-surface-container border border-outline-variant rounded-2xl px-5 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <MIcon name="psychology" className={`text-xl flex-shrink-0 ${evaluation.coachingDone ? "text-primary" : "text-slate-500"}`} />
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.coachingTitle}</p>
+                {evaluation.coachingDone ? (
+                  <p className="text-xs text-primary font-semibold mt-0.5">
+                    ✓ {t.coachingDoneLabel}
+                    {evaluation.coachingByName && (
+                      <span className="text-slate-500 font-normal ml-1.5">— {evaluation.coachingByName}</span>
+                    )}
+                    {evaluation.coachingDoneAt && (
+                      <span className="text-slate-500 font-normal ml-1.5">
+                        {new Date(evaluation.coachingDoneAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500 mt-0.5">{t.coachingPending}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {evaluation.coachingDone && ["TEAM_LEADER", "ADMIN", "MANAGER"].includes(currentUser?.role) && (
+                <button
+                  onClick={() => {
+                    setCoachingNotes(evaluation.coachingNotes || "");
+                    setCoachingExpanded(!coachingExpanded);
+                  }}
+                  className="text-slate-500 hover:text-on-surface transition-colors text-xs px-2 py-1 rounded-lg hover:bg-surface-container-high"
+                >
+                  {t.coachingEdit}
+                </button>
+              )}
+              {!evaluation.coachingDone && ["TEAM_LEADER", "ADMIN", "MANAGER"].includes(currentUser?.role) && (
+                <button
+                  onClick={() => setCoachingExpanded(true)}
+                  className="flex-shrink-0 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+                >
+                  {t.coachingBtn}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Notes area — shows when expanded or when coaching is done and there are notes */}
+          {(coachingExpanded || (evaluation.coachingDone && evaluation.coachingNotes && !coachingExpanded)) && (
+            <div className="mt-3 pt-3 border-t border-outline-variant">
+              {coachingExpanded && ["TEAM_LEADER", "ADMIN", "MANAGER"].includes(currentUser?.role) ? (
+                <div className="flex gap-2 items-end">
+                  <textarea
+                    value={coachingNotes}
+                    onChange={(e) => setCoachingNotes(e.target.value)}
+                    placeholder={t.coachingNotesPlaceholder}
+                    rows={2}
+                    className="flex-1 bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2 text-xs text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline transition-colors"
+                  />
+                  <button
+                    onClick={() => handleCoachingSave(true)}
+                    disabled={coachingSaving}
+                    className="bg-primary hover:opacity-90 disabled:opacity-50 text-on-primary px-3 py-2 rounded-xl text-xs font-semibold h-[52px] whitespace-nowrap transition-all"
+                  >
+                    {coachingSaving ? t.coachingSaving : t.coachingSave}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-on-surface-variant leading-relaxed whitespace-pre-wrap">{evaluation.coachingNotes}</p>
+              )}
+            </div>
           )}
         </div>
       </div>
