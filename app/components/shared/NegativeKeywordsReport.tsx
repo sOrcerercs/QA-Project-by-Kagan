@@ -56,6 +56,10 @@ const L = {
     date: "Tarih",
     snippet: "Alıntı",
     goToEval: "Değerlendirmeye git →",
+    fetchLoadError: "Keyword listesi yüklenemedi.",
+    fetchRetry: "Tekrar dene",
+    deleteError: "Silinemedi.",
+    reportError: "Rapor yüklenemedi.",
   },
   en: {
     title: "Negative Keyword Report",
@@ -81,6 +85,10 @@ const L = {
     date: "Date",
     snippet: "Excerpt",
     goToEval: "Go to evaluation →",
+    fetchLoadError: "Could not load keywords.",
+    fetchRetry: "Retry",
+    deleteError: "Delete failed.",
+    reportError: "Could not load report.",
   },
 };
 
@@ -118,6 +126,7 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
 
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState(false);
 
   const [expandedKeyword, setExpandedKeyword] = useState<string | null>(null);
 
@@ -160,13 +169,14 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
     if (res.ok) {
       setKeywords(prev => prev.filter(k => k.id !== id));
     } else {
-      setDeleteError(lang === "tr" ? "Silinemedi." : "Delete failed.");
+      setDeleteError(t.deleteError);
     }
   };
 
   const runReport = async () => {
     setReportLoading(true);
     setReportData(null);
+    setReportError(false);
     setExpandedKeyword(null);
     const params = new URLSearchParams();
     if (startDate) params.set("startDate", startDate);
@@ -174,6 +184,8 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
     const res = await fetch(`/api/reports/negative-keywords?${params}`);
     if (res.ok) {
       setReportData(await res.json());
+    } else {
+      setReportError(true);
     }
     setReportLoading(false);
   };
@@ -202,9 +214,9 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
 
         {fetchError ? (
           <div style={{ marginBottom: 14 }}>
-            <p style={{ fontSize: 13, color: "#f87171" }}>{lang === "tr" ? "Keyword listesi yüklenemedi." : "Could not load keywords."}</p>
+            <p style={{ fontSize: 13, color: "#f87171" }}>{t.fetchLoadError}</p>
             <button onClick={fetchKeywords} style={{ fontSize: 12, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 4 }}>
-              {lang === "tr" ? "Tekrar dene" : "Retry"}
+              {t.fetchRetry}
             </button>
           </div>
         ) : keywords.length === 0 ? (
@@ -291,6 +303,9 @@ export default function NegativeKeywordsReport({ lang }: { lang: "tr" | "en" }) 
       </div>
 
       {/* Section 3: Results */}
+      {reportError && (
+        <p style={{ fontSize: 13, color: "#f87171", marginBottom: 12 }}>{t.reportError}</p>
+      )}
       {reportData && (
         <div style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
