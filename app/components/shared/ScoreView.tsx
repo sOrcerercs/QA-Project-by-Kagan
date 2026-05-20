@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import MIcon from "@/app/components/shared/MIcon";
 import { translations } from "@/app/lib/i18n";
 import TrendChart from "@/app/components/shared/TrendChart";
+import AgentCoachingSummary from "@/app/components/shared/AgentCoachingSummary";
 
 const scoreColor = (s: number) =>
   s >= 85 ? "text-emerald-400" : s >= 70 ? "text-primary" : s >= 55 ? "text-amber-400" : "text-error";
@@ -24,7 +25,15 @@ interface ScoreData {
   topWeakCriteria?: Array<{ id: string; label: string; avgScore: number; count: number }> | null;
 }
 
-export default function ScoreView({ data, lang = "tr" }: { data: ScoreData; lang?: "tr" | "en" }) {
+export default function ScoreView({
+  data,
+  lang = "tr",
+  canRefresh = false,
+}: {
+  data: ScoreData;
+  lang?: "tr" | "en";
+  canRefresh?: boolean;
+}) {
   const t = translations[lang];
   const { agent, rank, totalAgents, stats, weeklyProgress, recentCalls, isDemo, avgSectionScores, topWeakCriteria } = data;
 
@@ -183,6 +192,12 @@ export default function ScoreView({ data, lang = "tr" }: { data: ScoreData; lang
           </motion.div>
         ))}
       </div>
+
+      <AgentCoachingSummary
+        agentId={agent.id}
+        lang={lang}
+        canRefresh={canRefresh}
+      />
     </div>
   );
 }
