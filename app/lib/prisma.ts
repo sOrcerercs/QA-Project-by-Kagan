@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 // Version tag so that schema changes invalidate the cached client on HMR
-const SCHEMA_VERSION = "v6-negative-keywords";
+const SCHEMA_VERSION = "v7-coaching-summary";
 
 function createPrismaClient() {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });

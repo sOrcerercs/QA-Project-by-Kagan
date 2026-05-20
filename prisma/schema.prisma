@@ -151,3 +151,13 @@ model NegativeKeyword {
   createdById String                    // audit only — no FK, user deletion does not cascade
   createdAt   DateTime @default(now())
 }
+
+model CoachingSummary {
+  id          String    @id @default(cuid())
+  agentId     String    @unique
+  summary     String?
+  actionItems Json?
+  generatedAt DateTime?
+  evalCount   Int       @default(0)
+  updatedAt   DateTime  @updatedAt
+}
