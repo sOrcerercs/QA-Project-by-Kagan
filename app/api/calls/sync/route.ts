@@ -125,6 +125,8 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
   const score = result.data.score || 0;
   const callType = result.data.callType || "SECOND_CALL";
   const promptId = result.data.promptId || null;
+  const weakCriteria = result.data.weakCriteria ?? null;
+  const sectionScores = result.data.sectionScores ?? null;
 
   // Evaluation kaydet
   await prisma.evaluation.create({
@@ -145,6 +147,8 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
         : (call.recording_url || null),
       unassigned: isUnassigned,
       source: "KRIKO",
+      weakCriteria,
+      sectionScores,
     },
   });
 
