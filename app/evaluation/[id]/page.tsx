@@ -452,6 +452,21 @@ export default function EvaluationDetailPage({
           ))}
         </div>
 
+        {evaluation.source === "KRIKO" && evaluation.recordingUrl && (
+          <div className="bg-surface-container border border-outline-variant rounded-2xl p-4 mb-4">
+            <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-3">
+              <MIcon name="mic" className="text-primary text-sm" />
+              Çağrı Kaydı
+            </div>
+            <audio
+              controls
+              preload="none"
+              className="w-full"
+              src={`/api/evaluations/${evaluation.id}/audio`}
+            />
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
             <span className={`text-4xl font-black ${scoreColor(evaluation.score)}`}>
