@@ -10,16 +10,40 @@ export async function POST(req: NextRequest) {
 
   const { agentId, customerName, callDuration, transcript, report, score, callType, promptId, sectionScores, weakCriteria } = await req.json();
 
-  const evaluation = await prisma.evaluation.create({
-    data: {
-      agentId, customerName, callDuration, transcript, report, score,
-      ...(callType && { callType }),
-      ...(promptId && { promptId }),
-      ...(sectionScores && { sectionScores }),
-      ...(weakCriteria && weakCriteria.length > 0 && { weakCriteria }),
-    },
-    include: { agent: { select: { teamId: true } } },
-  });
+  // Duplicate guard: same agent + same transcript → update instead of create
+  const transcriptPrefix = typeof transcript === "string" ? transcript.slice(0, 300) : "";
+  const existing = transcriptPrefix
+    ? await prisma.evaluation.findFirst({
+        where: {
+          agentId,
+          transcript: { startsWith: transcriptPrefix },
+        },
+        select: { id: true, agent: { select: { teamId: true } } },
+      })
+    : null;
+
+  const evaluation = existing
+    ? await prisma.evaluation.update({
+        where: { id: existing.id },
+        data: {
+          customerName, callDuration, report, score,
+          ...(callType && { callType }),
+          ...(promptId && { promptId }),
+          ...(sectionScores && { sectionScores }),
+          ...(weakCriteria && weakCriteria.length > 0 && { weakCriteria }),
+        },
+        include: { agent: { select: { teamId: true } } },
+      })
+    : await prisma.evaluation.create({
+        data: {
+          agentId, customerName, callDuration, transcript, report, score,
+          ...(callType && { callType }),
+          ...(promptId && { promptId }),
+          ...(sectionScores && { sectionScores }),
+          ...(weakCriteria && weakCriteria.length > 0 && { weakCriteria }),
+        },
+        include: { agent: { select: { teamId: true } } },
+      });
 
   // Notify agent
   const notifyIds: string[] = [agentId];
