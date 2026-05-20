@@ -312,6 +312,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     const onPopState = () => {
       const tab = new URLSearchParams(window.location.search).get("tab") || "home";
       setActiveTab(tab);
+      if (tab === "reports" || tab === "negKeywords") setReportsOpen(true);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
