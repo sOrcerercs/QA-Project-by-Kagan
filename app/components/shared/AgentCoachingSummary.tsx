@@ -48,31 +48,40 @@ export default function AgentCoachingSummary({
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(() => {
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/scores/coaching-summary?agentId=${encodeURIComponent(agentId)}&lang=${lang}`)
+    fetch(`/api/scores/coaching-summary?agentId=${encodeURIComponent(agentId)}&lang=${lang}`, {
+      signal: controller.signal,
+    })
       .then((res) => {
         if (res.status === 404) return null;
         if (!res.ok) return Promise.reject(res.status);
         return res.json();
       })
       .then((d: CoachingData | null) => setData(d))
-      .catch(() => setError(t.error))
+      .catch((err) => {
+        if (err instanceof Error && err.name === "AbortError") return;
+        setError(t.error);
+      })
       .finally(() => setLoading(false));
+    return controller;
   }, [agentId, lang, t.error]);
 
   useEffect(() => {
-    load();
+    const controller = load();
+    return () => controller.abort();
   }, [load]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetch("/api/scores/coaching-summary/refresh", {
+      const res = await fetch("/api/scores/coaching-summary/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agentId }),
       });
+      if (!res.ok) throw new Error("refresh failed");
       load();
     } catch {
       setError(t.error);
