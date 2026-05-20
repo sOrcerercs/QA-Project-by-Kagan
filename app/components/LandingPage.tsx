@@ -1,12 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import AdminPanel from "@/app/components/shared/AdminPanel";
 import styles from "./LandingPage.module.css";
 import EvaluationList from "@/app/components/shared/EvaluationList";
 import ScoreView from "@/app/components/shared/ScoreView";
 import ReportsView from "@/app/components/shared/ReportsView";
 import DateRangePicker from "@/app/components/shared/DateRangePicker";
 import TeamMemberPicker from "@/app/components/shared/TeamMemberPicker";
+import NotificationBell from "@/app/components/shared/NotificationBell";
+import PeerComparisonView from "@/app/components/shared/PeerComparisonView";
+import NegativeKeywordsReport from "@/app/components/shared/NegativeKeywordsReport";
 
 /* ── Theme tokens ── */
 const DARK_THEME = {
@@ -29,13 +33,19 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     home: "Ana Sayfa", evaluations: "Değerlendirmeler", scores: "Skorlarım",
     reports: "Raporlarım", teamreports: "Raporlar", team: "Takımım",
     feedback: "Geri Bildirim", status: "Çağrı Durumu",
-    batch: "Toplu Analiz", admin: "Ayarlar",
+    batch: "Toplu Analiz", admin: "Ayarlar", peer: "Nasıl Gidiyorum?",
+    feedbacks: "Geri Bildirimler", sync: "Senkronizasyon",
+    recentCalls: "Son Çağrılar",
+    negKeywords: "Negatif Kelimeler",
   },
   en: {
     home: "Home", evaluations: "Evaluations", scores: "My Scores",
     reports: "My Reports", teamreports: "Reports", team: "My Team",
     feedback: "Feedback", status: "Calls Status",
-    batch: "Bulk Analysis", admin: "Settings",
+    batch: "Bulk Analysis", admin: "Settings", peer: "How Am I Doing?",
+    feedbacks: "Feedbacks", sync: "Synchronization",
+    recentCalls: "Recent Calls",
+    negKeywords: "Negative Keywords",
   },
 };
 
@@ -68,6 +78,9 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
     case "chartBar": return <svg {...p}><path d="M3 3v18h18M7 16v-5M11 16v-9M15 16v-3M19 16v-7"/></svg>;
     case "sun": return <svg {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>;
     case "moon": return <svg {...p}><path d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"/></svg>;
+    case "compare": return <svg {...p}><path d="M7 16V4M7 4L3 8M7 4l4 4M17 8v12M17 20l4-4M17 20l-4-4"/></svg>;
+    case "inbox": return <svg {...p}><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>;
+    case "sync": return <svg {...p}><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>;
     default: return null;
   }
 }
@@ -163,9 +176,18 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   const navLabels = NAV_LABELS[lang];
 
   /* ── State ── */
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === "undefined") return "home";
+    return new URLSearchParams(window.location.search).get("tab") || "home";
+  });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [evaluations, setEvaluations] = useState<any[]>([]);
+
+  /* status page filters */
+  const [statusFilter, setStatusFilter] = useState<"all" | "month" | "3m" | "6m" | "1y">("all");
+  const [statusMonth, setStatusMonth] = useState<string>("");
+  const [statusStart, setStatusStart] = useState<string>("");
+  const [statusEnd, setStatusEnd] = useState<string>("");
 
   /* scores */
   const [scoresData, setScoresData] = useState<any>(null);
@@ -191,30 +213,6 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   const [fbComment, setFbComment] = useState("");
   const [fbStatus, setFbStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
 
-  /* admin settings */
-  const [adminTab, setAdminTab] = useState<"users" | "prompts">("users");
-  const [teams, setTeams] = useState<any[]>([]);
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState("AGENT");
-  const [newUserLeaderId, setNewUserLeaderId] = useState("");
-  const [newUserLoading, setNewUserLoading] = useState(false);
-  const [newUserMsg, setNewUserMsg] = useState("");
-  /* user inline edit */
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editRole, setEditRole] = useState("AGENT");
-  const [editTeamId, setEditTeamId] = useState("");
-  const [editNewPassword, setEditNewPassword] = useState("");
-  const [editUserMsg, setEditUserMsg] = useState("");
-  const [editUserStatus, setEditUserStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
-  const [newPromptName, setNewPromptName] = useState("");
-  const [newPromptCallType, setNewPromptCallType] = useState("");
-  const [newPromptContent, setNewPromptContent] = useState("");
-  const [newPromptLoading, setNewPromptLoading] = useState(false);
-  const [newPromptMsg, setNewPromptMsg] = useState("");
 
   /* team reports */
   const [teamReportLeaderId, setTeamReportLeaderId] = useState("");
@@ -245,12 +243,17 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   const [applyAllAgentId, setApplyAllAgentId] = useState("");
   const [applyAllPromptId, setApplyAllPromptId] = useState("");
 
+  /* reports sidebar group */
+  const [reportsOpen, setReportsOpen] = useState(
+    () => activeTab === "reports" || activeTab === "negKeywords"
+  );
+
   /* ── Effects ── */
   useEffect(() => {
     fetchEvaluations();
     if (user.role === "TEAM_LEADER") { fetchMembers(); fetchTeamReportMembers(); }
     if (user.role === "ADMIN" || user.role === "MANAGER") fetchUsers();
-    if (user.role === "ADMIN") { fetchPrompts(); fetchTeams(); }
+    if (user.role === "ADMIN") { fetchPrompts(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -274,9 +277,6 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
 
   const fetchPrompts = () =>
     fetch("/api/prompts").then(r => r.json()).then(d => setPrompts(d.prompts || []));
-
-  const fetchTeams = () =>
-    fetch("/api/teams").then(r => r.json()).then(d => setTeams(d.teams || []));
 
   const fetchTeamEvals = async () => {
     setTeamEvalsLoading(true);
@@ -307,10 +307,30 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     setTeamScoresLoading(false);
   };
 
+  /* ── Tarayıcı geri/ileri tuşu senkronizasyonu ── */
+  useEffect(() => {
+    const onPopState = () => {
+      const tab = new URLSearchParams(window.location.search).get("tab") || "home";
+      setActiveTab(tab);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   /* ── Tab change ── */
   const handleTab = (tab: string) => {
     setActiveTab(tab);
+    const url = tab === "home" ? window.location.pathname : `${window.location.pathname}?tab=${tab}`;
+    window.history.pushState({ tab }, "", url);
     if (tab === "scores" && !scoresData && !scoresLoading) fetchScores(scoresAgent || undefined);
+    if (tab === "reports" || tab === "negKeywords") setReportsOpen(true);
+    if (tab !== "home") {
+      fetch("/api/activity/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ section: tab }),
+      }).catch(() => {});
+    }
   };
 
   /* ── Feedback ── */
@@ -399,78 +419,6 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     setCompareCurrentData(currentResults);
     setComparePrevData(prevPeriod ? prevResults : {});
     setCompareLoading(false);
-  };
-
-  /* ── Admin: open/close user edit panel ── */
-  const handleUserRowClick = (u: any) => {
-    if (editingUserId === u.id) {
-      setEditingUserId(null); setEditUserMsg(""); setEditUserStatus("idle");
-      return;
-    }
-    setEditingUserId(u.id);
-    setEditName(u.name || "");
-    setEditEmail(u.email || "");
-    setEditRole(u.role || "AGENT");
-    setEditTeamId(u.teamId || u.team?.id || "");
-    setEditNewPassword(""); setEditUserMsg(""); setEditUserStatus("idle");
-  };
-
-  const handleSaveUser = async () => {
-    if (!editingUserId) return;
-    setEditUserStatus("saving"); setEditUserMsg("");
-    const body: any = { name: editName, email: editEmail, role: editRole, teamId: editTeamId || null };
-    if (editNewPassword) body.newPassword = editNewPassword;
-    try {
-      const res = await fetch(`/api/users/${editingUserId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) { setEditUserStatus("error"); setEditUserMsg(data.error || (lang === "tr" ? "Güncelleme başarısız." : "Update failed.")); return; }
-      setEditUserStatus("success");
-      setEditUserMsg(lang === "tr" ? "Kullanıcı güncellendi!" : "User updated!");
-      setEditNewPassword("");
-      fetchUsers();
-    } catch { setEditUserStatus("error"); setEditUserMsg(lang === "tr" ? "Bağlantı hatası." : "Connection error."); }
-  };
-
-  /* ── Admin: add user ── */
-  const handleAddUser = async () => {
-    if (!newUserName || !newUserEmail || !newUserPassword) return;
-    setNewUserLoading(true); setNewUserMsg("");
-    try {
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newUserName, email: newUserEmail, password: newUserPassword, role: newUserRole, leaderId: newUserLeaderId || null }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setNewUserMsg(data.error || (lang === "tr" ? "Hata oluştu." : "An error occurred.")); return; }
-      setNewUserMsg(lang === "tr" ? "Kullanıcı oluşturuldu." : "User created.");
-      setNewUserName(""); setNewUserEmail(""); setNewUserPassword(""); setNewUserRole("AGENT"); setNewUserLeaderId("");
-      fetchUsers();
-    } catch { setNewUserMsg(lang === "tr" ? "Bağlantı hatası." : "Connection error."); }
-    finally { setNewUserLoading(false); }
-  };
-
-  /* ── Admin: add prompt ── */
-  const handleAddPrompt = async () => {
-    if (!newPromptName || !newPromptContent) return;
-    setNewPromptLoading(true); setNewPromptMsg("");
-    try {
-      const res = await fetch("/api/prompts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newPromptName, callType: newPromptCallType || "AUTO", prompt: newPromptContent, isActive: true }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setNewPromptMsg(data.error || (lang === "tr" ? "Hata oluştu." : "An error occurred.")); return; }
-      setNewPromptMsg(lang === "tr" ? "Prompt oluşturuldu." : "Prompt created.");
-      setNewPromptName(""); setNewPromptCallType(""); setNewPromptContent("");
-      fetchPrompts();
-    } catch { setNewPromptMsg(lang === "tr" ? "Bağlantı hatası." : "Connection error."); }
-    finally { setNewPromptLoading(false); }
   };
 
   /* ── Batch (CSV) ── */
@@ -607,6 +555,9 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   }
   if (user.role === "TEAM_LEADER") {
     mainNavItems.push({ key: "team", icon: "users" });
+  }
+  if (user.role === "AGENT" || user.role === "TEAM_LEADER") {
+    mainNavItems.push({ key: "peer", icon: "compare" });
   }
   if (user.role !== "ADMIN") {
     mainNavItems.push({ key: "feedback", icon: "flag" });
@@ -798,16 +749,51 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
 
           {/* Main nav */}
           <nav className={styles.sbNav}>
-            {mainNavItems.map(({ key, icon }) => (
-              <button
-                key={key}
-                onClick={() => handleTab(key)}
-                className={`${styles.sbLink} ${activeTab === key ? styles.sbLinkActive : ""}`}
-              >
-                <Icon name={icon} size={15} />
-                <span>{navLabels[key]}</span>
-              </button>
-            ))}
+            {mainNavItems.map(({ key, icon }) => {
+              if (key === "reports" && isManagerLike) {
+                return (
+                  <div key="reports-group">
+                    <button
+                      onClick={() => setReportsOpen(v => !v)}
+                      className={`${styles.sbLink} ${(activeTab === "reports" || activeTab === "negKeywords") ? styles.sbLinkActive : ""}`}
+                      style={{ justifyContent: "space-between" }}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Icon name="doc" size={15} />
+                        <span>{lang === "tr" ? "Raporlar" : "Reports"}</span>
+                      </span>
+                      <span style={{ fontSize: 10, transition: "transform 0.2s", display: "inline-block", transform: reportsOpen ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
+                    </button>
+                    <div style={{ overflow: "hidden", maxHeight: reportsOpen ? 80 : 0, transition: "max-height 0.2s ease" }}>
+                      <button
+                        onClick={() => handleTab("reports")}
+                        className={`${styles.sbLink} ${styles.sbLinkSm} ${activeTab === "reports" ? styles.sbLinkActive : ""}`}
+                        style={{ paddingLeft: 32 }}
+                      >
+                        <span>{navLabels.reports}</span>
+                      </button>
+                      <button
+                        onClick={() => handleTab("negKeywords")}
+                        className={`${styles.sbLink} ${styles.sbLinkSm} ${activeTab === "negKeywords" ? styles.sbLinkActive : ""}`}
+                        style={{ paddingLeft: 32 }}
+                      >
+                        <span>{navLabels.negKeywords}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={key}
+                  onClick={() => handleTab(key)}
+                  className={`${styles.sbLink} ${activeTab === key ? styles.sbLinkActive : ""}`}
+                >
+                  <Icon name={icon} size={15} />
+                  <span>{navLabels[key]}</span>
+                </button>
+              );
+            })}
           </nav>
 
           {/* Admin management section */}
@@ -822,13 +808,34 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   <Icon name="upload" size={14} />
                   <span>{navLabels.batch}</span>
                 </button>
+                <button
+                  onClick={() => handleTab("feedbacks")}
+                  className={`${styles.sbLink} ${styles.sbLinkSm} ${activeTab === "feedbacks" ? styles.sbLinkActive : ""}`}
+                >
+                  <Icon name="inbox" size={14} />
+                  <span>{navLabels.feedbacks}</span>
+                </button>
+                <button
+                  onClick={() => handleTab("sync")}
+                  className={`${styles.sbLink} ${styles.sbLinkSm} ${activeTab === "sync" ? styles.sbLinkActive : ""}`}
+                >
+                  <Icon name="sync" size={14} />
+                  <span>{navLabels.sync}</span>
+                </button>
+                <button
+                  onClick={() => handleTab("recentCalls")}
+                  className={`${styles.sbLink} ${styles.sbLinkSm} ${activeTab === "recentCalls" ? styles.sbLinkActive : ""}`}
+                >
+                  <Icon name="phone" size={14} />
+                  <span>{navLabels.recentCalls}</span>
+                </button>
               </nav>
             </>
           )}
 
           {/* Bottom: admin settings + logout + user card */}
           <div className={styles.sbBottom}>
-            {user.role === "ADMIN" && (
+            {(user.role === "ADMIN" || user.role === "MANAGER") && (
               <button
                 onClick={() => handleTab("admin")}
                 className={`${styles.sbLink} ${styles.sbLinkSm} ${activeTab === "admin" ? styles.sbLinkActive : ""}`}
@@ -870,9 +877,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                 <span>{lang === "tr" ? "TR" : "EN"}</span>
               </button>
               {/* Bell */}
-              <button className={styles.tbIcon}>
-                <Icon name="bell" size={14} />
-              </button>
+              <NotificationBell lang={lang} />
               {/* New Analysis CTA — only for ADMIN */}
               {user.role === "ADMIN" && (
                 <button
@@ -909,7 +914,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                         <div className={styles.userMenuRole}>{user.role}</div>
                       </div>
                       <div className={styles.userMenuDivider} />
-                      {user.role === "ADMIN" && (
+                      {(user.role === "ADMIN" || user.role === "MANAGER") && (
                         <button
                           className={styles.userMenuItem}
                           onClick={() => { handleTab("admin"); setShowUserMenu(false); }}
@@ -1533,36 +1538,118 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
               </div>
             )}
 
-            {/* ── STATUS ── */}
-            {activeTab === "status" && (
+            {/* ── PEER ── */}
+            {activeTab === "peer" && (
               <div className={styles.page}>
-                <div className={styles.pageHd}>
-                  <h1 className={styles.pageH1}>{navLabels.status}</h1>
-                  <p className={styles.pageSub}>
-                    {lang === "tr" ? "Genel istatistikler" : "Overall statistics"}
-                  </p>
-                </div>
-                <div className={styles.statGrid3}>
-                  {[
-                    { label: lang === "tr" ? "Toplam Çağrı" : "Total Calls", value: evaluations.length, accent: "var(--accent)" },
-                    { label: lang === "tr" ? "Ortalama Skor" : "Average Score", value: `${avgScore}%`, accent: "#34d399" },
-                    { label: lang === "tr" ? "En Yüksek" : "Highest", value: evaluations.length ? `${highestScore}%` : "—", accent: "#fbbf24" },
-                  ].map(s => (
-                    <div key={s.label} className={styles.statCard}>
-                      <div className={styles.statLabel}>{s.label}</div>
-                      <div className={styles.statValue} style={{ color: s.accent }}>{s.value}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className={styles.card}>
-                  <EvaluationList
-                    evaluations={evaluations.slice(0, 10)}
-                    showAgent
-                    emptyMessage={lang === "tr" ? "Değerlendirme yok." : "No evaluations."}
-                  />
-                </div>
+                <PeerComparisonView agentId={user.id} />
               </div>
             )}
+
+            {/* ── STATUS ── */}
+            {activeTab === "status" && (() => {
+              const now = new Date();
+              const applyQuick = (f: typeof statusFilter, month?: string) => {
+                const end = new Date();
+                end.setHours(23, 59, 59, 999);
+                if (f === "3m") { const s = new Date(end); s.setMonth(s.getMonth() - 3); setStatusStart(s.toISOString().slice(0, 10)); setStatusEnd(end.toISOString().slice(0, 10)); }
+                else if (f === "6m") { const s = new Date(end); s.setMonth(s.getMonth() - 6); setStatusStart(s.toISOString().slice(0, 10)); setStatusEnd(end.toISOString().slice(0, 10)); }
+                else if (f === "1y") { const s = new Date(end); s.setFullYear(s.getFullYear() - 1); setStatusStart(s.toISOString().slice(0, 10)); setStatusEnd(end.toISOString().slice(0, 10)); }
+                else if (f === "month" && month) {
+                  const [y, m] = month.split("-").map(Number);
+                  const s = new Date(y, m - 1, 1);
+                  const e = new Date(y, m, 0, 23, 59, 59, 999);
+                  setStatusStart(s.toISOString().slice(0, 10)); setStatusEnd(e.toISOString().slice(0, 10));
+                } else if (f === "all") { setStatusStart(""); setStatusEnd(""); }
+              };
+
+              const filtered = evaluations.filter(ev => {
+                const d = ev.callDate ? new Date(ev.callDate) : null;
+                if (!d) return true;
+                if (statusStart && d < new Date(statusStart)) return false;
+                if (statusEnd && d > new Date(statusEnd + "T23:59:59")) return false;
+                return true;
+              });
+              const fAvg = filtered.length ? Math.round(filtered.reduce((a: number, e: any) => a + e.score, 0) / filtered.length) : 0;
+              const fHigh = filtered.length ? Math.max(...filtered.map((e: any) => e.score)) : 0;
+
+              const tr = lang === "tr";
+              const quickBtns: { key: typeof statusFilter; label: string }[] = [
+                { key: "all", label: tr ? "Tümü" : "All" },
+                { key: "month", label: tr ? "Ay Seçimi" : "By Month" },
+                { key: "3m", label: tr ? "Son 3 Ay" : "Last 3M" },
+                { key: "6m", label: tr ? "Son 6 Ay" : "Last 6M" },
+                { key: "1y", label: tr ? "Son 1 Yıl" : "Last 1Y" },
+              ];
+
+              return (
+                <div className={styles.page}>
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
+                    <div>
+                      <h1 className={styles.pageH1}>{navLabels.status}</h1>
+                      <p className={styles.pageSub}>{tr ? "Genel istatistikler" : "Overall statistics"}</p>
+                    </div>
+
+                    {/* Filter controls */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-end" }}>
+                      {/* Quick filter chips */}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        {quickBtns.map(btn => (
+                          <button key={btn.key} onClick={() => { setStatusFilter(btn.key); applyQuick(btn.key, statusMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`); }}
+                            style={{ padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, border: "1px solid", cursor: "pointer", transition: "all 0.15s", background: statusFilter === btn.key ? "var(--accent)" : "rgba(255,255,255,.05)", borderColor: statusFilter === btn.key ? "var(--accent)" : "var(--rule)", color: statusFilter === btn.key ? "#fff" : "var(--fg-faint)" }}>
+                            {btn.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Month picker — sadece "month" seçiliyken */}
+                      {statusFilter === "month" && (
+                        <input type="month" value={statusMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`}
+                          onChange={e => { setStatusMonth(e.target.value); applyQuick("month", e.target.value); }}
+                          style={{ padding: "5px 12px", borderRadius: 10, fontSize: 12, background: "rgba(255,255,255,.07)", border: "1px solid var(--rule)", color: "var(--fg)", outline: "none" }} />
+                      )}
+
+                      {/* Custom date range */}
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input type="date" value={statusStart} onChange={e => { setStatusStart(e.target.value); setStatusFilter("all"); }}
+                          style={{ padding: "5px 10px", borderRadius: 10, fontSize: 11, background: "rgba(255,255,255,.07)", border: "1px solid var(--rule)", color: "var(--fg)", outline: "none" }} />
+                        <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>–</span>
+                        <input type="date" value={statusEnd} onChange={e => { setStatusEnd(e.target.value); setStatusFilter("all"); }}
+                          style={{ padding: "5px 10px", borderRadius: 10, fontSize: 11, background: "rgba(255,255,255,.07)", border: "1px solid var(--rule)", color: "var(--fg)", outline: "none" }} />
+                        {(statusStart || statusEnd) && (
+                          <button onClick={() => { setStatusStart(""); setStatusEnd(""); setStatusFilter("all"); }}
+                            style={{ padding: "4px 8px", borderRadius: 8, fontSize: 10, background: "rgba(255,255,255,.06)", border: "1px solid var(--rule)", color: "var(--fg-faint)", cursor: "pointer" }}>
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stats */}
+                  <div className={styles.statGrid3}>
+                    {[
+                      { label: tr ? "Toplam Çağrı" : "Total Calls", value: filtered.length, accent: "var(--accent)" },
+                      { label: tr ? "Ortalama Skor" : "Average Score", value: `${fAvg}%`, accent: "#34d399" },
+                      { label: tr ? "En Yüksek" : "Highest", value: filtered.length ? `${fHigh}%` : "—", accent: "#fbbf24" },
+                    ].map(s => (
+                      <div key={s.label} className={styles.statCard}>
+                        <div className={styles.statLabel}>{s.label}</div>
+                        <div className={styles.statValue} style={{ color: s.accent }}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className={styles.card}>
+                    <EvaluationList
+                      evaluations={filtered.slice(0, 50)}
+                      showAgent
+                      emptyMessage={tr ? "Değerlendirme yok." : "No evaluations."}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* ── TEAM ── */}
             {activeTab === "team" && (
@@ -1939,292 +2026,27 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
               </div>
             )}
 
-            {/* ── ADMIN settings ── */}
-            {activeTab === "admin" && user.role === "ADMIN" && (
+            {activeTab === "negKeywords" && (user.role === "ADMIN" || user.role === "MANAGER") && (
               <div className={styles.page}>
-                <div className={styles.pageHd}>
-                  <h1 className={styles.pageH1}>{navLabels.admin}</h1>
-                  <p className={styles.pageSub}>
-                    {lang === "tr" ? "Kullanıcı ve prompt yönetimi" : "User and prompt management"}
-                  </p>
-                </div>
-
-                {/* Sub-tabs */}
-                <div style={{ display: "flex", gap: 8 }}>
-                  {(["users", "prompts"] as const).map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setAdminTab(t)}
-                      style={{
-                        padding: "8px 18px", borderRadius: 9, cursor: "pointer",
-                        border: adminTab === t ? "1px solid var(--accent)" : "1px solid var(--rule)",
-                        background: adminTab === t ? "rgba(59,130,246,.15)" : "rgba(255,255,255,.04)",
-                        color: adminTab === t ? "var(--accent)" : "var(--fg-dim)",
-                        fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace",
-                        letterSpacing: "0.08em", textTransform: "uppercase",
-                      }}
-                    >
-                      {t === "users"
-                        ? (lang === "tr" ? "Kullanıcılar" : "Users")
-                        : (lang === "tr" ? "Promptlar" : "Prompts")}
-                    </button>
-                  ))}
-                </div>
-
-                {/* USERS */}
-                {adminTab === "users" && (
-                  <>
-                    {/* Add user form */}
-                    <div className={styles.card} style={{ padding: 20 }}>
-                      <div className={styles.sectHd}>
-                        <h2><Icon name="users" size={15} />{lang === "tr" ? "Yeni Kullanıcı" : "New User"}</h2>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-                        <div>
-                          <label className={styles.fbLabel}>{lang === "tr" ? "Ad Soyad" : "Full Name"}</label>
-                          <input className={styles.formInput} value={newUserName} onChange={e => { setNewUserName(e.target.value); setNewUserMsg(""); }} placeholder="John Doe" />
-                        </div>
-                        <div>
-                          <label className={styles.fbLabel}>{lang === "tr" ? "E-posta" : "Email"}</label>
-                          <input type="email" className={styles.formInput} value={newUserEmail} onChange={e => { setNewUserEmail(e.target.value); setNewUserMsg(""); }} placeholder="john@estenove.com" />
-                        </div>
-                        <div>
-                          <label className={styles.fbLabel}>{lang === "tr" ? "Şifre" : "Password"}</label>
-                          <input type="password" className={styles.formInput} value={newUserPassword} onChange={e => { setNewUserPassword(e.target.value); setNewUserMsg(""); }} placeholder="••••••••" />
-                        </div>
-                        <div>
-                          <label className={styles.fbLabel}>{lang === "tr" ? "Rol" : "Role"}</label>
-                          <select className={styles.formSelect} value={newUserRole} onChange={e => { setNewUserRole(e.target.value); if (e.target.value !== "AGENT") setNewUserLeaderId(""); }}>
-                            <option value="AGENT">{lang === "tr" ? "Danışman" : "Agent"}</option>
-                            <option value="TEAM_LEADER">{lang === "tr" ? "Takım Lideri" : "Team Leader"}</option>
-                            <option value="MANAGER">{lang === "tr" ? "Müdür" : "Manager"}</option>
-                            <option value="ADMIN">Admin</option>
-                          </select>
-                        </div>
-                        {newUserRole === "AGENT" && (
-                          <div style={{ gridColumn: "1 / -1" }}>
-                            <label className={styles.fbLabel}>{lang === "tr" ? "Takım (opsiyonel)" : "Team (optional)"}</label>
-                            <select className={styles.formSelect} value={newUserLeaderId} onChange={e => setNewUserLeaderId(e.target.value)}>
-                              <option value="">{lang === "tr" ? "— Takım lideri seçin —" : "— Select team leader —"}</option>
-                              {users.filter((u: any) => u.role === "TEAM_LEADER").map((u: any) => (
-                                <option key={u.id} value={u.id}>{u.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                      {newUserMsg && (
-                        <p style={{ color: newUserMsg.includes("oluşturuldu") || newUserMsg.includes("created") ? "#34d399" : "#f87171", fontSize: 12, marginTop: 10 }}>
-                          {newUserMsg}
-                        </p>
-                      )}
-                      <button
-                        onClick={handleAddUser}
-                        disabled={newUserLoading || !newUserName || !newUserEmail || !newUserPassword}
-                        className={`${styles.btn} ${styles.btnPrimary}`}
-                        style={{ marginTop: 14, borderRadius: 9, opacity: (newUserLoading || !newUserName || !newUserEmail || !newUserPassword) ? 0.45 : 1 }}
-                      >
-                        <Icon name="plus" size={13} />
-                        <span>{newUserLoading ? (lang === "tr" ? "Ekleniyor..." : "Adding...") : (lang === "tr" ? "Kullanıcı Ekle" : "Add User")}</span>
-                      </button>
-                    </div>
-
-                    {/* Users list with inline edit */}
-                    <div className={styles.card} style={{ padding: "8px 0" }}>
-                      <div className={styles.sectHd} style={{ padding: "4px 18px 8px" }}>
-                        <h2><Icon name="users" size={15} />{lang === "tr" ? "Kullanıcılar" : "Users"}</h2>
-                        <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>{users.length} {lang === "tr" ? "kullanıcı" : "users"}</span>
-                      </div>
-                      {users.length === 0 ? (
-                        <div className={styles.emptyMsg}>{lang === "tr" ? "Kullanıcı bulunamadı." : "No users found."}</div>
-                      ) : users.map((u: any) => {
-                        const roleColors: Record<string, string> = {
-                          ADMIN: "rgba(251,191,36,.12)", TEAM_LEADER: "rgba(52,211,153,.12)",
-                          MANAGER: "rgba(168,85,247,.12)", AGENT: "rgba(59,130,246,.12)",
-                        };
-                        const roleFg: Record<string, string> = {
-                          ADMIN: "#fbbf24", TEAM_LEADER: "#34d399",
-                          MANAGER: "#a855f7", AGENT: "var(--accent)",
-                        };
-                        const isExpanded = editingUserId === u.id;
-                        return (
-                          <div key={u.id}>
-                            {/* Row */}
-                            <div
-                              onClick={() => handleUserRowClick(u)}
-                              style={{
-                                display: "flex", alignItems: "center", gap: 12, padding: "11px 18px",
-                                cursor: "pointer", transition: "background 120ms",
-                                background: isExpanded ? "rgba(255,255,255,.04)" : "transparent",
-                              }}
-                              onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,.03)"; }}
-                              onMouseLeave={e => { if (!isExpanded) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
-                            >
-                              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(59,130,246,.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--accent)", fontWeight: 700, flexShrink: 0 }}>
-                                {u.name.charAt(0).toUpperCase()}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, color: "var(--fg)", fontWeight: 500 }}>{u.name}</div>
-                                <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>{u.email}{u.team ? ` · ${u.team.name}` : ""}</div>
-                              </div>
-                              <span style={{
-                                fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase" as const,
-                                padding: "3px 8px", borderRadius: 5, fontFamily: "'JetBrains Mono', monospace",
-                                background: roleColors[u.role] || "rgba(255,255,255,.06)",
-                                color: roleFg[u.role] || "var(--fg-faint)",
-                              }}>
-                                {lang === "tr"
-                                  ? ({ ADMIN: "Admin", TEAM_LEADER: "Takım Lideri", MANAGER: "Müdür", AGENT: "Danışman" }[u.role as string] || u.role)
-                                  : u.role.replace("_", " ")}
-                              </span>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--fg-faint)", transition: "transform 200ms", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>
-                                <path d="M6 9l6 6 6-6" />
-                              </svg>
-                            </div>
-
-                            {/* Inline edit panel */}
-                            {isExpanded && (
-                              <div style={{ margin: "0 12px 10px", padding: 18, borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid var(--rule)" }}>
-                                <div style={{ fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase" as const, color: "var(--fg-faint)", fontFamily: "'JetBrains Mono', monospace", marginBottom: 14 }}>
-                                  {lang === "tr" ? "Kullanıcıyı Düzenle" : "Edit User"}
-                                </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                                  <div>
-                                    <label className={styles.fbLabel}>{lang === "tr" ? "Ad Soyad" : "Full Name"}</label>
-                                    <input className={styles.formInput} value={editName} onChange={e => { setEditName(e.target.value); setEditUserMsg(""); setEditUserStatus("idle"); }} />
-                                  </div>
-                                  <div>
-                                    <label className={styles.fbLabel}>{lang === "tr" ? "E-posta" : "Email"}</label>
-                                    <input type="email" className={styles.formInput} value={editEmail} onChange={e => { setEditEmail(e.target.value); setEditUserMsg(""); setEditUserStatus("idle"); }} />
-                                  </div>
-                                  <div>
-                                    <label className={styles.fbLabel}>{lang === "tr" ? "Rol" : "Role"}</label>
-                                    <select className={styles.formSelect} value={editRole} onChange={e => { setEditRole(e.target.value); if (e.target.value !== "AGENT") setEditTeamId(""); setEditUserMsg(""); setEditUserStatus("idle"); }}>
-                                      <option value="AGENT">{lang === "tr" ? "Danışman" : "Agent"}</option>
-                                      <option value="TEAM_LEADER">{lang === "tr" ? "Takım Lideri" : "Team Leader"}</option>
-                                      <option value="MANAGER">{lang === "tr" ? "Müdür" : "Manager"}</option>
-                                      <option value="ADMIN">Admin</option>
-                                    </select>
-                                  </div>
-                                  {editRole === "AGENT" ? (
-                                    <div>
-                                      <label className={styles.fbLabel}>{lang === "tr" ? "Takım" : "Team"}</label>
-                                      <select className={styles.formSelect} value={editTeamId} onChange={e => { setEditTeamId(e.target.value); setEditUserMsg(""); setEditUserStatus("idle"); }}>
-                                        <option value="">{lang === "tr" ? "— Takım seçin —" : "— Select team —"}</option>
-                                        {teams.filter((t: any) => t.leader).map((t: any) => (
-                                          <option key={t.id} value={t.id}>{t.leader.name}</option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  ) : (
-                                    <div>
-                                      <label className={styles.fbLabel}>{lang === "tr" ? "Yeni Şifre (opsiyonel)" : "New Password (optional)"}</label>
-                                      <input type="password" className={styles.formInput} value={editNewPassword} onChange={e => { setEditNewPassword(e.target.value); setEditUserMsg(""); setEditUserStatus("idle"); }} placeholder={lang === "tr" ? "Değiştirmek için girin" : "Leave blank to keep"} />
-                                    </div>
-                                  )}
-                                  {editRole === "AGENT" && (
-                                    <div style={{ gridColumn: "1 / -1" }}>
-                                      <label className={styles.fbLabel}>{lang === "tr" ? "Yeni Şifre (opsiyonel)" : "New Password (optional)"}</label>
-                                      <input type="password" className={styles.formInput} value={editNewPassword} onChange={e => { setEditNewPassword(e.target.value); setEditUserMsg(""); setEditUserStatus("idle"); }} placeholder={lang === "tr" ? "Değiştirmek için girin" : "Leave blank to keep"} />
-                                    </div>
-                                  )}
-                                </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
-                                  <button
-                                    onClick={handleSaveUser}
-                                    disabled={editUserStatus === "saving"}
-                                    className={`${styles.btn} ${styles.btnPrimary}`}
-                                    style={{ borderRadius: 9, opacity: editUserStatus === "saving" ? 0.6 : 1 }}
-                                  >
-                                    {editUserStatus === "saving" ? (lang === "tr" ? "Kaydediliyor..." : "Saving...") : (lang === "tr" ? "Kaydet" : "Save")}
-                                  </button>
-                                  <button
-                                    onClick={() => { setEditingUserId(null); setEditUserMsg(""); setEditUserStatus("idle"); }}
-                                    style={{ fontSize: 12.5, color: "var(--fg-faint)", background: "none", border: "none", cursor: "pointer" }}
-                                  >
-                                    {lang === "tr" ? "İptal" : "Cancel"}
-                                  </button>
-                                  {editUserMsg && (
-                                    <span style={{ fontSize: 12, color: editUserStatus === "success" ? "#34d399" : "#f87171" }}>
-                                      {editUserMsg}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-
-                {/* PROMPTS */}
-                {adminTab === "prompts" && (
-                  <>
-                    <div className={styles.card} style={{ padding: 20 }}>
-                      <div className={styles.sectHd}>
-                        <h2><Icon name="spark" size={15} />{lang === "tr" ? "Yeni Prompt" : "New Prompt"}</h2>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-                        <div>
-                          <label className={styles.fbLabel}>{lang === "tr" ? "Prompt Adı" : "Prompt Name"}</label>
-                          <input className={styles.formInput} value={newPromptName} onChange={e => setNewPromptName(e.target.value)} placeholder={lang === "tr" ? "ör. Satış Analizi" : "e.g. Sales Analysis"} />
-                        </div>
-                        <div>
-                          <label className={styles.fbLabel}>{lang === "tr" ? "Çağrı Türü" : "Call Type"}</label>
-                          <input className={styles.formInput} value={newPromptCallType} onChange={e => setNewPromptCallType(e.target.value)} placeholder={lang === "tr" ? "ör. SATIS" : "e.g. SALES"} />
-                        </div>
-                      </div>
-                      <div style={{ marginTop: 12 }}>
-                        <label className={styles.fbLabel}>{lang === "tr" ? "Prompt İçeriği" : "Prompt Content"}</label>
-                        <textarea className={styles.fbTextarea} rows={7} value={newPromptContent} onChange={e => setNewPromptContent(e.target.value)} placeholder={lang === "tr" ? "Prompt içeriğini buraya yazın..." : "Write the prompt content here..."} />
-                      </div>
-                      {newPromptMsg && (
-                        <p style={{ color: newPromptMsg.includes("oluşturuldu") || newPromptMsg.includes("created") ? "#34d399" : "#f87171", fontSize: 12, marginTop: 10 }}>
-                          {newPromptMsg}
-                        </p>
-                      )}
-                      <button
-                        onClick={handleAddPrompt}
-                        disabled={newPromptLoading || !newPromptName || !newPromptContent}
-                        className={`${styles.btn} ${styles.btnPrimary}`}
-                        style={{ marginTop: 14, borderRadius: 9, opacity: (newPromptLoading || !newPromptName || !newPromptContent) ? 0.45 : 1 }}
-                      >
-                        <Icon name="plus" size={13} />
-                        <span>{newPromptLoading ? (lang === "tr" ? "Ekleniyor..." : "Adding...") : (lang === "tr" ? "Prompt Ekle" : "Add Prompt")}</span>
-                      </button>
-                    </div>
-
-                    <div className={styles.card}>
-                      <div className={styles.sectHd}>
-                        <h2><Icon name="spark" size={15} />{lang === "tr" ? "Promptlar" : "Prompts"}</h2>
-                        <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>{prompts.length} {lang === "tr" ? "prompt" : "prompts"}</span>
-                      </div>
-                      <div style={{ marginTop: 8 }}>
-                        {prompts.length === 0 ? (
-                          <div className={styles.emptyMsg}>{lang === "tr" ? "Prompt bulunamadı." : "No prompts found."}</div>
-                        ) : prompts.map((p: any) => (
-                          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "0.5px solid var(--rule)" }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13, color: "var(--fg)" }}>{p.name}</div>
-                              <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>{p.callType || "—"}</div>
-                            </div>
-                            <span style={{
-                              fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase" as const,
-                              padding: "3px 8px", borderRadius: 5, fontFamily: "'JetBrains Mono', monospace",
-                              background: p.isActive ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.06)",
-                              color: p.isActive ? "#34d399" : "var(--fg-faint)",
-                            }}>
-                              {p.isActive ? (lang === "tr" ? "Aktif" : "Active") : (lang === "tr" ? "Pasif" : "Inactive")}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
+                <NegativeKeywordsReport lang={lang} />
               </div>
+            )}
+
+            {/* ── ADMIN ── */}
+            {activeTab === "feedbacks" && user.role === "ADMIN" && (
+              <AdminPanel user={user} lang={lang} initialTab="feedbacks" />
+            )}
+
+            {activeTab === "sync" && user.role === "ADMIN" && (
+              <AdminPanel user={user} lang={lang} initialTab="sync" />
+            )}
+
+            {activeTab === "recentCalls" && user.role === "ADMIN" && (
+              <AdminPanel user={user} lang={lang} initialTab="recentCalls" />
+            )}
+
+            {activeTab === "admin" && (user.role === "ADMIN" || user.role === "MANAGER") && (
+              <AdminPanel user={user} lang={lang} />
             )}
 
           </div>
