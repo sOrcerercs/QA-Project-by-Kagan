@@ -38,7 +38,7 @@ type Period = "30d" | "3m" | "all";
 const L = {
   tr: {
     title: "Sıralama",
-    teamsTitle: "Takım Sıralaması",
+    teamsTitle: "Kalite Skoruna Göre Takım Sıralaması",
     period30d: "Son 30 Gün",
     period3m: "Son 3 Ay",
     periodAll: "Tüm Zamanlar",
@@ -54,7 +54,7 @@ const L = {
   },
   en: {
     title: "Rankings",
-    teamsTitle: "Team Rankings",
+    teamsTitle: "Team Rankings by Quality Score",
     period30d: "Last 30 Days",
     period3m: "Last 3 Months",
     periodAll: "All Time",
