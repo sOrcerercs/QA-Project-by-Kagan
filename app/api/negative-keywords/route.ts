@@ -12,12 +12,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
-  const keywords = await prisma.negativeKeyword.findMany({
-    orderBy: { createdAt: "asc" },
-    select: { id: true, word: true, createdAt: true },
-  });
-
-  return NextResponse.json({ keywords });
+  try {
+    const keywords = await prisma.negativeKeyword.findMany({
+      orderBy: { createdAt: "asc" },
+      select: { id: true, word: true, createdAt: true },
+    });
+    return NextResponse.json({ keywords });
+  } catch {
+    return NextResponse.json({ error: "Sunucu hatası." }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
