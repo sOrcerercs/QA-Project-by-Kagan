@@ -29,19 +29,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = await req.json();
-  const { name, email, role, teamId, newPassword } = body as {
+  const { name, email, role, teamId, newPassword, managerId } = body as {
     name?: string;
     email?: string;
     role?: string;
     teamId?: string | null;
     newPassword?: string;
+    managerId?: string | null;
   };
+
+  // MANAGER can only assign themselves as manager (null also blocked)
+  if (admin.role === "MANAGER" && managerId !== undefined && managerId !== admin.id) {
+    return NextResponse.json({ error: "Yöneticiler yalnızca kendilerini atayabilir." }, { status: 403 });
+  }
 
   const updates: Record<string, unknown> = {};
   if (name?.trim()) updates.name = name.trim();
   if (email?.trim()) updates.email = email.trim();
   if (role) updates.role = role;
   if (teamId !== undefined) updates.teamId = teamId || null;
+  if (managerId !== undefined) updates.managerId = managerId;
   if (newPassword) {
     if (newPassword.length < 6) {
       return NextResponse.json({ error: "Şifre en az 6 karakter olmalı." }, { status: 400 });
