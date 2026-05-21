@@ -11,7 +11,10 @@ export async function GET(req: NextRequest) {
   }
 
   const users = await prisma.user.findMany({
-    include: { team: true },
+    include: {
+      team: true,
+      manager: { select: { id: true, name: true } },
+    },
     orderBy: { name: "asc" },
   });
 
