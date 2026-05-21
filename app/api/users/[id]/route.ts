@@ -43,12 +43,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Yöneticiler yalnızca kendilerini atayabilir." }, { status: 403 });
   }
 
+  // Prevent self-assignment (a user cannot be their own manager)
+  if (managerId !== undefined && managerId !== null && managerId === id) {
+    return NextResponse.json({ error: "Kullanıcı kendisinin müdürü olamaz." }, { status: 400 });
+  }
+
   const updates: Record<string, unknown> = {};
   if (name?.trim()) updates.name = name.trim();
   if (email?.trim()) updates.email = email.trim();
   if (role) updates.role = role;
   if (teamId !== undefined) updates.teamId = teamId || null;
-  if (managerId !== undefined) updates.managerId = managerId;
+  if (managerId !== undefined) {
+    // Clear managerId when role is explicitly set to non-TEAM_LEADER
+    if (role && role !== "TEAM_LEADER") {
+      updates.managerId = null;
+    } else {
+      updates.managerId = managerId;
+    }
+  }
   if (newPassword) {
     if (newPassword.length < 6) {
       return NextResponse.json({ error: "Şifre en az 6 karakter olmalı." }, { status: 400 });
