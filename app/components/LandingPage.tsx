@@ -244,6 +244,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   const [advisorSelectedAgentId, setAdvisorSelectedAgentId] = useState<string | null>(null);
   const [advisorScoreData, setAdvisorScoreData] = useState<any>(null);
   const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [advisorTLsLoading, setAdvisorTLsLoading] = useState(false);
   const [advisorMembersLoading, setAdvisorMembersLoading] = useState(false);
 
   /* batch (admin) */
@@ -382,14 +383,19 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   };
 
   const fetchAdvisorTLs = async () => {
-    const res = await fetch("/api/teams");
-    if (!res.ok) return;
-    const data = await res.json();
-    setAdvisorTLs(
-      (data.teams || [])
-        .filter((t: any) => t.leader)
-        .map((t: any) => ({ id: t.leader.id, name: t.leader.name, teamName: t.name }))
-    );
+    setAdvisorTLsLoading(true);
+    try {
+      const res = await fetch("/api/teams");
+      if (!res.ok) return;
+      const data = await res.json();
+      setAdvisorTLs(
+        (data.teams || [])
+          .filter((t: any) => t.leader)
+          .map((t: any) => ({ id: t.leader.id, name: t.leader.name, teamName: t.name }))
+      );
+    } finally {
+      setAdvisorTLsLoading(false);
+    }
   };
 
   const fetchAdvisorMembers = async (leaderId?: string) => {
@@ -2136,7 +2142,10 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                             {lang === "tr" ? "Takım Lideri" : "Team Leader"}
                           </h2>
                         </div>
-                        {advisorTLs.length === 0 && (
+                        {advisorTLsLoading && (
+                          <div className={`${styles.card} ${styles.spinner}`}><div /></div>
+                        )}
+                        {!advisorTLsLoading && advisorTLs.length === 0 && (
                           <p style={{ fontSize: 13, color: "var(--fg-faint)", padding: "8px 0" }}>
                             {lang === "tr" ? "Takım bulunamadı." : "No teams found."}
                           </p>
@@ -2194,6 +2203,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                           <button
                             key={m.id}
                             onClick={() => {
+                              if (advisorSelectedAgentId === m.id) return;
                               setAdvisorSelectedAgentId(m.id);
                               fetchAdvisorScore(m.id);
                             }}
