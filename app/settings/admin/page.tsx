@@ -450,6 +450,7 @@ export default function AdminSettingsPage() {
     if (editingUser?.id === u.id) {
       // collapse if same user clicked again
       setEditingUser(null);
+      setEditManagerId("");
       setEditMsg("");
       setEditStatus("idle");
       return;
