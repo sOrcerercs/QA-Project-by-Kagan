@@ -47,6 +47,8 @@ model User {
   managerId     String?
   manager       User?          @relation("ManagerTL", fields: [managerId], references: [id], onDelete: SetNull)
   teamLeaders   User[]         @relation("ManagerTL")
+
+  @@index([managerId])
 }
 
 model ActivityLog {
