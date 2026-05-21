@@ -2103,6 +2103,126 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
               <AdminPanel user={user} lang={lang} />
             )}
 
+            {/* ── ADVISOR DASHBOARD ── */}
+            {activeTab === "advisor" && (isManagerLike || user.role === "TEAM_LEADER") && (
+              <div className={styles.page}>
+                <div className={styles.pageHd}>
+                  <h1 className={styles.pageH1}>{navLabels.advisor}</h1>
+                  <p className={styles.pageSub}>
+                    {lang === "tr"
+                      ? "Danışman bazında skor ve gelişim takibi"
+                      : "Score and development tracking per advisor"}
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
+                  {/* ── Left panel — selectors ── */}
+                  <div style={{ width: 260, flexShrink: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+
+                    {/* TL list — Admin & Manager only */}
+                    {isManagerLike && (
+                      <>
+                        <div className={styles.sectHd}>
+                          <h2 className={styles.sectH2}>
+                            {lang === "tr" ? "Takım Lideri" : "Team Leader"}
+                          </h2>
+                        </div>
+                        {advisorTLs.length === 0 && (
+                          <p style={{ fontSize: 13, color: "var(--fg-faint)", padding: "8px 0" }}>
+                            {lang === "tr" ? "Takım bulunamadı." : "No teams found."}
+                          </p>
+                        )}
+                        {advisorTLs.map(tl => (
+                          <button
+                            key={tl.id}
+                            onClick={() => {
+                              if (advisorSelectedTLId === tl.id) return;
+                              setAdvisorSelectedTLId(tl.id);
+                              setAdvisorSelectedAgentId(null);
+                              setAdvisorScoreData(null);
+                              setAdvisorMembers([]);
+                              fetchAdvisorMembers(tl.id);
+                            }}
+                            style={{
+                              display: "block", width: "100%", textAlign: "left",
+                              padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                              border: advisorSelectedTLId === tl.id
+                                ? "1px solid var(--accent)"
+                                : "1px solid var(--glass-border)",
+                              background: advisorSelectedTLId === tl.id
+                                ? "rgba(59,130,246,.12)"
+                                : "var(--glass-bg)",
+                              color: advisorSelectedTLId === tl.id ? "var(--accent)" : "var(--fg)",
+                              fontSize: 13, fontWeight: 500,
+                            }}
+                          >
+                            {tl.name}
+                            <span style={{ display: "block", fontSize: 11, color: "var(--fg-faint)", marginTop: 2 }}>
+                              {tl.teamName}
+                            </span>
+                          </button>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Agent list — shown when TL selected (Admin/Manager) or always (TL role) */}
+                    {(advisorSelectedTLId !== null || user.role === "TEAM_LEADER") && (
+                      <>
+                        <div className={styles.sectHd} style={{ marginTop: isManagerLike ? 16 : 0 }}>
+                          <h2 className={styles.sectH2}>
+                            {lang === "tr" ? "Danışman" : "Advisor"}
+                          </h2>
+                        </div>
+                        {advisorMembers.length === 0 && (
+                          <p style={{ fontSize: 13, color: "var(--fg-faint)", padding: "8px 0" }}>
+                            {lang === "tr" ? "Danışman bulunamadı." : "No advisors found."}
+                          </p>
+                        )}
+                        {advisorMembers.map(m => (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              setAdvisorSelectedAgentId(m.id);
+                              fetchAdvisorScore(m.id);
+                            }}
+                            style={{
+                              display: "block", width: "100%", textAlign: "left",
+                              padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                              border: advisorSelectedAgentId === m.id
+                                ? "1px solid var(--accent)"
+                                : "1px solid var(--glass-border)",
+                              background: advisorSelectedAgentId === m.id
+                                ? "rgba(59,130,246,.12)"
+                                : "var(--glass-bg)",
+                              color: advisorSelectedAgentId === m.id ? "var(--accent)" : "var(--fg)",
+                              fontSize: 13, fontWeight: 500,
+                            }}
+                          >
+                            {m.name}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+
+                  {/* ── Right panel — ScoreView ── */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {advisorLoading && (
+                      <div className={`${styles.card} ${styles.spinner}`}><div /></div>
+                    )}
+                    {!advisorLoading && advisorScoreData && (
+                      <ScoreView data={advisorScoreData} lang={lang} canRefresh={true} />
+                    )}
+                    {!advisorLoading && !advisorScoreData && (
+                      <div className={styles.emptyMsg}>
+                        {lang === "tr" ? "← Bir danışman seçin" : "← Select an advisor"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
