@@ -10,15 +10,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
-  const users = await prisma.user.findMany({
-    include: {
-      team: true,
-      manager: { select: { id: true, name: true } },
-    },
-    orderBy: { name: "asc" },
-  });
-
-  return NextResponse.json({ users });
+  try {
+    const users = await prisma.user.findMany({
+      include: {
+        team: true,
+        manager: { select: { id: true, name: true } },
+      },
+      orderBy: { name: "asc" },
+    });
+    return NextResponse.json({ users });
+  } catch (e) {
+    console.error("[GET /api/users]", e);
+    return NextResponse.json({ error: "Kullanıcılar yüklenemedi." }, { status: 500 });
+  }
 }
 
 // Yeni kullanıcı ekle
