@@ -832,7 +832,11 @@ export default function AdminSettingsPage() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-on-surface">{u.name}</p>
-                          <p className="text-xs text-on-surface-variant">{u.email}{u.team ? ` · ${u.team.name}` : ""}</p>
+                          <p className="text-xs text-on-surface-variant">
+                            {u.email}
+                            {u.team ? ` · ${u.team.name}` : ""}
+                            {u.role === "TEAM_LEADER" && u.manager ? ` · ${u.manager.name}` : ""}
+                          </p>
                           {u.lastLoginAt && (
                             <p className="text-[10px] text-on-surface-variant/60 mt-0.5">
                               {t.lastLogin} {fmtDate(u.lastLoginAt)}
@@ -909,6 +913,25 @@ export default function AdminSettingsPage() {
                                 {teams.filter((t) => t.leader).map((team) => (
                                   <option key={team.id} value={team.id}>
                                     {team.leader.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {editRole === "TEAM_LEADER" && (
+                            <div>
+                              <label className="text-xs text-on-surface-variant font-semibold block mb-1">
+                                {t.managerLabel}
+                              </label>
+                              <select
+                                value={editManagerId}
+                                onChange={(e) => { setEditManagerId(e.target.value); setEditMsg(""); setEditStatus("idle"); }}
+                                className="w-full bg-surface-container rounded-xl px-4 py-2.5 text-sm text-on-surface border border-outline-variant focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                              >
+                                <option value="">{t.noManager}</option>
+                                {managerOptions.map((m: any) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.name}
                                   </option>
                                 ))}
                               </select>
