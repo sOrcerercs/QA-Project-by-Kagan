@@ -643,6 +643,12 @@ export default function AdminSettingsPage() {
   const feedbackCategoryLabel = (cat: string) => t.feedbackCats[cat] || cat;
   const fmtDate = (iso: string) => formatDateTime(iso, t.locale);
 
+  const managers = users.filter((u: any) => u.role === "MANAGER");
+  const managerOptions =
+    user?.role === "MANAGER"
+      ? managers.filter((m: any) => m.id === user.id)
+      : managers;
+
   return (
     <div className="min-h-screen bg-surface text-on-surface font-sans">
       {/* Header */}
@@ -762,6 +768,25 @@ export default function AdminSettingsPage() {
                       {users.filter((u) => u.role === "TEAM_LEADER").map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {newRole === "TEAM_LEADER" && (
+                  <div className="md:col-span-2">
+                    <label className="text-xs text-on-surface-variant font-semibold block mb-1">
+                      {t.managerLabel}
+                    </label>
+                    <select
+                      value={newManagerId}
+                      onChange={(e) => setNewManagerId(e.target.value)}
+                      className="w-full bg-surface-container-lowest rounded-xl px-4 py-2.5 text-sm text-on-surface border border-outline-variant focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                    >
+                      <option value="">{t.selectManager}</option>
+                      {managerOptions.map((m: any) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
                         </option>
                       ))}
                     </select>
