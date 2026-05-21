@@ -244,6 +244,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   const [advisorSelectedAgentId, setAdvisorSelectedAgentId] = useState<string | null>(null);
   const [advisorScoreData, setAdvisorScoreData] = useState<any>(null);
   const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [advisorMembersLoading, setAdvisorMembersLoading] = useState(false);
 
   /* batch (admin) */
   const [batchMode, setBatchMode] = useState<"csv" | "docx">("csv");
@@ -392,17 +393,25 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   };
 
   const fetchAdvisorMembers = async (leaderId?: string) => {
-    const url = leaderId ? `/api/team/members?leaderId=${leaderId}` : "/api/team/members";
-    const res = await fetch(url);
-    if (res.ok) setAdvisorMembers((await res.json()).members || []);
+    setAdvisorMembersLoading(true);
+    try {
+      const url = leaderId ? `/api/team/members?leaderId=${leaderId}` : "/api/team/members";
+      const res = await fetch(url);
+      if (res.ok) setAdvisorMembers((await res.json()).members || []);
+    } finally {
+      setAdvisorMembersLoading(false);
+    }
   };
 
   const fetchAdvisorScore = async (agentId: string) => {
     setAdvisorLoading(true);
     setAdvisorScoreData(null);
-    const res = await fetch(`/api/scores?agentId=${agentId}`);
-    if (res.ok) setAdvisorScoreData(await res.json());
-    setAdvisorLoading(false);
+    try {
+      const res = await fetch(`/api/scores?agentId=${agentId}`);
+      if (res.ok) setAdvisorScoreData(await res.json());
+    } finally {
+      setAdvisorLoading(false);
+    }
   };
 
   const fetchTeamReportEvals = async () => {
@@ -2173,7 +2182,10 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                             {lang === "tr" ? "Danışman" : "Advisor"}
                           </h2>
                         </div>
-                        {advisorMembers.length === 0 && (
+                        {advisorMembersLoading && (
+                          <div className={`${styles.card} ${styles.spinner}`}><div /></div>
+                        )}
+                        {!advisorMembersLoading && advisorMembers.length === 0 && (
                           <p style={{ fontSize: 13, color: "var(--fg-faint)", padding: "8px 0" }}>
                             {lang === "tr" ? "Danışman bulunamadı." : "No advisors found."}
                           </p>
