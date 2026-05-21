@@ -39,6 +39,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     recentCalls: "Son Çağrılar",
     negKeywords: "Negatif Kelimeler",
     leaderboard: "Sıralama",
+    advisor: "Danışman Paneli",
   },
   en: {
     home: "Home", evaluations: "Evaluations", scores: "My Scores",
@@ -49,6 +50,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     recentCalls: "Recent Calls",
     negKeywords: "Negative Keywords",
     leaderboard: "Rankings",
+    advisor: "Advisor Dashboard",
   },
 };
 
@@ -235,6 +237,14 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   const [comparePrevData, setComparePrevData] = useState<Record<string, any>>({});
   const [compareLoading, setCompareLoading] = useState(false);
 
+  /* advisor dashboard */
+  const [advisorTLs, setAdvisorTLs] = useState<{ id: string; name: string; teamName: string }[]>([]);
+  const [advisorSelectedTLId, setAdvisorSelectedTLId] = useState<string | null>(null);
+  const [advisorMembers, setAdvisorMembers] = useState<{ id: string; name: string }[]>([]);
+  const [advisorSelectedAgentId, setAdvisorSelectedAgentId] = useState<string | null>(null);
+  const [advisorScoreData, setAdvisorScoreData] = useState<any>(null);
+  const [advisorLoading, setAdvisorLoading] = useState(false);
+
   /* batch (admin) */
   const [batchMode, setBatchMode] = useState<"csv" | "docx">("csv");
   const [batchFile, setBatchFile] = useState<File | null>(null);
@@ -328,6 +338,10 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     const url = tab === "home" ? window.location.pathname : `${window.location.pathname}?tab=${tab}`;
     window.history.pushState({ tab }, "", url);
     if (tab === "scores" && !scoresData && !scoresLoading) fetchScores(scoresAgent || undefined);
+    if (tab === "advisor") {
+      if (isManagerLike && advisorTLs.length === 0) fetchAdvisorTLs();
+      if (user.role === "TEAM_LEADER" && advisorMembers.length === 0) fetchAdvisorMembers();
+    }
     if (tab === "reports" || tab === "negKeywords") setReportsOpen(true);
     if (tab !== "home") {
       fetch("/api/activity/log", {
@@ -364,6 +378,31 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     const res = await fetch(url);
     if (res.ok) setTeamReportMembers((await res.json()).members || []);
     setTeamReportMembersLoading(false);
+  };
+
+  const fetchAdvisorTLs = async () => {
+    const res = await fetch("/api/teams");
+    if (!res.ok) return;
+    const data = await res.json();
+    setAdvisorTLs(
+      (data.teams || [])
+        .filter((t: any) => t.leader)
+        .map((t: any) => ({ id: t.leader.id, name: t.leader.name, teamName: t.name }))
+    );
+  };
+
+  const fetchAdvisorMembers = async (leaderId?: string) => {
+    const url = leaderId ? `/api/team/members?leaderId=${leaderId}` : "/api/team/members";
+    const res = await fetch(url);
+    if (res.ok) setAdvisorMembers((await res.json()).members || []);
+  };
+
+  const fetchAdvisorScore = async (agentId: string) => {
+    setAdvisorLoading(true);
+    setAdvisorScoreData(null);
+    const res = await fetch(`/api/scores?agentId=${agentId}`);
+    if (res.ok) setAdvisorScoreData(await res.json());
+    setAdvisorLoading(false);
   };
 
   const fetchTeamReportEvals = async () => {
@@ -565,6 +604,9 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     mainNavItems.push({ key: "peer", icon: "compare" });
   }
   mainNavItems.push({ key: "leaderboard", icon: "trophy" });
+  if (isManagerLike || user.role === "TEAM_LEADER") {
+    mainNavItems.push({ key: "advisor", icon: "users" });
+  }
   if (user.role !== "ADMIN") {
     mainNavItems.push({ key: "feedback", icon: "flag" });
   }
