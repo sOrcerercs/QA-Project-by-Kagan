@@ -39,7 +39,6 @@ export async function POST(req: NextRequest) {
   if (
     currentUser.role === "MANAGER" &&
     managerId !== undefined &&
-    managerId !== null &&
     managerId !== currentUser.id
   ) {
     return NextResponse.json({ error: "Yöneticiler yalnızca kendilerini atayabilir." }, { status: 403 });
