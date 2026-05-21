@@ -29,7 +29,11 @@ const ADMIN_T = {
     tabFeedbacks: "Geri Bildirimler", tabSync: "Senkronizasyon", tabSyncHistory: "Senkron Geçmişi",
     addUser: "Yeni Kullanıcı Ekle", fullName: "Ad Soyad", email: "E-posta",
     password: "Şifre", role: "Rol", team: "Takım (opsiyonel)",
-    selectTeamLeader: "— Takım lideri seçin —", addUserBtn: "Kullanıcı Ekle",
+    selectTeamLeader: "— Takım lideri seçin —",
+    selectManager: "— Manager seçin —",
+    managerLabel: "Manager (opsiyonel)",
+    noManager: "Atama yok",
+    addUserBtn: "Kullanıcı Ekle",
     noUsers: "Henüz kullanıcı yok.", lastLogin: "Son giriş:", editUser: "Kullanıcıyı Düzenle",
     newPassword: "Yeni Şifre (opsiyonel)", newPasswordPlaceholder: "Değiştirmek için girin",
     save: "Kaydet", cancel: "İptal",
@@ -90,7 +94,11 @@ const ADMIN_T = {
     tabFeedbacks: "Feedbacks", tabSync: "Synchronization", tabSyncHistory: "Sync History",
     addUser: "Add New User", fullName: "Full Name", email: "Email",
     password: "Password", role: "Role", team: "Team (optional)",
-    selectTeamLeader: "— Select team leader —", addUserBtn: "Add User",
+    selectTeamLeader: "— Select team leader —",
+    selectManager: "— Select manager —",
+    managerLabel: "Manager (optional)",
+    noManager: "No assignment",
+    addUserBtn: "Add User",
     noUsers: "No users yet.", lastLogin: "Last login:", editUser: "Edit User",
     newPassword: "New Password (optional)", newPasswordPlaceholder: "Enter to change",
     save: "Save", cancel: "Cancel",
@@ -195,6 +203,7 @@ export default function AdminSettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState("AGENT");
   const [newLeaderId, setNewLeaderId] = useState("");
+  const [newManagerId, setNewManagerId] = useState("");
   const [addUserMsg, setAddUserMsg] = useState("");
 
   // Edit user state
@@ -203,6 +212,7 @@ export default function AdminSettingsPage() {
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
   const [editTeamId, setEditTeamId] = useState("");
+  const [editManagerId, setEditManagerId] = useState("");
   const [editNewPassword, setEditNewPassword] = useState("");
   const [editMsg, setEditMsg] = useState("");
   const [editStatus, setEditStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
@@ -419,12 +429,20 @@ export default function AdminSettingsPage() {
     const res = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, email: newEmail, password: newPassword, role: newRole, leaderId: newLeaderId || null }),
+      body: JSON.stringify({
+        name: newName,
+        email: newEmail,
+        password: newPassword,
+        role: newRole,
+        leaderId: newLeaderId || null,
+        managerId: newRole === "TEAM_LEADER" ? (newManagerId || null) : undefined,
+      }),
     });
     const data = await res.json();
     if (!res.ok) { setAddUserMsg(data.error || tMsg.errorOccurred); return; }
     setAddUserMsg(tMsg.userCreated);
     setNewName(""); setNewEmail(""); setNewPassword(""); setNewRole("AGENT"); setNewLeaderId("");
+    setNewManagerId("");
     fetchUsers();
   };
 
@@ -441,6 +459,7 @@ export default function AdminSettingsPage() {
     setEditEmail(u.email || "");
     setEditRole(u.role || "AGENT");
     setEditTeamId(u.teamId || u.team?.id || "");
+    setEditManagerId(u.managerId || "");
     setEditNewPassword("");
     setEditMsg("");
     setEditStatus("idle");
@@ -456,6 +475,7 @@ export default function AdminSettingsPage() {
       role: editRole,
       teamId: editTeamId || null,
     };
+    if (editRole === "TEAM_LEADER") body.managerId = editManagerId || null;
     if (editNewPassword) body.newPassword = editNewPassword;
     const res = await fetch(`/api/users/${editingUser.id}`, {
       method: "PATCH",
@@ -716,7 +736,11 @@ export default function AdminSettingsPage() {
                   <label className="text-xs text-on-surface-variant font-semibold block mb-1">{t.role}</label>
                   <select
                     value={newRole}
-                    onChange={(e) => { setNewRole(e.target.value); if (e.target.value !== "AGENT") setNewLeaderId(""); }}
+                    onChange={(e) => {
+                      setNewRole(e.target.value);
+                      if (e.target.value !== "AGENT") setNewLeaderId("");
+                      if (e.target.value !== "TEAM_LEADER") setNewManagerId("");
+                    }}
                     className="w-full bg-surface-container-lowest rounded-xl px-4 py-2.5 text-sm text-on-surface border border-outline-variant focus:outline-none focus:ring-1 focus:ring-primary transition-all"
                   >
                     <option value="AGENT">{t.roles.AGENT}</option>
@@ -832,7 +856,13 @@ export default function AdminSettingsPage() {
                             <label className="text-xs text-on-surface-variant font-semibold block mb-1">{t.role}</label>
                             <select
                               value={editRole}
-                              onChange={(e) => { setEditRole(e.target.value); if (e.target.value !== "AGENT") setEditTeamId(""); setEditMsg(""); setEditStatus("idle"); }}
+                              onChange={(e) => {
+                                setEditRole(e.target.value);
+                                if (e.target.value !== "AGENT") setEditTeamId("");
+                                if (e.target.value !== "TEAM_LEADER") setEditManagerId("");
+                                setEditMsg("");
+                                setEditStatus("idle");
+                              }}
                               className="w-full bg-surface-container rounded-xl px-4 py-2.5 text-sm text-on-surface border border-outline-variant focus:outline-none focus:ring-1 focus:ring-primary transition-all"
                             >
                               <option value="AGENT">{t.roles.AGENT}</option>
