@@ -12,6 +12,7 @@ import NotificationBell from "@/app/components/shared/NotificationBell";
 import PeerComparisonView from "@/app/components/shared/PeerComparisonView";
 import NegativeKeywordsReport from "@/app/components/shared/NegativeKeywordsReport";
 import LeaderboardView from "@/app/components/shared/LeaderboardView";
+import CoachingTrackingView from "@/app/components/shared/CoachingTrackingView";
 
 /* ── Theme tokens ── */
 const DARK_THEME = {
@@ -38,6 +39,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     feedbacks: "Geri Bildirimler", sync: "Senkronizasyon",
     recentCalls: "Son Çağrılar",
     negKeywords: "Negatif Kelimeler",
+    coachingTracking: "Coaching Takibi",
     leaderboard: "Sıralama",
     advisor: "Danışman Paneli",
   },
@@ -49,6 +51,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     feedbacks: "Feedbacks", sync: "Synchronization",
     recentCalls: "Recent Calls",
     negKeywords: "Negative Keywords",
+    coachingTracking: "Coaching Tracking",
     leaderboard: "Rankings",
     advisor: "Advisor Dashboard",
   },
@@ -261,7 +264,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
 
   /* reports sidebar group */
   const [reportsOpen, setReportsOpen] = useState(
-    () => activeTab === "reports" || activeTab === "negKeywords"
+    () => activeTab === "reports" || activeTab === "negKeywords" || activeTab === "coachingTracking"
   );
 
   /* ── Effects ── */
@@ -328,7 +331,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     const onPopState = () => {
       const tab = new URLSearchParams(window.location.search).get("tab") || "home";
       setActiveTab(tab);
-      if (tab === "reports" || tab === "negKeywords") setReportsOpen(true);
+      if (tab === "reports" || tab === "negKeywords" || tab === "coachingTracking") setReportsOpen(true);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -344,7 +347,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
       if (isManagerLike && advisorTLs.length === 0) fetchAdvisorTLs();
       if (user.role === "TEAM_LEADER" && advisorMembers.length === 0) fetchAdvisorMembers();
     }
-    if (tab === "reports" || tab === "negKeywords") setReportsOpen(true);
+    if (tab === "reports" || tab === "negKeywords" || tab === "coachingTracking") setReportsOpen(true);
     if (tab !== "home") {
       fetch("/api/activity/log", {
         method: "POST",
@@ -598,8 +601,18 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     : 0;
   const highestScore = evaluations.length ? Math.max(...evaluations.map(e => e.score)) : 0;
 
+  /* ── Role label ── */
+  const ROLE_LABELS: Record<string, Record<"tr" | "en", string>> = {
+    ADMIN:       { tr: "Admin",        en: "Admin" },
+    MANAGER:     { tr: "Müdür",        en: "Manager" },
+    TEAM_LEADER: { tr: "Takım Lideri", en: "Team Leader" },
+    AGENT:       { tr: "Danışman",     en: "Agent" },
+  };
+  const roleLabel = (ROLE_LABELS[user.role]?.[lang]) ?? user.role;
+
   /* ── Nav items ── */
   const isManagerLike = user.role === "ADMIN" || user.role === "MANAGER";
+  const selectedTL = isManagerLike && teamReportLeaderId ? (users as any[]).find((u: any) => u.id === teamReportLeaderId) ?? null : null;
   const mainNavItems: { key: string; icon: string }[] = [
     { key: "home", icon: "home" },
   ];
@@ -818,7 +831,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   <div key="reports-group">
                     <button
                       onClick={() => setReportsOpen(v => !v)}
-                      className={`${styles.sbLink} ${(activeTab === "reports" || activeTab === "negKeywords") ? styles.sbLinkActive : ""}`}
+                      className={`${styles.sbLink} ${(activeTab === "reports" || activeTab === "negKeywords" || activeTab === "coachingTracking") ? styles.sbLinkActive : ""}`}
                       style={{ justifyContent: "space-between" }}
                     >
                       <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -827,7 +840,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                       </span>
                       <span style={{ fontSize: 10, transition: "transform 0.2s", display: "inline-block", transform: reportsOpen ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
                     </button>
-                    <div style={{ overflow: "hidden", maxHeight: reportsOpen ? 80 : 0, transition: "max-height 0.2s ease" }}>
+                    <div style={{ overflow: "hidden", maxHeight: reportsOpen ? 120 : 0, transition: "max-height 0.2s ease" }}>
                       <button
                         onClick={() => handleTab("reports")}
                         className={`${styles.sbLink} ${styles.sbLinkSm} ${activeTab === "reports" ? styles.sbLinkActive : ""}`}
@@ -841,6 +854,13 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                         style={{ paddingLeft: 32 }}
                       >
                         <span>{navLabels.negKeywords}</span>
+                      </button>
+                      <button
+                        onClick={() => handleTab("coachingTracking")}
+                        className={`${styles.sbLink} ${styles.sbLinkSm} ${activeTab === "coachingTracking" ? styles.sbLinkActive : ""}`}
+                        style={{ paddingLeft: 32 }}
+                      >
+                        <span>{navLabels.coachingTracking}</span>
                       </button>
                     </div>
                   </div>
@@ -918,7 +938,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
               <div className={styles.sbAvatar}>{user.name.charAt(0).toUpperCase()}</div>
               <div className={styles.sbUserTxt}>
                 <div className={styles.sbUserName}>{user.name.split(" ")[0]}</div>
-                <div className={styles.sbUserRole}>{user.role}</div>
+                <div className={styles.sbUserRole}>{roleLabel}</div>
               </div>
             </div>
           </div>
@@ -974,7 +994,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                     <div className={styles.userMenu}>
                       <div className={styles.userMenuHd}>
                         <div className={styles.userMenuName}>{user.name}</div>
-                        <div className={styles.userMenuRole}>{user.role}</div>
+                        <div className={styles.userMenuRole}>{roleLabel}</div>
                       </div>
                       <div className={styles.userMenuDivider} />
                       {(user.role === "ADMIN" || user.role === "MANAGER") && (
@@ -1166,7 +1186,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   <EvaluationList
                     evaluations={evaluations}
                     showAgent={user.role !== "AGENT"}
-                    emptyMessage={lang === "tr" ? "Henüz değerlendirme yok." : "No evaluations yet."}
+                    lang={lang}
                   />
                 </div>
               </div>
@@ -1309,18 +1329,16 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                           <span style={{ fontSize: 11.5, fontWeight: 400, color: "var(--fg-faint)", fontFamily: "'JetBrains Mono', monospace" }}>
                             {teamReportMode === "compare"
                               ? ` · ${compareIds.length}/3`
-                              : ` · ${teamReportSelectedIds.length}/${teamReportMembers.length}`}
+                              : ` · ${teamReportSelectedIds.length}/${teamReportMembers.length + (selectedTL ? 1 : 0)}`}
                           </span>
                         </h2>
                         {teamReportMode === "list" ? (
-                          <button className={styles.sectLink} onClick={() =>
-                            setTeamReportSelectedIds(
-                              teamReportSelectedIds.length === teamReportMembers.length
-                                ? []
-                                : teamReportMembers.map((m: any) => m.id)
-                            )
-                          }>
-                            {teamReportSelectedIds.length === teamReportMembers.length
+                          <button className={styles.sectLink} onClick={() => {
+                            const allIds = [...(selectedTL ? [selectedTL.id] : []), ...teamReportMembers.map((m: any) => m.id)];
+                            const total = teamReportMembers.length + (selectedTL ? 1 : 0);
+                            setTeamReportSelectedIds(teamReportSelectedIds.length === total ? [] : allIds);
+                          }}>
+                            {teamReportSelectedIds.length === teamReportMembers.length + (selectedTL ? 1 : 0)
                               ? (lang === "tr" ? "Seçimi Kaldır" : "Deselect All")
                               : (lang === "tr" ? "Tümünü Seç" : "Select All")}
                           </button>
@@ -1331,6 +1349,40 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                         )}
                       </div>
                       <div className={styles.trMemberGrid}>
+                        {selectedTL && (() => {
+                          const listSel = teamReportSelectedIds.includes(selectedTL.id);
+                          const cmpSel = compareIds.includes(selectedTL.id);
+                          const isActive = teamReportMode === "list" ? listSel : cmpSel;
+                          const disabled = teamReportMode === "compare" && !cmpSel && compareIds.length >= 3;
+                          return (
+                            <div
+                              key={selectedTL.id}
+                              className={`${styles.trMemberCard} ${isActive ? styles.trMemberCardActive : ""}`}
+                              style={{ cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.38 : 1, position: "relative" }}
+                              onClick={() => {
+                                if (disabled) return;
+                                if (teamReportMode === "list") {
+                                  setTeamReportSelectedIds(prev =>
+                                    prev.includes(selectedTL.id) ? prev.filter(id => id !== selectedTL.id) : [...prev, selectedTL.id]
+                                  );
+                                } else {
+                                  if (cmpSel) {
+                                    setCompareIds(prev => prev.filter(id => id !== selectedTL.id));
+                                    setCompareCurrentData(prev => { const n = { ...prev }; delete n[selectedTL.id]; return n; });
+                                    setComparePrevData(prev => { const n = { ...prev }; delete n[selectedTL.id]; return n; });
+                                  } else {
+                                    setCompareIds(prev => [...prev, selectedTL.id]);
+                                  }
+                                }
+                              }}
+                            >
+                              <div className={styles.trMemberAvatar} style={{ background: "rgba(52,211,153,.18)", color: "#34d399" }}>{selectedTL.name.charAt(0).toUpperCase()}</div>
+                              <div className={styles.trMemberName}>{selectedTL.name.split(" ")[0]}</div>
+                              <div style={{ fontSize: 8.5, color: "#34d399", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 2 }}>TL</div>
+                              {isActive && <div className={styles.trMemberCheck}>✓</div>}
+                            </div>
+                          );
+                        })()}
                         {teamReportMembers.map((m: any) => {
                           const listSel = teamReportSelectedIds.includes(m.id);
                           const cmpSel = compareIds.includes(m.id);
@@ -1482,7 +1534,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                                   {lang === "tr" ? "Danışman seçip Uygula'ya basın." : "Select consultants and press Apply."}
                                 </div>
                               ) : (
-                                <EvaluationList evaluations={teamReportEvals} showAgent emptyMessage={lang === "tr" ? "Sonuç bulunamadı." : "No results."} />
+                                <EvaluationList evaluations={teamReportEvals} showAgent lang={lang} emptyMessage={lang === "tr" ? "Sonuç bulunamadı." : "No results."} />
                               )}
                             </div>
                           </>
@@ -1604,7 +1656,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
             {/* ── PEER ── */}
             {activeTab === "peer" && (
               <div className={styles.page}>
-                <PeerComparisonView agentId={user.id} />
+                <PeerComparisonView agentId={user.id} lang={lang} />
               </div>
             )}
 
@@ -1707,7 +1759,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                     <EvaluationList
                       evaluations={filtered.slice(0, 50)}
                       showAgent
-                      emptyMessage={tr ? "Değerlendirme yok." : "No evaluations."}
+                      lang={lang}
                     />
                   </div>
                 </div>
@@ -1835,6 +1887,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                     <EvaluationList
                       evaluations={teamEvals}
                       showAgent
+                      lang={lang}
                       emptyMessage={lang === "tr" ? "Filtre uygulayın." : "Apply a filter."}
                     />
                   </div>
@@ -2098,6 +2151,12 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
             {activeTab === "negKeywords" && (user.role === "ADMIN" || user.role === "MANAGER") && (
               <div className={styles.page}>
                 <NegativeKeywordsReport lang={lang} />
+              </div>
+            )}
+
+            {activeTab === "coachingTracking" && isManagerLike && (
+              <div className={styles.page}>
+                <CoachingTrackingView lang={lang} />
               </div>
             )}
 
