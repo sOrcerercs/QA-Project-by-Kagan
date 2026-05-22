@@ -110,9 +110,11 @@ export default function CoachingTrackingView({ lang = "tr" }: CoachingTrackingVi
   const [endDate, setEndDate] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [fetched, setFetched] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
 
   const fetchData = useCallback(async (start?: string, end?: string) => {
     setLoading(true);
+    setFetchError(false);
     try {
       const params = new URLSearchParams();
       if (start) params.set("startDate", start);
@@ -123,7 +125,11 @@ export default function CoachingTrackingView({ lang = "tr" }: CoachingTrackingVi
         setSummary(data.summary);
         setAgents(data.agents);
         setFetched(true);
+      } else {
+        setFetchError(true);
       }
+    } catch {
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
@@ -186,6 +192,13 @@ export default function CoachingTrackingView({ lang = "tr" }: CoachingTrackingVi
         </div>
       )}
 
+      {/* Error state */}
+      {!loading && fetchError && (
+        <div style={{ padding: "48px 0", textAlign: "center", color: "#ef4444", fontSize: 14 }}>
+          {t.ctFetchError}
+        </div>
+      )}
+
       {/* Empty state */}
       {!loading && fetched && agents.length === 0 && (
         <div style={{ padding: "48px 0", textAlign: "center", color: "var(--fg-dim)", fontSize: 14 }}>
@@ -196,7 +209,7 @@ export default function CoachingTrackingView({ lang = "tr" }: CoachingTrackingVi
       {/* Prompt to apply filter */}
       {!loading && !fetched && (
         <div style={{ padding: "48px 0", textAlign: "center", color: "var(--fg-dim)", fontSize: 14 }}>
-          {lang === "tr" ? "Tarih aralığı seçip 'Uygula'ya basın." : "Select a date range and press 'Apply'."}
+          {t.ctApplyPrompt}
         </div>
       )}
 
@@ -218,9 +231,9 @@ export default function CoachingTrackingView({ lang = "tr" }: CoachingTrackingVi
               textTransform: "uppercase",
             }}
           >
-            <span>{lang === "tr" ? "Danışman" : "Consultant"}</span>
+            <span>{t.ctAgent}</span>
             <span>{t.ctTeam}</span>
-            <span style={{ textAlign: "center" }}>{lang === "tr" ? "Değ." : "Evals"}</span>
+            <span style={{ textAlign: "center" }}>{t.ctEvals}</span>
             <span style={{ textAlign: "center" }}>{t.ctRead}</span>
             <span style={{ textAlign: "center" }}>{t.ctCoaching}</span>
           </div>

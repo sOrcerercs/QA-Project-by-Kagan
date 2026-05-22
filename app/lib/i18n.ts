@@ -242,6 +242,9 @@ export const translations = {
     ctEvals: "değerlendirme",
     ctTeam: "Takım",
     ctNoTeam: "Takımsız",
+    ctApplyPrompt: "Tarih aralığı seçip 'Uygula'ya basın.",
+    ctAgent: "Danışman",
+    ctFetchError: "Veri yüklenirken hata oluştu.",
     noEvaluationsLast7Days: "Son 7 günde değerlendirme bulunamadı.",
   },
   en: {
@@ -485,6 +488,9 @@ export const translations = {
     ctEvals: "evaluations",
     ctTeam: "Team",
     ctNoTeam: "No Team",
+    ctApplyPrompt: "Select a date range and press 'Apply'.",
+    ctAgent: "Consultant",
+    ctFetchError: "An error occurred while loading data.",
     noEvaluationsLast7Days: "No evaluations found in the last 7 days.",
   },
 } as const;
