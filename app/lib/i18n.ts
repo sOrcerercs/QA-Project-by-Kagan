@@ -223,7 +223,6 @@ export const translations = {
     unlistenedSub: "Bu dönemde çağrıları değerlendirilemeyen danışmanlar",
     unlistenedCount: (n: number) => `Toplam ${n} danışmanın çağrısı dinlenemedi`,
     // Coaching Tracking
-    nav_coachingTracking: "Coaching Takibi",
     coachingTrackingTitle: "Coaching & Değerlendirme Takibi",
     coachingTrackingSub: "Değerlendirme okunma ve coaching tamamlanma takibi",
     ctTotalEvals: "Toplam Değerlendirme",
@@ -469,7 +468,6 @@ export const translations = {
     unlistenedSub: "Consultants with no evaluations this period",
     unlistenedCount: (n: number) => `${n} consultant(s) could not be listened`,
     // Coaching Tracking
-    nav_coachingTracking: "Coaching Tracking",
     coachingTrackingTitle: "Coaching & Evaluation Tracking",
     coachingTrackingSub: "Track evaluation reads and coaching completion",
     ctTotalEvals: "Total Evaluations",

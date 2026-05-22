@@ -115,6 +115,8 @@ export default function CoachingTrackingView({ lang = "tr" }: CoachingTrackingVi
   const fetchData = useCallback(async (start?: string, end?: string) => {
     setLoading(true);
     setFetchError(false);
+    setSummary(null);
+    setAgents([]);
     try {
       const params = new URLSearchParams();
       if (start) params.set("startDate", start);
