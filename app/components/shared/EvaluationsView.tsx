@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import EvaluationList from "@/app/components/shared/EvaluationList";
 
 type Preset = "all" | "week" | "month" | "3m" | "custom";
@@ -53,18 +53,23 @@ export default function EvaluationsView({ showAgent = true, lang = "tr" }: Evalu
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
 
-  const fetchEvaluations = async (startDate?: string, endDate?: string) => {
+  const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string) => {
     setLoading(true);
     const params = new URLSearchParams();
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
     const qs = params.toString();
-    const res = await fetch(`/api/evaluations${qs ? `?${qs}` : ""}`);
-    if (res.ok) setEvaluations((await res.json()).evaluations || []);
-    setLoading(false);
-  };
+    try {
+      const res = await fetch(`/api/evaluations${qs ? `?${qs}` : ""}`);
+      if (res.ok) setEvaluations((await res.json()).evaluations || []);
+    } catch {
+      // network error — leave existing list in place
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  useEffect(() => { fetchEvaluations(); }, []);
+  useEffect(() => { fetchEvaluations(); }, [fetchEvaluations]);
 
   const handlePreset = (p: Preset) => {
     setPreset(p);
