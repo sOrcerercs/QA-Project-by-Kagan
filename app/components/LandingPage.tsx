@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import AdminPanel from "@/app/components/shared/AdminPanel";
 import styles from "./LandingPage.module.css";
 import EvaluationList from "@/app/components/shared/EvaluationList";
+import EvaluationsView from "@/app/components/shared/EvaluationsView";
 import ScoreView from "@/app/components/shared/ScoreView";
 import ReportsView from "@/app/components/shared/ReportsView";
 import DateRangePicker from "@/app/components/shared/DateRangePicker";
@@ -1183,11 +1184,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   </p>
                 </div>
                 <div className={styles.card}>
-                  <EvaluationList
-                    evaluations={evaluations}
-                    showAgent={user.role !== "AGENT"}
-                    lang={lang}
-                  />
+                  <EvaluationsView showAgent={user.role !== "AGENT"} lang={lang} />
                 </div>
               </div>
             )}
