@@ -14,6 +14,7 @@ import PeerComparisonView from "@/app/components/shared/PeerComparisonView";
 import NegativeKeywordsReport from "@/app/components/shared/NegativeKeywordsReport";
 import LeaderboardView from "@/app/components/shared/LeaderboardView";
 import CoachingTrackingView from "@/app/components/shared/CoachingTrackingView";
+import SearchView from "@/app/components/shared/SearchView";
 
 /* ── Theme tokens ── */
 const DARK_THEME = {
@@ -43,6 +44,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     coachingTracking: "Coaching Takibi",
     leaderboard: "Sıralama",
     advisor: "Danışman Paneli",
+    search: "Arama",
   },
   en: {
     home: "Home", evaluations: "Evaluations", scores: "My Scores",
@@ -55,6 +57,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     coachingTracking: "Coaching Tracking",
     leaderboard: "Rankings",
     advisor: "Advisor Dashboard",
+    search: "Search",
   },
 };
 
@@ -633,6 +636,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     mainNavItems.push({ key: "peer", icon: "compare" });
   }
   mainNavItems.push({ key: "leaderboard", icon: "trophy" });
+  mainNavItems.push({ key: "search", icon: "search" });
   if (isManagerLike || user.role === "TEAM_LEADER") {
     mainNavItems.push({ key: "advisor", icon: "users" });
   }
@@ -2297,6 +2301,23 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── SEARCH ── */}
+            {activeTab === "search" && (
+              <div className={styles.page}>
+                <div className={styles.pageHd}>
+                  <h1 className={styles.pageH1}>{navLabels.search}</h1>
+                  <p className={styles.pageSub}>
+                    {lang === "tr"
+                      ? "Müşteri adı veya transkript içeriğine göre ara"
+                      : "Search by customer name or transcript content"}
+                  </p>
+                </div>
+                <div className={styles.card}>
+                  <SearchView lang={lang} />
                 </div>
               </div>
             )}
