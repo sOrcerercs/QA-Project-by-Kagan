@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       where: { teamId: leadingTeam.id },
       select: { id: true },
     });
-    agentWhere = { agentId: { in: members.map((m) => m.id) } };
+    agentWhere = { agentId: { in: [user.id, ...members.map((m) => m.id)] } };
   }
 
   const results = await prisma.evaluation.findMany({
