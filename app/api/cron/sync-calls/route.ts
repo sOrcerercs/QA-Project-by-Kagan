@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (unassigned > 0) {
-      const admins = await prisma.user.findMany({ where: { role: { in: ["ADMIN", "MANAGER"] } }, select: { id: true } });
+      const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
       await prisma.notification.createMany({
         data: admins.map(a => ({
           userId: a.id,

@@ -38,6 +38,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const startDateParam = searchParams.get("startDate");
+  const endDateParam = searchParams.get("endDate");
+
+  // Default: last 30 days
+  const rangeStart = startDateParam
+    ? new Date(startDateParam)
+    : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const rangeEnd = endDateParam
+    ? new Date(endDateParam + "T23:59:59.999Z")
+    : new Date();
+
+  const dateFilter = { callDate: { gte: rangeStart, lte: rangeEnd } };
+
   // Determine team members
   let teamMembers: { id: string }[] = [];
   if (user.role === "AGENT" && user.teamId) {
@@ -60,7 +74,7 @@ export async function GET(req: NextRequest) {
 
   // My evaluations
   const myEvals = await prisma.evaluation.findMany({
-    where: { agentId: user.id },
+    where: { agentId: user.id, ...dateFilter },
     select: { score: true, sectionScores: true, weakCriteria: true },
   });
 
@@ -116,7 +130,7 @@ export async function GET(req: NextRequest) {
     const teamIds = teamMembers.map(m => m.id);
 
     const allTeamEvals = await prisma.evaluation.findMany({
-      where: { agentId: { in: teamIds } },
+      where: { agentId: { in: teamIds }, ...dateFilter },
       select: { score: true, sectionScores: true, weakCriteria: true },
     });
 

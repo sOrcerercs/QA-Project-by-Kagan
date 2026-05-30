@@ -612,16 +612,22 @@ export default function EvaluationDetailPage({
             <div className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
               {t.transcript}
             </div>
-            {evaluation.recordingUrl && (
-              <a
-                href={evaluation.recordingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-primary hover:opacity-80 transition-opacity font-semibold"
-              >
-                {t.listenOnFireflies} ↗
-              </a>
-            )}
+            {(() => {
+              const fireUrl = evaluation.recordingUrl ||
+                (evaluation.source === "FIREFLIES" && evaluation.externalCallId
+                  ? `https://app.fireflies.ai/view/${evaluation.externalCallId.replace(/^ff_/, "")}`
+                  : null);
+              return fireUrl ? (
+                <a
+                  href={fireUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-primary hover:opacity-80 transition-opacity font-semibold"
+                >
+                  {t.listenOnFireflies} ↗
+                </a>
+              ) : null;
+            })()}
           </div>
           {evaluation.transcript ? (
             <div className="leading-relaxed">{formatTranscript(evaluation.transcript)}</div>

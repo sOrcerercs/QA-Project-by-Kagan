@@ -66,6 +66,7 @@ const PANEL_T = {
     newUser: "Yeni Kullanıcı",
     labelName: "Ad Soyad", labelEmail: "E-posta", labelPassword: "Şifre",
     labelRole: "Rol", labelTeamOptional: "Takım (opsiyonel)", selectTeamLeader: "— Takım lideri seçin —",
+    labelManager: "Manager (opsiyonel)", selectManager: "— Manager seçin —", noManager: "Atama yok",
     adding: "Ekleniyor...", addUser: "Kullanıcı Ekle", userCreated: "Kullanıcı oluşturuldu.",
     usersHeading: "Kullanıcılar", usersCount: (n: number) => `${n} kullanıcı`,
     noUsers: "Kullanıcı bulunamadı.", editUserHeading: "Kullanıcıyı Düzenle",
@@ -87,7 +88,7 @@ const PANEL_T = {
     noLogs: "Henüz aktivite logu yok.",
     feedbacksHeading: "Geri Bildirimler", noFeedbacks: "Henüz geri bildirim yok.",
     krikoNotConfigured: "Kriko API yapılandırılmamış",
-    krikoActive: "Kriko API aktif — Otomatik senkron her 30 dakikada bir çalışır",
+    krikoActive: "Kriko API aktif — Otomatik senkron her 6 saatte bir çalışır",
     krikoNotConfiguredHint: "Lütfen .env.local içine KRIKO_API_KEY ve KRIKO_API_BASE ekleyin.",
     krikoFilter: "Filtre: süre ≥ 2 dk.",
     manualSync: "Manuel Senkronizasyon", labelDate: "Tarih (boş = dün)",
@@ -101,7 +102,7 @@ const PANEL_T = {
     krikoUnassigned: "Kriko — Atanmamış Çağrılar", ffUnassigned: "Fireflies — Atanmamış Çağrılar",
     selectAgent: "— Danışman seç —", assign: "Ata", transcript: "Transkript",
     ffNotConfigured: "Fireflies API yapılandırılmamış",
-    ffActive: (n: number) => n > 0 ? `Fireflies API aktif — Otomatik senkron her saat çalışır · ${n} atanmamış çağrı` : "Fireflies API aktif — Otomatik senkron her saat çalışır",
+    ffActive: (n: number) => n > 0 ? `Fireflies API aktif — Otomatik senkron her 4 saatte bir çalışır · ${n} atanmamış çağrı` : "Fireflies API aktif — Otomatik senkron her 4 saatte bir çalışır",
     ffNotConfiguredHint: "Lütfen .env.local içine FIREFLIES_API_KEY ekleyin.",
     ffFilter: "Filtre: süre ≥ 2 dk, en az 50 karakter transkript.",
     statFetched: "Çekilen", statAnalyzable: "Analiz", statImport: "Import",
@@ -144,6 +145,7 @@ const PANEL_T = {
     newUser: "New User",
     labelName: "Full Name", labelEmail: "Email", labelPassword: "Password",
     labelRole: "Role", labelTeamOptional: "Team (optional)", selectTeamLeader: "— Select team leader —",
+    labelManager: "Manager (optional)", selectManager: "— Select manager —", noManager: "No assignment",
     adding: "Adding...", addUser: "Add User", userCreated: "User created.",
     usersHeading: "Users", usersCount: (n: number) => `${n} user${n !== 1 ? "s" : ""}`,
     noUsers: "No users found.", editUserHeading: "Edit User",
@@ -165,7 +167,7 @@ const PANEL_T = {
     noLogs: "No activity logs yet.",
     feedbacksHeading: "Feedback", noFeedbacks: "No feedback yet.",
     krikoNotConfigured: "Kriko API not configured",
-    krikoActive: "Kriko API active — Auto sync runs every 30 minutes",
+    krikoActive: "Kriko API active — Auto sync runs every 6 hours",
     krikoNotConfiguredHint: "Please add KRIKO_API_KEY and KRIKO_API_BASE to .env.local.",
     krikoFilter: "Filter: duration ≥ 2 min.",
     manualSync: "Manual Sync", labelDate: "Date (empty = yesterday)",
@@ -179,7 +181,7 @@ const PANEL_T = {
     krikoUnassigned: "Kriko — Unassigned Calls", ffUnassigned: "Fireflies — Unassigned Calls",
     selectAgent: "— Select agent —", assign: "Assign", transcript: "Transcript",
     ffNotConfigured: "Fireflies API not configured",
-    ffActive: (n: number) => n > 0 ? `Fireflies API active — Auto sync runs every hour · ${n} unassigned call${n !== 1 ? "s" : ""}` : "Fireflies API active — Auto sync runs every hour",
+    ffActive: (n: number) => n > 0 ? `Fireflies API active — Auto sync runs every 4 hours · ${n} unassigned call${n !== 1 ? "s" : ""}` : "Fireflies API active — Auto sync runs every 4 hours",
     ffNotConfiguredHint: "Please add FIREFLIES_API_KEY to .env.local.",
     ffFilter: "Filter: duration ≥ 2 min, transcript ≥ 50 chars.",
     statFetched: "Fetched", statAnalyzable: "Analyzed", statImport: "Imported",
@@ -251,6 +253,8 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("AGENT");
   const [editTeamId, setEditTeamId] = useState("");
+  const [newUserManagerId, setNewUserManagerId] = useState("");
+  const [editManagerId, setEditManagerId] = useState("");
   const [editNewPassword, setEditNewPassword] = useState("");
   const [editUserMsg, setEditUserMsg] = useState("");
   const [editUserStatus, setEditUserStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
@@ -451,6 +455,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     setEditingUserId(u.id);
     setEditName(u.name || ""); setEditEmail(u.email || "");
     setEditRole(u.role || "AGENT"); setEditTeamId(u.teamId || u.team?.id || "");
+    setEditManagerId(u.managerId || "");
     setEditNewPassword(""); setEditUserMsg(""); setEditUserStatus("idle");
   };
 
@@ -458,6 +463,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     if (!editingUserId) return;
     setEditUserStatus("saving"); setEditUserMsg("");
     const body: any = { name: editName, email: editEmail, role: editRole, teamId: editTeamId || null };
+    if (editRole === "TEAM_LEADER") body.managerId = editManagerId || null;
     if (editNewPassword) body.newPassword = editNewPassword;
     const res = await fetch(`/api/users/${editingUserId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -473,13 +479,13 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     setNewUserLoading(true); setNewUserMsg("");
     const res = await fetch("/api/users", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newUserName, email: newUserEmail, password: newUserPassword, role: newUserRole, leaderId: newUserLeaderId || null }),
+      body: JSON.stringify({ name: newUserName, email: newUserEmail, password: newUserPassword, role: newUserRole, leaderId: newUserLeaderId || null, managerId: newUserRole === "TEAM_LEADER" ? (newUserManagerId || null) : undefined }),
     });
     const data = await res.json();
     if (!res.ok) { setNewUserMsgOk(false); setNewUserMsg(data.error || t.errorOccurred); }
     else {
       setNewUserMsgOk(true); setNewUserMsg(t.userCreated);
-      setNewUserName(""); setNewUserEmail(""); setNewUserPassword(""); setNewUserRole("AGENT"); setNewUserLeaderId("");
+      setNewUserName(""); setNewUserEmail(""); setNewUserPassword(""); setNewUserRole("AGENT"); setNewUserLeaderId(""); setNewUserManagerId("");
       fetchUsers();
     }
     setNewUserLoading(false);
@@ -660,6 +666,8 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   );
 
   const isAdmin = user.role === "ADMIN";
+  const managers = users.filter((u: any) => u.role === "MANAGER");
+  const managerOptions = user.role === "MANAGER" ? managers.filter((m: any) => m.id === user.id) : managers;
   const allTabs: { key: AdminTab; label: string; icon: string }[] = [
     { key: "users", label: t.tabs.users, icon: "users" },
     { key: "prompts", label: t.tabs.prompts, icon: "spark" },
@@ -670,7 +678,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     { key: "recentCalls", label: t.tabs.recentCalls, icon: "phone" },
     { key: "reclassify", label: t.tabReclassify, icon: "refresh" },
   ];
-  const adminOnlyTabs: AdminTab[] = ["feedbacks", "sync", "syncHistory", "recentCalls", "reclassify"];
+  const adminOnlyTabs: AdminTab[] = ["logs", "feedbacks", "sync", "syncHistory", "recentCalls", "reclassify"];
   const tabs = isAdmin ? allTabs : allTabs.filter(tb => !adminOnlyTabs.includes(tb.key));
 
   const unreadCount = feedbacks.filter(f => !f.isRead).length;
@@ -714,8 +722,8 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                 <select className={styles.formSelect} value={newUserRole} onChange={e => { setNewUserRole(e.target.value); if (e.target.value !== "AGENT") setNewUserLeaderId(""); }}>
                   <option value="AGENT">{t.roles.AGENT}</option>
                   <option value="TEAM_LEADER">{t.roles.TEAM_LEADER}</option>
-                  <option value="MANAGER">{t.roles.MANAGER}</option>
-                  <option value="ADMIN">{t.roles.ADMIN}</option>
+                  {isAdmin && <option value="MANAGER">{t.roles.MANAGER}</option>}
+                  {isAdmin && <option value="ADMIN">{t.roles.ADMIN}</option>}
                 </select>
               </div>
               {newUserRole === "AGENT" && (
@@ -724,6 +732,15 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                   <select className={styles.formSelect} value={newUserLeaderId} onChange={e => setNewUserLeaderId(e.target.value)}>
                     <option value="">{t.selectTeamLeader}</option>
                     {users.filter((u: any) => u.role === "TEAM_LEADER").map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {newUserRole === "TEAM_LEADER" && (
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label className={styles.fbLabel}>{t.labelManager}</label>
+                  <select className={styles.formSelect} value={newUserManagerId} onChange={e => setNewUserManagerId(e.target.value)}>
+                    <option value="">{t.selectManager}</option>
+                    {managerOptions.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
                 </div>
               )}
@@ -749,7 +766,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                     <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(59,130,246,.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--accent)", fontWeight: 700, flexShrink: 0 }}>{u.name.charAt(0).toUpperCase()}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, color: "var(--fg)", fontWeight: 500 }}>{u.name}</div>
-                      <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>{u.email}{u.team ? ` · ${u.team.name}` : ""}</div>
+                      <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>{u.email}{u.team ? ` · ${u.team.name}` : ""}{u.role === "TEAM_LEADER" && u.manager ? ` · ${u.manager.name}` : ""}</div>
                     </div>
                     <span style={{ fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 5, fontFamily: "'JetBrains Mono', monospace", background: roleBg[u.role] || "rgba(255,255,255,.06)", color: roleFg[u.role] || "var(--fg-faint)" }}>{roleLabel(u.role)}</span>
                     <span style={{ color: "var(--fg-faint)", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 200ms" }}><Icon name="chevron" size={14} /></span>
@@ -763,7 +780,10 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                         <div>
                           <label className={styles.fbLabel}>{t.labelRole}</label>
                           <select className={styles.formSelect} value={editRole} onChange={e => { setEditRole(e.target.value); if (e.target.value !== "AGENT") setEditTeamId(""); setEditUserMsg(""); setEditUserStatus("idle"); }}>
-                            <option value="AGENT">{t.roles.AGENT}</option><option value="TEAM_LEADER">{t.roles.TEAM_LEADER}</option><option value="MANAGER">{t.roles.MANAGER}</option><option value="ADMIN">{t.roles.ADMIN}</option>
+                            <option value="AGENT">{t.roles.AGENT}</option>
+                            <option value="TEAM_LEADER">{t.roles.TEAM_LEADER}</option>
+                            {isAdmin && <option value="MANAGER">{t.roles.MANAGER}</option>}
+                            {isAdmin && <option value="ADMIN">{t.roles.ADMIN}</option>}
                           </select>
                         </div>
                         {editRole === "AGENT" ? (
@@ -779,12 +799,21 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                         {editRole === "AGENT" && (
                           <div style={{ gridColumn: "1 / -1" }}><label className={styles.fbLabel}>{t.labelNewPassword}</label><input type="password" className={styles.formInput} value={editNewPassword} onChange={e => { setEditNewPassword(e.target.value); setEditUserMsg(""); setEditUserStatus("idle"); }} placeholder={t.passwordPlaceholder} /></div>
                         )}
+                        {editRole === "TEAM_LEADER" && (
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <label className={styles.fbLabel}>{t.labelManager}</label>
+                            <select className={styles.formSelect} value={editManagerId} onChange={e => { setEditManagerId(e.target.value); setEditUserMsg(""); setEditUserStatus("idle"); }}>
+                              <option value="">{t.noManager}</option>
+                              {managerOptions.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                            </select>
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
                         <button onClick={handleSaveUser} disabled={editUserStatus === "saving"} className={`${styles.btn} ${styles.btnPrimary}`} style={{ borderRadius: 9, opacity: editUserStatus === "saving" ? 0.6 : 1 }}>
                           {editUserStatus === "saving" ? t.saving : t.save}
                         </button>
-                        <button onClick={() => { setEditingUserId(null); setEditUserMsg(""); setEditUserStatus("idle"); }} style={{ fontSize: 12.5, color: "var(--fg-faint)", background: "none", border: "none", cursor: "pointer" }}>{t.cancel}</button>
+                        <button onClick={() => { setEditingUserId(null); setEditUserMsg(""); setEditUserStatus("idle"); setEditManagerId(""); }} style={{ fontSize: 12.5, color: "var(--fg-faint)", background: "none", border: "none", cursor: "pointer" }}>{t.cancel}</button>
                         {editUserMsg && <span style={{ fontSize: 12, color: editUserStatus === "success" ? "#34d399" : "#f87171" }}>{editUserMsg}</span>}
                       </div>
                     </div>

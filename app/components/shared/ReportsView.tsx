@@ -55,7 +55,7 @@ export default function ReportsView({ agentId, lang = "tr" }: ReportsViewProps) 
             </p>
             {autoReportPeriod && (
               <p style={{ fontSize: 11, color: "var(--fg-dim)", marginTop: 4 }}>
-                {new Date(autoReportPeriod.start).toLocaleDateString("tr-TR")} — {new Date(autoReportPeriod.end).toLocaleDateString("tr-TR")}
+                {new Date(autoReportPeriod.start).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR")} — {new Date(autoReportPeriod.end).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR")}
               </p>
             )}
           </div>

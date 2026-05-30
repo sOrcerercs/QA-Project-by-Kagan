@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   }
 
   const dateFilter = startDate || endDate ? {
-    createdAt: {
+    callDate: {
       ...(startDate && { gte: new Date(startDate) }),
       ...(endDate && { lte: new Date(endDate + "T23:59:59.999Z") }),
     },
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
     weekEnd.setDate(weekEnd.getDate() + 7);
 
     const weekEvals = evaluations.filter(e => {
-      const d = new Date(e.createdAt);
+      const d = new Date(e.callDate);
       return d >= weekStart && d < weekEnd;
     });
     const weekAvg = weekEvals.length > 0 ? Math.round(weekEvals.reduce((s, e) => s + e.score, 0) / weekEvals.length) : 0;

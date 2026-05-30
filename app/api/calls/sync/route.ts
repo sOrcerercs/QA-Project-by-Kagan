@@ -129,7 +129,7 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
   const sectionScores = result.data.sectionScores ?? null;
 
   // Evaluation kaydet
-  await prisma.evaluation.create({
+  const evaluation = await prisma.evaluation.create({
     data: {
       agentId,
       customerName: call.customer_name || "Bilinmiyor",
@@ -152,13 +152,31 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
     },
   });
 
+  if (!isUnassigned) {
+    const agent = await prisma.user.findUnique({ where: { id: agentId }, select: { teamId: true } });
+    const notifyIds: string[] = [agentId];
+    if (agent?.teamId) {
+      const team = await prisma.team.findUnique({ where: { id: agent.teamId }, select: { leaderId: true } });
+      if (team?.leaderId) notifyIds.push(team.leaderId);
+    }
+    await prisma.notification.createMany({
+      data: notifyIds.map(uid => ({
+        userId: uid,
+        type: "EVALUATION",
+        message: `${call.customer_name || "Bilinmiyor"} için değerlendirme tamamlandı. Skor: %${score}`,
+        referenceId: evaluation.id,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   return { status: isUnassigned ? "unassigned" as const : "imported" as const, agentName: call.agent_name };
 }
 
 /** Tüm admin'lere atanmamış çağrı bildirimi gönder */
 async function notifyAdminsOfUnassigned(count: number) {
   if (count === 0) return;
-  const admins = await prisma.user.findMany({ where: { role: { in: ["ADMIN", "MANAGER"] } }, select: { id: true } });
+  const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
   await prisma.notification.createMany({
     data: admins.map(a => ({
       userId: a.id,

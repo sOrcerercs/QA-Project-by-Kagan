@@ -166,7 +166,7 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
   const weakCriteria = result.data.weakCriteria ?? null;
   const sectionScores = result.data.sectionScores ?? null;
 
-  await prisma.evaluation.create({
+  const evaluation = await prisma.evaluation.create({
     data: {
       agentId: finalAgentId,
       customerName: finalCustomerName,
@@ -187,6 +187,24 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
     },
   });
 
+  if (!finalIsUnassigned) {
+    const agent = await prisma.user.findUnique({ where: { id: finalAgentId }, select: { teamId: true } });
+    const notifyIds: string[] = [finalAgentId];
+    if (agent?.teamId) {
+      const team = await prisma.team.findUnique({ where: { id: agent.teamId }, select: { leaderId: true } });
+      if (team?.leaderId) notifyIds.push(team.leaderId);
+    }
+    await prisma.notification.createMany({
+      data: notifyIds.map(uid => ({
+        userId: uid,
+        type: "EVALUATION",
+        message: `${finalCustomerName} için değerlendirme tamamlandı. Skor: %${score}`,
+        referenceId: evaluation.id,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   return {
     status: finalIsUnassigned ? "unassigned" as const : "imported" as const,
     agentName: finalAgentName,
@@ -196,7 +214,7 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
 async function notifyAdminsOfUnassigned(count: number) {
   if (count === 0) return;
   const admins = await prisma.user.findMany({
-    where: { role: { in: ["ADMIN", "MANAGER"] } },
+    where: { role: "ADMIN" },
     select: { id: true },
   });
   await prisma.notification.createMany({

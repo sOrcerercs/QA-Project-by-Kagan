@@ -25,19 +25,23 @@ interface EvaluationListProps {
   showAgent?: boolean;
   detailLabel?: string;
   emptyMessage?: string;
+  lang?: "tr" | "en";
 }
 
 export default function EvaluationList({
   evaluations,
   showAgent = true,
-  detailLabel = "Detay",
-  emptyMessage = "Henüz değerlendirme yok.",
+  detailLabel,
+  emptyMessage,
+  lang = "tr",
 }: EvaluationListProps) {
+  const resolvedDetailLabel = detailLabel ?? (lang === "en" ? "Detail" : "Detay");
+  const resolvedEmptyMessage = emptyMessage ?? (lang === "en" ? "No evaluations yet." : "Henüz değerlendirme yok.");
   if (evaluations.length === 0) {
     return (
       <div style={{ padding: "48px 0", textAlign: "center" }}>
         <MIcon name="call" className="text-6xl opacity-10 block mx-auto mb-4" />
-        <p style={{ color: "var(--fg-dim)", fontSize: 13 }}>{emptyMessage}</p>
+        <p style={{ color: "var(--fg-dim)", fontSize: 13 }}>{resolvedEmptyMessage}</p>
       </div>
     );
   }
@@ -74,7 +78,7 @@ export default function EvaluationList({
 
           <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
             <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>
-              {new Date(ev.createdAt).toLocaleDateString("tr-TR")}
+              {new Date(ev.createdAt).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR")}
             </span>
             <span style={{ fontWeight: 700, fontSize: 14, color: scoreColor(ev.score) }}>
               %{ev.score}
@@ -83,7 +87,7 @@ export default function EvaluationList({
               href={`/evaluation/${ev.id}`}
               style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--fg-dim)", textDecoration: "none" }}
             >
-              {detailLabel} <ArrowUpRight size={12} />
+              {resolvedDetailLabel} <ArrowUpRight size={12} />
             </Link>
           </div>
         </motion.div>

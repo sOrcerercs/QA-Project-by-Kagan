@@ -11,8 +11,8 @@ export interface FirefliesSentence {
 export interface FirefliesTranscript {
   id: string;
   title: string;
-  date: string;        // ISO datetime string
-  duration: number;    // dakika cinsinden
+  date: number;          // Unix timestamp (ms)
+  duration: number | null; // dakika cinsinden, bazen null
   host_email: string | null;
   participants: string[];  // email adresleri
   sentences: FirefliesSentence[];
@@ -20,9 +20,11 @@ export interface FirefliesTranscript {
 
 const FIREFLIES_ENDPOINT = "https://api.fireflies.ai/graphql";
 
+// fromDate/toDate filtresi yerine limit+client-side filtreleme kullanıyoruz
+// çünkü Fireflies DateTime scalar'ı tutarsız davranıyor
 const TRANSCRIPTS_QUERY = `
-  query Transcripts($fromDate: String, $toDate: String) {
-    transcripts(fromDate: $fromDate, toDate: $toDate) {
+  query Transcripts {
+    transcripts {
       id
       title
       date
@@ -53,10 +55,7 @@ export async function fetchTranscriptsByDate(date: string): Promise<FirefliesTra
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      query: TRANSCRIPTS_QUERY,
-      variables: { fromDate: date, toDate: date },
-    }),
+    body: JSON.stringify({ query: TRANSCRIPTS_QUERY }),
     cache: "no-store",
   });
 
@@ -73,7 +72,14 @@ export async function fetchTranscriptsByDate(date: string): Promise<FirefliesTra
   if (!json.data?.transcripts) {
     throw new Error("Fireflies API yanıtında 'data.transcripts' yok.");
   }
-  return json.data.transcripts as FirefliesTranscript[];
+
+  // Client-side tarih filtresi: sadece istenen günün kayıtlarını döndür
+  const dayStart = new Date(`${date}T00:00:00.000Z`).getTime();
+  const dayEnd = new Date(`${date}T23:59:59.999Z`).getTime();
+
+  return (json.data.transcripts as FirefliesTranscript[]).filter(
+    t => t.date >= dayStart && t.date <= dayEnd
+  );
 }
 
 export function filterAnalyzableTranscripts(
@@ -81,6 +87,7 @@ export function filterAnalyzableTranscripts(
   minDurationMinutes = 2
 ): FirefliesTranscript[] {
   return transcripts.filter(t =>
+    t.duration != null &&
     t.duration >= minDurationMinutes &&
     t.sentences.length > 0 &&
     buildTranscriptText(t.sentences).trim().length > 50

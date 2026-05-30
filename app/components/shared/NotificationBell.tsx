@@ -91,11 +91,21 @@ export default function NotificationBell({ lang }: Props) {
       router.push("/settings/admin?tab=feedbacks");
     } else if (n.type === "EVALUATION" && n.referenceId) {
       router.push(`/evaluation/${n.referenceId}`);
+    } else if (n.type === "UNASSIGNED_CALL") {
+      router.push("/settings/admin?tab=sync");
     }
   };
 
-  const typeIcon = (type: string) => type === "FEEDBACK" ? "feedback" : "assessment";
-  const typeLabel = (type: string) => type === "FEEDBACK" ? t.feedback : t.evaluation;
+  const typeIcon = (type: string) => {
+    if (type === "FEEDBACK") return "feedback";
+    if (type === "UNASSIGNED_CALL") return "person_add";
+    return "assessment";
+  };
+  const typeLabel = (type: string) => {
+    if (type === "FEEDBACK") return t.feedback;
+    if (type === "UNASSIGNED_CALL") return lang === "tr" ? "Atanmamış Çağrı" : "Unassigned Call";
+    return t.evaluation;
+  };
 
   return (
     <div ref={ref} className="relative">
