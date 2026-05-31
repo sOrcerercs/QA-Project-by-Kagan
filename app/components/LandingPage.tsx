@@ -698,6 +698,14 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                 <img src="/estenove-mark.png" alt="Estenove" className={styles.markIcon} />
                 <span className={styles.markWord}>Estenove</span>
               </button>
+              {/* Hamburger — mobile only, shown via CSS */}
+              <button
+                className={styles.hamburger}
+                onClick={() => setDrawerOpen(v => !v)}
+                aria-label="Menu"
+              >
+                <span /><span /><span />
+              </button>
 
               {/* Numbered nav */}
               <nav className={styles.landingNav}>
@@ -818,9 +826,16 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
           ══════════════════════════════════════════════════ */}
       {activeTab !== "home" && (
       <div className={styles.shell}>
+        {/* Drawer backdrop — mobile/iPad */}
+        {drawerOpen && (
+          <div
+            className={styles.drawerBackdrop}
+            onClick={() => setDrawerOpen(false)}
+          />
+        )}
 
         {/* ── Sidebar ── */}
-        <aside className={styles.sb}>
+        <aside className={`${styles.sb}${drawerOpen ? ` ${styles.sbDrawerOpen}` : ""}`}>
           {/* Brand */}
           <button className={styles.sbBrand} onClick={() => handleTab("home")}>
             <img src="/estenove-mark.png" alt="Estenove" className={styles.sbMark} />
@@ -956,6 +971,14 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
 
           {/* ── Topbar ── */}
           <div className={styles.tb}>
+            {/* Hamburger — mobile/iPad only, shown via CSS */}
+            <button
+              className={styles.hamburger}
+              onClick={() => setDrawerOpen(v => !v)}
+              aria-label="Menu"
+            >
+              <span /><span /><span />
+            </button>
             <div className={styles.tbSearch}>
               <Icon name="search" size={14} />
               <span style={{ fontSize: 13 }}>{lang === "tr" ? "Ara..." : "Search..."}</span>
