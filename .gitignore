@@ -44,5 +44,6 @@ next-env.d.ts
 
 # superpowers brainstorm files
 .superpowers/
+docs/superpowers/
 QA Project
 /.claude/
