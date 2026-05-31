@@ -818,6 +818,31 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
               <span className={styles.scrollLabel}>Scroll</span>
             </div>
           </div>
+
+          {/* Bottom bar on landing home — mobile only, no drawer (sidebar not rendered here) */}
+          <nav className={styles.bottomBar} style={{ position: "fixed" }}>
+            <button
+              className={styles.bottomBarItem}
+              onClick={() => handleTab("evaluations")}
+            >
+              <Icon name="list" size={20} />
+              <span>{lang === "tr" ? "Değ." : "Evals"}</span>
+            </button>
+            <button
+              className={styles.bottomBarItem}
+              onClick={() => handleTab(user.role === "AGENT" ? "scores" : "reports")}
+            >
+              <Icon name={user.role === "AGENT" ? "star" : "doc"} size={20} />
+              <span>{user.role === "AGENT" ? (lang === "tr" ? "Skor" : "Scores") : (lang === "tr" ? "Rapor" : "Reports")}</span>
+            </button>
+            <button
+              className={`${styles.bottomBarItem} ${styles.bottomBarItemActive}`}
+              onClick={() => handleTab("home")}
+            >
+              <Icon name="home" size={20} />
+              <span>{lang === "tr" ? "Ana" : "Home"}</span>
+            </button>
+          </nav>
         </div>
       )}
 
@@ -2348,6 +2373,43 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
             )}
 
           </div>
+
+          {/* ── Bottom Tab Bar — mobile only (hidden on desktop via CSS) ── */}
+          {(() => {
+            type BottomTab = { key: string; icon: string; label: string };
+            const agentTabs: BottomTab[] = [
+              { key: "home",        icon: "home",   label: lang === "tr" ? "Ana"    : "Home" },
+              { key: "evaluations", icon: "list",   label: lang === "tr" ? "Değ."   : "Evals" },
+              { key: "scores",      icon: "star",   label: lang === "tr" ? "Skor"   : "Scores" },
+            ];
+            const otherTabs: BottomTab[] = [
+              { key: "home",        icon: "home",    label: lang === "tr" ? "Ana"     : "Home" },
+              { key: "evaluations", icon: "list",    label: lang === "tr" ? "Değ."    : "Evals" },
+              { key: "reports",     icon: "doc",     label: lang === "tr" ? "Rapor"   : "Reports" },
+            ];
+            const tabs = user.role === "AGENT" ? agentTabs : otherTabs;
+            return (
+              <nav className={styles.bottomBar}>
+                {tabs.map(({ key, icon, label }) => (
+                  <button
+                    key={key}
+                    className={`${styles.bottomBarItem}${activeTab === key ? ` ${styles.bottomBarItemActive}` : ""}`}
+                    onClick={() => handleTab(key)}
+                  >
+                    <Icon name={icon} size={20} />
+                    <span>{label}</span>
+                  </button>
+                ))}
+                <button
+                  className={styles.bottomBarItem}
+                  onClick={() => setDrawerOpen(v => !v)}
+                >
+                  <Icon name="list" size={20} />
+                  <span>{lang === "tr" ? "Menü" : "Menu"}</span>
+                </button>
+              </nav>
+            );
+          })()}
         </div>
       </div>
       )}
