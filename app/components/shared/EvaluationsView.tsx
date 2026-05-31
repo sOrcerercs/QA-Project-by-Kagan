@@ -10,6 +10,7 @@ interface Evaluation {
   score: number;
   customerName: string;
   callDuration: string;
+  callDate: string;
   createdAt: string;
   agent?: { name: string };
 }

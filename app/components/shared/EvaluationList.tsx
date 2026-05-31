@@ -16,6 +16,7 @@ interface Evaluation {
   score: number;
   customerName: string;
   callDuration: string;
+  callDate: string;
   createdAt: string;
   agent?: { name: string };
 }
@@ -77,9 +78,16 @@ export default function EvaluationList({
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>
-              {new Date(ev.createdAt).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR")}
-            </span>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+              <span style={{ fontSize: 10, color: "var(--fg-faint)" }}>
+                {lang === "tr" ? "Değerlendirme Tarihi" : "Evaluation Date"}:{" "}
+                {new Date(ev.callDate).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR")}
+              </span>
+              <span style={{ fontSize: 10, color: "var(--fg-faint)" }}>
+                {lang === "tr" ? "Kayıt" : "Record"}:{" "}
+                {new Date(ev.createdAt).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR")}
+              </span>
+            </div>
             <span style={{ fontWeight: 700, fontSize: 14, color: scoreColor(ev.score) }}>
               %{ev.score}
             </span>
