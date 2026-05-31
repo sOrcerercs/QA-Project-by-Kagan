@@ -194,6 +194,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     return new URLSearchParams(window.location.search).get("tab") || "home";
   });
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [evaluations, setEvaluations] = useState<any[]>([]);
 
   /* status page filters */
@@ -343,6 +344,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
 
   /* ── Tab change ── */
   const handleTab = (tab: string) => {
+    setDrawerOpen(false);
     setActiveTab(tab);
     const url = tab === "home" ? window.location.pathname : `${window.location.pathname}?tab=${tab}`;
     window.history.pushState({ tab }, "", url);
