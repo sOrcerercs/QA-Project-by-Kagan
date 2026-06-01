@@ -20,11 +20,13 @@ export interface FirefliesTranscript {
 
 const FIREFLIES_ENDPOINT = "https://api.fireflies.ai/graphql";
 
-// fromDate/toDate filtresi yerine limit+client-side filtreleme kullanıyoruz
-// çünkü Fireflies DateTime scalar'ı tutarsız davranıyor
+// Fireflies parametresiz çağrıldığında yalnızca en yeni ~50 kaydı döner;
+// birkaç gün öncesi bu pencereden düşer. Bu yüzden fromDate/toDate ile
+// sunucu tarafında tam İstanbul gün aralığını filtreliyoruz (tam ISO
+// timestamp verildiğinde DateTime scalar'ı doğru çalışıyor).
 const TRANSCRIPTS_QUERY = `
-  query Transcripts {
-    transcripts {
+  query Transcripts($fromDate: DateTime, $toDate: DateTime) {
+    transcripts(fromDate: $fromDate, toDate: $toDate) {
       id
       title
       date
@@ -49,13 +51,23 @@ export async function fetchTranscriptsByDate(date: string): Promise<FirefliesTra
   const apiKey = process.env.FIREFLIES_API_KEY;
   if (!apiKey) throw new Error("FIREFLIES_API_KEY eksik.");
 
+  // İstanbul (UTC+3, DST yok) gün sınırları — Fireflies date alanı UTC ms.
+  const dayStart = new Date(`${date}T00:00:00.000+03:00`).getTime();
+  const dayEnd = new Date(`${date}T23:59:59.999+03:00`).getTime();
+
   const res = await fetch(FIREFLIES_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ query: TRANSCRIPTS_QUERY }),
+    body: JSON.stringify({
+      query: TRANSCRIPTS_QUERY,
+      variables: {
+        fromDate: new Date(dayStart).toISOString(),
+        toDate: new Date(dayEnd).toISOString(),
+      },
+    }),
     cache: "no-store",
   });
 
@@ -73,10 +85,8 @@ export async function fetchTranscriptsByDate(date: string): Promise<FirefliesTra
     throw new Error("Fireflies API yanıtında 'data.transcripts' yok.");
   }
 
-  // Client-side tarih filtresi: sadece istenen günün kayıtlarını döndür
-  const dayStart = new Date(`${date}T00:00:00.000Z`).getTime();
-  const dayEnd = new Date(`${date}T23:59:59.999Z`).getTime();
-
+  // Defense-in-depth: sunucu filtresine ek olarak istenen günün
+  // dışına taşan kayıt varsa client-side'da da ele.
   return (json.data.transcripts as FirefliesTranscript[]).filter(
     t => t.date >= dayStart && t.date <= dayEnd
   );
