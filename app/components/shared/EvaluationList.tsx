@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "motion/react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Trash2 } from "lucide-react";
 import MIcon from "@/app/components/shared/MIcon";
 import styles from "./EvaluationList.module.css";
 
@@ -27,6 +27,10 @@ interface EvaluationListProps {
   detailLabel?: string;
   emptyMessage?: string;
   lang?: "tr" | "en";
+  isAdmin?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+  onDeleteOne?: (id: string) => void;
 }
 
 export default function EvaluationList({
@@ -35,6 +39,10 @@ export default function EvaluationList({
   detailLabel,
   emptyMessage,
   lang = "tr",
+  isAdmin = false,
+  selectedIds,
+  onToggleSelect,
+  onDeleteOne,
 }: EvaluationListProps) {
   const resolvedDetailLabel = detailLabel ?? (lang === "en" ? "Detail" : "Detay");
   const resolvedEmptyMessage = emptyMessage ?? (lang === "en" ? "No evaluations yet." : "Henüz değerlendirme yok.");
@@ -57,6 +65,15 @@ export default function EvaluationList({
           transition={{ delay: i * 0.04 }}
           className={styles.row}
         >
+          {isAdmin && (
+            <input
+              type="checkbox"
+              checked={selectedIds?.has(ev.id) ?? false}
+              onChange={() => onToggleSelect?.(ev.id)}
+              style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0, accentColor: "var(--accent)" }}
+            />
+          )}
+
           <div style={{
             width: 40, height: 40, borderRadius: 10, flexShrink: 0,
             background: "rgba(var(--accent-rgb, 59,130,246),.1)",
@@ -91,6 +108,24 @@ export default function EvaluationList({
             <span style={{ fontWeight: 700, fontSize: 14, color: scoreColor(ev.score) }}>
               %{ev.score}
             </span>
+            {isAdmin && (
+              <button
+                onClick={() => onDeleteOne?.(ev.id)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--fg-dim)",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: 4,
+                  borderRadius: 6,
+                }}
+                title="Sil"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
             <Link
               href={`/evaluation/${ev.id}`}
               style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--fg-dim)", textDecoration: "none" }}
