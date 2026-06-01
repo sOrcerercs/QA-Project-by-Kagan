@@ -4,9 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
 
 enum Role {
@@ -46,6 +44,7 @@ model User {
   notifications Notification[]
   createdAt     DateTime       @default(now())
   lastLoginAt   DateTime?
+  mustChangePassword Boolean  @default(false)
   managerId     String?
   manager       User?          @relation("ManagerTL", fields: [managerId], references: [id], onDelete: SetNull)
   teamLeaders   User[]         @relation("ManagerTL")
