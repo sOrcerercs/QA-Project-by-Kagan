@@ -1238,7 +1238,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   </p>
                 </div>
                 <div className={styles.card}>
-                  <EvaluationsView showAgent={user.role !== "AGENT"} lang={lang} />
+                  <EvaluationsView showAgent={user.role !== "AGENT"} lang={lang} isAdmin={user.role === "ADMIN"} />
                 </div>
               </div>
             )}
