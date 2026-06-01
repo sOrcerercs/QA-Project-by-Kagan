@@ -2301,6 +2301,39 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                             {lang === "tr" ? "Danışman" : "Advisor"}
                           </h2>
                         </div>
+                        {/* Takım liderinin kendi skoru — Admin/Manager, liderin takımı seçiliyken */}
+                        {isManagerLike && (() => {
+                          const selectedTL = advisorTLs.find(tl => tl.id === advisorSelectedTLId);
+                          if (!selectedTL) return null;
+                          const sel = advisorSelectedAgentId === selectedTL.id;
+                          return (
+                            <button
+                              onClick={() => {
+                                if (advisorSelectedAgentId === selectedTL.id) return;
+                                setAdvisorSelectedAgentId(selectedTL.id);
+                                fetchAdvisorScore(selectedTL.id);
+                              }}
+                              style={{
+                                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                                width: "100%", textAlign: "left",
+                                padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                                border: sel ? "1px solid var(--accent)" : "1px solid var(--glass-border)",
+                                background: sel ? "rgba(59,130,246,.12)" : "var(--glass-bg)",
+                                color: sel ? "var(--accent)" : "var(--fg)",
+                                fontSize: 13, fontWeight: 500,
+                              }}
+                            >
+                              <span>{selectedTL.name}</span>
+                              <span style={{
+                                fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 6,
+                                border: "1px solid var(--accent)", color: "var(--accent)",
+                                background: "rgba(59,130,246,.10)", whiteSpace: "nowrap",
+                              }}>
+                                {lang === "tr" ? "Takım Lideri" : "Team Leader"}
+                              </span>
+                            </button>
+                          );
+                        })()}
                         {advisorMembersLoading && (
                           <div className={`${styles.card} ${styles.spinner}`}><div /></div>
                         )}
@@ -2309,7 +2342,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                             {lang === "tr" ? "Danışman bulunamadı." : "No advisors found."}
                           </p>
                         )}
-                        {advisorMembers.map(m => (
+                        {advisorMembers.filter(m => m.id !== advisorSelectedTLId).map(m => (
                           <button
                             key={m.id}
                             onClick={() => {
