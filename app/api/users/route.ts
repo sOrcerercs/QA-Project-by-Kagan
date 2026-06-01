@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
       role,
       teamId: resolvedTeamId,
       managerId: role === "TEAM_LEADER" ? (managerId ?? null) : null,
+      mustChangePassword: true,
     },
   });
 
