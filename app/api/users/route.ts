@@ -52,6 +52,23 @@ export async function POST(req: NextRequest) {
   try {
     const passwordHash = await bcrypt.hash(password, 10);
 
+    // Pasif kullanıcıyı yeniden aktif et
+    const existingInactive = await prisma.user.findFirst({ where: { email, isActive: false } });
+    if (existingInactive) {
+      let resolvedTeamId: string | null = teamId || null;
+      if (leaderId) {
+        const leader = await prisma.user.findUnique({ where: { id: leaderId }, include: { leadingTeam: true } });
+        if (leader) {
+          resolvedTeamId = leader.leadingTeam?.id ?? (await prisma.team.create({ data: { name: `${leader.name}'in Takımı`, leaderId: leader.id } })).id;
+        }
+      }
+      const reactivated = await prisma.user.update({
+        where: { id: existingInactive.id },
+        data: { name, passwordHash, role, teamId: resolvedTeamId, managerId: role === "TEAM_LEADER" ? (managerId ?? null) : null, mustChangePassword: true, isActive: true },
+      });
+      return NextResponse.json({ user: reactivated });
+    }
+
     let resolvedTeamId: string | null = teamId || null;
 
     if (leaderId) {
