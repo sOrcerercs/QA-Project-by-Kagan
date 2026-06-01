@@ -45,6 +45,7 @@ export async function POST(request: Request) {
 
     const response = NextResponse.json({
       success: true,
+      mustChangePassword: user.mustChangePassword ?? false,
       user: { id: user.id, name: user.name, role: user.role },
     });
 
