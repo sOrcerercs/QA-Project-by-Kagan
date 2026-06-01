@@ -30,7 +30,11 @@ export default function LoginPage() {
         setError(data.error || "Giriş başarısız.");
         return;
       }
-      router.push("/");
+      if (data.mustChangePassword) {
+        router.push("/change-password");
+      } else {
+        router.push("/");
+      }
     } catch {
       setError("Bağlantı hatası.");
     } finally {
