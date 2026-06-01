@@ -73,6 +73,9 @@ const PANEL_T = {
     labelTeam: "Takım", selectTeam: "— Takım seçin —",
     labelNewPassword: "Yeni Şifre (opsiyonel)", passwordPlaceholder: "Değiştirmek için girin",
     saving: "Kaydediliyor...", save: "Kaydet", cancel: "İptal",
+    deleteUser: "Kullanıcıyı Sil", deleteConfirmTitle: "Kullanıcıyı pasife al",
+    deleteConfirmMsg: (name: string) => `"${name}" adlı kullanıcı devre dışı bırakılacak. Giriş yapamayacak ama geçmiş verileri korunacak. Devam edilsin mi?`,
+    deleteConfirmBtn: "Evet, Pasife Al", deleting: "Siliniyor...", deleteSuccess: "Kullanıcı pasife alındı.",
     updateError: "Güncelleme başarısız.", updateSuccess: "Kullanıcı güncellendi!", errorOccurred: "Hata oluştu.",
     newPrompt: "Yeni Prompt", labelPromptName: "Prompt Adı", labelCallType: "Çağrı Tipi",
     callTypeGeneral: "Genel", labelVersion: "Versiyon", labelContent: "İçerik",
@@ -152,6 +155,9 @@ const PANEL_T = {
     labelTeam: "Team", selectTeam: "— Select team —",
     labelNewPassword: "New Password (optional)", passwordPlaceholder: "Enter to change",
     saving: "Saving...", save: "Save", cancel: "Cancel",
+    deleteUser: "Delete User", deleteConfirmTitle: "Deactivate user",
+    deleteConfirmMsg: (name: string) => `"${name}" will be deactivated. They won't be able to log in, but their historical data will be preserved. Continue?`,
+    deleteConfirmBtn: "Yes, Deactivate", deleting: "Deleting...", deleteSuccess: "User deactivated.",
     updateError: "Update failed.", updateSuccess: "User updated!", errorOccurred: "An error occurred.",
     newPrompt: "New Prompt", labelPromptName: "Prompt Name", labelCallType: "Call Type",
     callTypeGeneral: "General", labelVersion: "Version", labelContent: "Content",
@@ -258,6 +264,9 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const [editNewPassword, setEditNewPassword] = useState("");
   const [editUserMsg, setEditUserMsg] = useState("");
   const [editUserStatus, setEditUserStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   /* ── prompts ── */
   const [prompts, setPrompts] = useState<any[]>([]);
@@ -491,6 +500,23 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     setNewUserLoading(false);
   };
 
+  const handleDeleteUser = async () => {
+    if (!deleteConfirmId) return;
+    setDeleteLoading(true);
+    const res = await fetch(`/api/users/${deleteConfirmId}`, { method: "DELETE" });
+    const data = await res.json();
+    setDeleteLoading(false);
+    if (!res.ok) {
+      setEditUserMsg(data.error || t.errorOccurred);
+      setEditUserStatus("error");
+    } else {
+      setDeleteConfirmId(null);
+      setEditingUserId(null);
+      setEditUserMsg("");
+      fetchUsers();
+    }
+  };
+
   /* ── prompt handlers ── */
   const handleAddPrompt = async () => {
     if (!newPromptName || !newPromptContent || !newPromptVersion) return;
@@ -686,6 +712,22 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   return (
     <div className={styles.page}>
       <style>{`@keyframes syncPulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
+
+      {/* ── Delete confirmation modal ── */}
+      {deleteConfirmId && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)" }}>
+          <div style={{ background: "var(--bg-card, #1a1a2e)", border: "1px solid var(--rule)", borderRadius: 14, padding: 28, maxWidth: 400, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,.5)" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", marginBottom: 12 }}>{t.deleteConfirmTitle}</div>
+            <p style={{ fontSize: 13, color: "var(--fg-dim)", lineHeight: 1.6, margin: "0 0 20px" }}>{t.deleteConfirmMsg(deleteConfirmName)}</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setDeleteConfirmId(null)} style={{ fontSize: 12.5, color: "var(--fg-faint)", background: "none", border: "none", cursor: "pointer", padding: "6px 12px" }}>{t.cancel}</button>
+              <button onClick={handleDeleteUser} disabled={deleteLoading} style={{ fontSize: 12.5, background: "rgba(248,113,113,.15)", border: "1px solid rgba(248,113,113,.4)", color: "#f87171", borderRadius: 8, padding: "6px 16px", cursor: "pointer", opacity: deleteLoading ? 0.6 : 1 }}>
+                {deleteLoading ? t.deleting : t.deleteConfirmBtn}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className={styles.pageHd}>
         <h1 className={styles.pageH1}>{t.pageTitle}</h1>
         <p style={{ margin: 0, fontSize: 13, color: "var(--fg-faint)" }}>{t.pageSubtitle}</p>
@@ -809,11 +851,19 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                           </div>
                         )}
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
                         <button onClick={handleSaveUser} disabled={editUserStatus === "saving"} className={`${styles.btn} ${styles.btnPrimary}`} style={{ borderRadius: 9, opacity: editUserStatus === "saving" ? 0.6 : 1 }}>
                           {editUserStatus === "saving" ? t.saving : t.save}
                         </button>
                         <button onClick={() => { setEditingUserId(null); setEditUserMsg(""); setEditUserStatus("idle"); setEditManagerId(""); }} style={{ fontSize: 12.5, color: "var(--fg-faint)", background: "none", border: "none", cursor: "pointer" }}>{t.cancel}</button>
+                        {u.id !== user.id && (
+                          <button
+                            onClick={() => { setDeleteConfirmId(u.id); setDeleteConfirmName(u.name); }}
+                            style={{ fontSize: 12, color: "#f87171", background: "none", border: "0.5px solid rgba(248,113,113,.3)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", marginLeft: "auto" }}
+                          >
+                            {t.deleteUser}
+                          </button>
+                        )}
                         {editUserMsg && <span style={{ fontSize: 12, color: editUserStatus === "success" ? "#34d399" : "#f87171" }}>{editUserMsg}</span>}
                       </div>
                     </div>

@@ -76,3 +76,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { passwordHash: _, ...safeUser } = updated;
   return NextResponse.json({ user: safeUser });
 }
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const admin = await getUserFromToken(req);
+  if (!admin || !["ADMIN", "MANAGER"].includes(admin.role)) {
+    return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
+  }
+
+  const { id } = await params;
+
+  if (id === admin.id) {
+    return NextResponse.json({ error: "Kendinizi silemezsiniz." }, { status: 400 });
+  }
+
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target) return NextResponse.json({ error: "Kullanıcı bulunamadı." }, { status: 404 });
+
+  if (target.role === "ADMIN") {
+    const activeAdminCount = await prisma.user.count({ where: { role: "ADMIN", isActive: true } });
+    if (activeAdminCount <= 1) {
+      return NextResponse.json({ error: "Son admin silinemez." }, { status: 400 });
+    }
+  }
+
+  await prisma.user.update({ where: { id }, data: { isActive: false } });
+  return NextResponse.json({ success: true });
+}

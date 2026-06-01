@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const users = await prisma.user.findMany({
+      where: { isActive: true },
       include: {
         team: true,
         manager: { select: { id: true, name: true } },

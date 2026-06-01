@@ -15,6 +15,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Kullanıcı bulunamadı." }, { status: 401 });
     }
 
+    if (user.isActive === false) {
+      return NextResponse.json({ error: "Bu hesap devre dışı bırakıldı." }, { status: 403 });
+    }
+
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
       return NextResponse.json({ error: "Hatalı şifre." }, { status: 401 });

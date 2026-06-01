@@ -48,6 +48,7 @@ model User {
   managerId     String?
   manager       User?          @relation("ManagerTL", fields: [managerId], references: [id], onDelete: SetNull)
   teamLeaders   User[]         @relation("ManagerTL")
+  isActive      Boolean        @default(true)
 
   @@index([managerId])
 }
