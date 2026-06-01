@@ -53,6 +53,11 @@ const L = {
     firstCallPrompt: "🔵 First Call Promptu",
     secondCallPrompt: "🟣 Second Call Promptu",
     reclassifyError: "Yeniden değerlendirme başarısız.",
+    reassign: "Yeniden Ata",
+    reassignSelect: "— Danışman seçin —",
+    reassigning: "Atanıyor...",
+    reassignDone: "Danışman güncellendi.",
+    reassignError: "Yeniden atama başarısız.",
   },
   en: {
     title: "Evaluation Detail",
@@ -97,6 +102,11 @@ const L = {
     firstCallPrompt: "🔵 First Call Prompt",
     secondCallPrompt: "🟣 Second Call Prompt",
     reclassifyError: "Re-evaluation failed.",
+    reassign: "Reassign",
+    reassignSelect: "— Select agent —",
+    reassigning: "Assigning...",
+    reassignDone: "Agent updated.",
+    reassignError: "Reassignment failed.",
   },
 };
 
@@ -124,6 +134,11 @@ export default function EvaluationDetailPage({
   const [reclassifyOpen, setReclassifyOpen] = useState(false);
   const [isReclassifying, setIsReclassifying] = useState(false);
   const [reclassifyError, setReclassifyError] = useState("");
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [reassignAgentId, setReassignAgentId] = useState("");
+  const [isReassigning, setIsReassigning] = useState(false);
+  const [reassignMsg, setReassignMsg] = useState("");
+  const [reassignAgents, setReassignAgents] = useState<{ id: string; name: string }[]>([]);
 
   const t = L[lang];
 
@@ -192,7 +207,16 @@ export default function EvaluationDetailPage({
     try {
       const res = await fetch("/api/auth/me");
       const data = await res.json();
-      if (res.ok) setCurrentUser(data.user);
+      if (res.ok) {
+        setCurrentUser(data.user);
+        if (["ADMIN", "MANAGER"].includes(data.user?.role)) {
+          const usersRes = await fetch("/api/users");
+          if (usersRes.ok) {
+            const usersData = await usersRes.json();
+            setReassignAgents((usersData.users || []).filter((u: any) => u.role === "AGENT"));
+          }
+        }
+      }
     } catch {}
   };
 
@@ -325,6 +349,33 @@ export default function EvaluationDetailPage({
     }
   };
 
+  const handleReassign = async () => {
+    if (!reassignAgentId || isReassigning) return;
+    setIsReassigning(true);
+    setReassignMsg("");
+    try {
+      const res = await fetch(`/api/evaluations/${id}/reassign`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: reassignAgentId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || t.reassignError);
+      setEvaluation((prev: any) => ({
+        ...prev,
+        agentId: reassignAgentId,
+        agent: reassignAgents.find(a => a.id === reassignAgentId) ?? prev.agent,
+      }));
+      setReassignMsg(t.reassignDone);
+      setReassignOpen(false);
+      setReassignAgentId("");
+    } catch (err: any) {
+      setReassignMsg(err.message);
+    } finally {
+      setIsReassigning(false);
+    }
+  };
+
   const canEdit = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
   const canReclassify = currentUser?.role === "ADMIN";
 
@@ -439,8 +490,90 @@ export default function EvaluationDetailPage({
       {/* Meta + Score */}
       <div className="px-6 pt-5 flex-shrink-0">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-5">
+          {/* Danışman kartı — admin/manager için yeniden atama içerir */}
+          <div className="bg-surface-container border border-outline-variant rounded-2xl p-4">
+            <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-2">
+              <User className="w-3 h-3" /> {t.consultant}
+            </div>
+            {reassignOpen ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <select
+                  value={reassignAgentId}
+                  onChange={e => { setReassignAgentId(e.target.value); setReassignMsg(""); }}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--outline-variant, #333)",
+                    borderRadius: 6,
+                    color: "var(--on-surface)",
+                    fontSize: 12,
+                    padding: "4px 6px",
+                    outline: "none",
+                    width: "100%",
+                  }}
+                >
+                  <option value="">{t.reassignSelect}</option>
+                  {reassignAgents.map(a => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button
+                    onClick={handleReassign}
+                    disabled={!reassignAgentId || isReassigning}
+                    style={{
+                      flex: 1,
+                      background: "rgba(59,130,246,.2)",
+                      border: "1px solid rgba(59,130,246,.4)",
+                      borderRadius: 5,
+                      color: "var(--accent, #3b82f6)",
+                      fontSize: 11,
+                      padding: "3px 0",
+                      cursor: "pointer",
+                      opacity: (!reassignAgentId || isReassigning) ? 0.4 : 1,
+                    }}
+                  >
+                    {isReassigning ? t.reassigning : t.reassign}
+                  </button>
+                  <button
+                    onClick={() => { setReassignOpen(false); setReassignAgentId(""); setReassignMsg(""); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--on-surface-variant)", fontSize: 12 }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                {reassignMsg && (
+                  <span style={{ fontSize: 10, color: reassignMsg === t.reassignDone ? "#34d399" : "#f87171" }}>
+                    {reassignMsg}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+                <p className="text-sm font-semibold text-on-surface">{evaluation.agent?.name || "—"}</p>
+                {canEdit && (
+                  <button
+                    onClick={() => setReassignOpen(true)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--on-surface-variant)",
+                      fontSize: 10,
+                      padding: "2px 4px",
+                      borderRadius: 4,
+                      opacity: 0.6,
+                    }}
+                    title={t.reassign}
+                  >
+                    ✎
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Diğer kartlar */}
           {[
-            { label: t.consultant, icon: <User className="w-3 h-3" />, value: evaluation.agent?.name || "—" },
             { label: t.team, icon: <User className="w-3 h-3" />, value: evaluation.agent?.team?.name || "—" },
             { label: t.customer, icon: <User className="w-3 h-3" />, value: evaluation.customerName },
             { label: t.duration, icon: <Clock className="w-3 h-3" />, value: evaluation.callDuration },

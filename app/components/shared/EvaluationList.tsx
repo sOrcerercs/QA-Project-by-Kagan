@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { ArrowUpRight, Trash2 } from "lucide-react";
+import { ArrowUpRight, Trash2, ArrowLeftRight } from "lucide-react";
 import MIcon from "@/app/components/shared/MIcon";
 import styles from "./EvaluationList.module.css";
 
@@ -21,6 +22,11 @@ interface Evaluation {
   agent?: { name: string };
 }
 
+interface Agent {
+  id: string;
+  name: string;
+}
+
 interface EvaluationListProps {
   evaluations: Evaluation[];
   showAgent?: boolean;
@@ -31,6 +37,8 @@ interface EvaluationListProps {
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   onDeleteOne?: (id: string) => void;
+  agents?: Agent[];
+  onReassignOne?: (evalId: string, agentId: string) => Promise<void>;
 }
 
 export default function EvaluationList({
@@ -43,9 +51,16 @@ export default function EvaluationList({
   selectedIds,
   onToggleSelect,
   onDeleteOne,
+  agents,
+  onReassignOne,
 }: EvaluationListProps) {
   const resolvedDetailLabel = detailLabel ?? (lang === "en" ? "Detail" : "Detay");
   const resolvedEmptyMessage = emptyMessage ?? (lang === "en" ? "No evaluations yet." : "Henüz değerlendirme yok.");
+
+  const [reassigningId, setReassigningId] = useState<string | null>(null);
+  const [reassignValue, setReassignValue] = useState<Record<string, string>>({});
+  const [reassignLoading, setReassignLoading] = useState<string | null>(null);
+
   if (evaluations.length === 0) {
     return (
       <div style={{ padding: "48px 0", textAlign: "center" }}>
@@ -94,7 +109,7 @@ export default function EvaluationList({
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0, flexWrap: "wrap" as const }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
               <span style={{ fontSize: 10, color: "var(--fg-faint)" }}>
                 {lang === "tr" ? "Değerlendirme Tarihi" : "Evaluation Date"}:{" "}
@@ -108,6 +123,86 @@ export default function EvaluationList({
             <span style={{ fontWeight: 700, fontSize: 14, color: scoreColor(ev.score) }}>
               %{ev.score}
             </span>
+
+            {/* Reassign */}
+            {isAdmin && agents && agents.length > 0 && (
+              <div style={{ position: "relative" }}>
+                {reassigningId === ev.id ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <select
+                      value={reassignValue[ev.id] ?? ""}
+                      onChange={e => setReassignValue(prev => ({ ...prev, [ev.id]: e.target.value }))}
+                      style={{
+                        background: "var(--glass-bg, #1a1a2e)",
+                        border: "1px solid var(--rule)",
+                        borderRadius: 6,
+                        color: "var(--fg)",
+                        fontSize: 11,
+                        padding: "2px 6px",
+                        outline: "none",
+                        maxWidth: 140,
+                      }}
+                    >
+                      <option value="">{lang === "tr" ? "— Seç —" : "— Select —"}</option>
+                      {agents.map(a => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      disabled={!reassignValue[ev.id] || reassignLoading === ev.id}
+                      onClick={async () => {
+                        if (!reassignValue[ev.id]) return;
+                        setReassignLoading(ev.id);
+                        await onReassignOne?.(ev.id, reassignValue[ev.id]);
+                        setReassignLoading(null);
+                        setReassigningId(null);
+                        setReassignValue(prev => { const n = { ...prev }; delete n[ev.id]; return n; });
+                      }}
+                      style={{
+                        background: "rgba(59,130,246,.2)",
+                        border: "1px solid rgba(59,130,246,.4)",
+                        borderRadius: 5,
+                        color: "var(--accent)",
+                        fontSize: 10,
+                        padding: "2px 7px",
+                        cursor: "pointer",
+                        opacity: (!reassignValue[ev.id] || reassignLoading === ev.id) ? 0.4 : 1,
+                      }}
+                    >
+                      {reassignLoading === ev.id ? "..." : (lang === "tr" ? "Ata" : "Assign")}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setReassigningId(null);
+                        setReassignValue(prev => { const n = { ...prev }; delete n[ev.id]; return n; });
+                      }}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--fg-faint)", fontSize: 11, padding: "2px 4px" }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setReassigningId(ev.id)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--fg-dim)",
+                      display: "flex",
+                      alignItems: "center",
+                      padding: 4,
+                      borderRadius: 6,
+                    }}
+                    title={lang === "tr" ? "Yeniden Ata" : "Reassign"}
+                  >
+                    <ArrowLeftRight size={13} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Delete */}
             {isAdmin && (
               <button
                 onClick={() => onDeleteOne?.(ev.id)}

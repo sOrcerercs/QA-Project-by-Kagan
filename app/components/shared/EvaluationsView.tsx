@@ -56,6 +56,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   const [customEnd, setCustomEnd] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
 
   const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string) => {
     setLoading(true);
@@ -73,7 +74,14 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     }
   }, []);
 
-  useEffect(() => { fetchEvaluations(); }, [fetchEvaluations]);
+  useEffect(() => {
+    fetchEvaluations();
+    if (isAdmin) {
+      fetch("/api/users")
+        .then(r => r.json())
+        .then(d => setAgents((d.users || []).filter((u: any) => u.role === "AGENT")));
+    }
+  }, [fetchEvaluations, isAdmin]);
 
   const handlePreset = (p: Preset) => {
     setPreset(p);
@@ -119,6 +127,15 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleReassignOne = async (evalId: string, agentId: string) => {
+    await fetch(`/api/evaluations/${evalId}/reassign`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId }),
+    });
+    await fetchEvaluations();
   };
 
   const handleDeleteAll = async () => {
@@ -286,6 +303,8 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
           onDeleteOne={handleDeleteOne}
+          agents={agents}
+          onReassignOne={handleReassignOne}
         />
       )}
     </div>
