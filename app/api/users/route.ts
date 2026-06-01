@@ -48,49 +48,57 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Yöneticiler yalnızca kendilerini atayabilir." }, { status: 403 });
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  try {
+    const passwordHash = await bcrypt.hash(password, 10);
 
-  let resolvedTeamId: string | null = teamId || null;
+    let resolvedTeamId: string | null = teamId || null;
 
-  if (leaderId) {
-    const leader = await prisma.user.findUnique({
-      where: { id: leaderId },
-      include: { leadingTeam: true },
-    });
+    if (leaderId) {
+      const leader = await prisma.user.findUnique({
+        where: { id: leaderId },
+        include: { leadingTeam: true },
+      });
 
-    if (leader) {
-      if (leader.leadingTeam) {
-        resolvedTeamId = leader.leadingTeam.id;
-      } else {
-        const newTeam = await prisma.team.create({
-          data: { name: `${leader.name}'in Takımı`, leaderId: leader.id },
-        });
-        resolvedTeamId = newTeam.id;
+      if (leader) {
+        if (leader.leadingTeam) {
+          resolvedTeamId = leader.leadingTeam.id;
+        } else {
+          const newTeam = await prisma.team.create({
+            data: { name: `${leader.name}'in Takımı`, leaderId: leader.id },
+          });
+          resolvedTeamId = newTeam.id;
+        }
       }
     }
-  }
 
-  const newUser = await prisma.user.create({
-    data: {
-      name,
-      email,
-      passwordHash,
-      role,
-      teamId: resolvedTeamId,
-      managerId: role === "TEAM_LEADER" ? (managerId ?? null) : null,
-      mustChangePassword: true,
-    },
-  });
+    const newUser = await prisma.user.create({
+      data: {
+        name,
+        email,
+        passwordHash,
+        role,
+        teamId: resolvedTeamId,
+        managerId: role === "TEAM_LEADER" ? (managerId ?? null) : null,
+        mustChangePassword: true,
+      },
+    });
 
-  // TEAM_LEADER oluşturulduğunda otomatik takım kur (henüz bir takım yoksa)
-  if (role === "TEAM_LEADER") {
-    const existing = await prisma.team.findUnique({ where: { leaderId: newUser.id } });
-    if (!existing) {
-      await prisma.team.create({
-        data: { name: `${name}'in Takımı`, leaderId: newUser.id },
-      });
+    // TEAM_LEADER oluşturulduğunda otomatik takım kur (henüz bir takım yoksa)
+    if (role === "TEAM_LEADER") {
+      const existing = await prisma.team.findUnique({ where: { leaderId: newUser.id } });
+      if (!existing) {
+        await prisma.team.create({
+          data: { name: `${name}'in Takımı`, leaderId: newUser.id },
+        });
+      }
     }
-  }
 
-  return NextResponse.json({ user: newUser });
+    return NextResponse.json({ user: newUser });
+  } catch (e: any) {
+    console.error("[POST /api/users]", e);
+    if (e?.code === "P2002") {
+      return NextResponse.json({ error: "Bu e-posta adresi zaten kullanımda." }, { status: 409 });
+    }
+    return NextResponse.json({ error: "Kullanıcı oluşturulamadı." }, { status: 500 });
+  }
 }
