@@ -30,9 +30,10 @@ export default function PromptsView({ lang }: PromptsViewProps) {
 
   useEffect(() => {
     let cancelled = false;
+    setStatus("loading");
     (async () => {
       try {
-        const res = await fetch("/api/prompts/active");
+        const res = await fetch(`/api/prompts/active?lang=${lang}`);
         if (!res.ok) throw new Error("fetch_failed");
         const data = await res.json();
         if (!cancelled) {
@@ -44,7 +45,7 @@ export default function PromptsView({ lang }: PromptsViewProps) {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [lang]);
 
   if (status === "loading") {
     return (
@@ -83,6 +84,11 @@ export default function PromptsView({ lang }: PromptsViewProps) {
           ? "Çağrılarınız aşağıdaki güncel değerlendirme kriterlerine göre puanlanır."
           : "Your calls are scored according to the current evaluation criteria below."}
       </p>
+      {!tr && (
+        <p style={{ fontSize: 11, color: "var(--fg-faint)", margin: 0, fontStyle: "italic" }}>
+          AI-translated from Turkish. The original Turkish text is used for scoring.
+        </p>
+      )}
 
       {prompts.map(p => {
         const open = expandedId === p.id;
