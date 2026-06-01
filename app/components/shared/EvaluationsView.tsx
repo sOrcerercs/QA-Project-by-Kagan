@@ -79,7 +79,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     if (isAdmin) {
       fetch("/api/users")
         .then(r => r.json())
-        .then(d => setAgents((d.users || []).filter((u: any) => u.role === "AGENT")));
+        .then(d => setAgents((d.users || []).filter((u: any) => ["AGENT", "MANAGER"].includes(u.role))));
     }
   }, [fetchEvaluations, isAdmin]);
 

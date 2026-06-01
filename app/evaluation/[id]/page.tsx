@@ -213,7 +213,7 @@ export default function EvaluationDetailPage({
           const usersRes = await fetch("/api/users");
           if (usersRes.ok) {
             const usersData = await usersRes.json();
-            setReassignAgents((usersData.users || []).filter((u: any) => u.role === "AGENT"));
+            setReassignAgents((usersData.users || []).filter((u: any) => ["AGENT", "MANAGER"].includes(u.role)));
           }
         }
       }
