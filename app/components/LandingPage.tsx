@@ -15,6 +15,7 @@ import NegativeKeywordsReport from "@/app/components/shared/NegativeKeywordsRepo
 import LeaderboardView from "@/app/components/shared/LeaderboardView";
 import CoachingTrackingView from "@/app/components/shared/CoachingTrackingView";
 import SearchView from "@/app/components/shared/SearchView";
+import PromptsView from "@/app/components/shared/PromptsView";
 
 /* ── Theme tokens ── */
 const DARK_THEME = {
@@ -45,6 +46,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     leaderboard: "Sıralama",
     advisor: "Danışman Paneli",
     search: "Arama",
+    phoneStandards: "Phone Quality Standards",
   },
   en: {
     home: "Home", evaluations: "Evaluations", scores: "My Scores",
@@ -58,6 +60,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     leaderboard: "Rankings",
     advisor: "Advisor Dashboard",
     search: "Search",
+    phoneStandards: "Phone Quality Standards",
   },
 };
 
@@ -639,6 +642,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   }
   mainNavItems.push({ key: "leaderboard", icon: "trophy" });
   mainNavItems.push({ key: "search", icon: "search" });
+  mainNavItems.push({ key: "phoneStandards", icon: "phone" });
   if (isManagerLike || user.role === "TEAM_LEADER") {
     mainNavItems.push({ key: "advisor", icon: "users" });
   }
@@ -2401,6 +2405,22 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                 </div>
                 <div className={styles.card}>
                   <SearchView lang={lang} />
+                </div>
+              </div>
+            )}
+
+            {activeTab === "phoneStandards" && (
+              <div className={styles.page}>
+                <div className={styles.pageHd}>
+                  <h1 className={styles.pageH1}>{navLabels.phoneStandards}</h1>
+                  <p className={styles.pageSub}>
+                    {lang === "tr"
+                      ? "Çağrılarınızın değerlendirildiği güncel kalite kriterleri"
+                      : "Current quality criteria your calls are evaluated against"}
+                  </p>
+                </div>
+                <div className={styles.card}>
+                  <PromptsView lang={lang} />
                 </div>
               </div>
             )}
