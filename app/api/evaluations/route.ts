@@ -158,3 +158,28 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ evaluations });
 }
+
+// Değerlendirmeleri sil (toplu silme)
+export async function DELETE(req: NextRequest) {
+  const user = await getUserFromToken(req);
+  if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
+  if (user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Bu işlem için yetkiniz yok." }, { status: 403 });
+  }
+
+  const body = await req.json();
+
+  if (body.all === true) {
+    const result = await prisma.evaluation.deleteMany({});
+    return NextResponse.json({ deleted: result.count });
+  }
+
+  if (Array.isArray(body.ids) && body.ids.length > 0) {
+    const result = await prisma.evaluation.deleteMany({
+      where: { id: { in: body.ids } },
+    });
+    return NextResponse.json({ deleted: result.count });
+  }
+
+  return NextResponse.json({ error: "Geçersiz istek." }, { status: 400 });
+}
