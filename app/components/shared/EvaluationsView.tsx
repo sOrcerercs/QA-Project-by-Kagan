@@ -18,6 +18,7 @@ interface Evaluation {
 interface EvaluationsViewProps {
   showAgent?: boolean;
   lang?: "tr" | "en";
+  isAdmin?: boolean;
 }
 
 function presetToDates(preset: Preset): { startDate: string; endDate: string } | null {
@@ -47,12 +48,14 @@ const PRESETS_EN: { key: Preset; label: string }[] = [
   { key: "custom", label: "Custom" },
 ];
 
-export default function EvaluationsView({ showAgent = true, lang = "tr" }: EvaluationsViewProps) {
+export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin = false }: EvaluationsViewProps) {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
   const [preset, setPreset] = useState<Preset>("all");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string) => {
     setLoading(true);
@@ -84,10 +87,97 @@ export default function EvaluationsView({ showAgent = true, lang = "tr" }: Evalu
     fetchEvaluations(customStart, customEnd);
   };
 
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleDeleteOne = async (id: string) => {
+    if (!window.confirm(lang === "tr" ? "Bu değerlendirmeyi silmek istediğinizden emin misiniz?" : "Are you sure you want to delete this evaluation?")) return;
+    setDeleting(true);
+    try {
+      await fetch(`/api/evaluations/${id}`, { method: "DELETE" });
+      setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+      await fetchEvaluations();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(lang === "tr" ? `${selectedIds.size} değerlendirme silinecek. Emin misiniz?` : `${selectedIds.size} evaluations will be deleted. Are you sure?`)) return;
+    setDeleting(true);
+    try {
+      await fetch("/api/evaluations", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [...selectedIds] }) });
+      setSelectedIds(new Set());
+      await fetchEvaluations();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!window.confirm(lang === "tr" ? "TÜM değerlendirmeler silinecek. Bu işlem geri alınamaz. Emin misiniz?" : "ALL evaluations will be deleted. This cannot be undone. Are you sure?")) return;
+    setDeleting(true);
+    try {
+      await fetch("/api/evaluations", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ all: true }) });
+      setSelectedIds(new Set());
+      await fetchEvaluations();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const presets = lang === "tr" ? PRESETS_TR : PRESETS_EN;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {isAdmin && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            onClick={handleDeleteSelected}
+            disabled={selectedIds.size === 0 || deleting}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 8,
+              border: "1px solid #f87171",
+              background: selectedIds.size > 0 ? "rgba(248,113,113,.15)" : "transparent",
+              color: selectedIds.size > 0 ? "#f87171" : "var(--fg-faint)",
+              fontSize: 11.5,
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: selectedIds.size > 0 ? "pointer" : "not-allowed",
+              opacity: deleting ? 0.5 : 1,
+              transition: "all 0.15s",
+            }}
+          >
+            {lang === "tr" ? `Seçilenleri Sil${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}` : `Delete Selected${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`}
+          </button>
+          <button
+            onClick={handleDeleteAll}
+            disabled={deleting}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 8,
+              border: "1px solid #f87171",
+              background: "rgba(248,113,113,.1)",
+              color: "#f87171",
+              fontSize: 11.5,
+              fontFamily: "'JetBrains Mono', monospace",
+              cursor: "pointer",
+              opacity: deleting ? 0.5 : 1,
+              transition: "opacity 0.15s",
+            }}
+          >
+            {lang === "tr" ? "Tümünü Sil" : "Delete All"}
+          </button>
+        </div>
+      )}
+
       {/* Preset pills */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {presets.map(({ key, label }) => (
@@ -188,7 +278,15 @@ export default function EvaluationsView({ showAgent = true, lang = "tr" }: Evalu
           }} />
         </div>
       ) : (
-        <EvaluationList evaluations={evaluations} showAgent={showAgent} lang={lang} />
+        <EvaluationList
+          evaluations={evaluations}
+          showAgent={showAgent}
+          lang={lang}
+          isAdmin={isAdmin}
+          selectedIds={selectedIds}
+          onToggleSelect={handleToggleSelect}
+          onDeleteOne={handleDeleteOne}
+        />
       )}
     </div>
   );
