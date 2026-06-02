@@ -81,7 +81,7 @@ export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsV
             )}
           </div>
           <button
-            onClick={() => { setAutoReportData(null); setStartDate(""); setEndDate(""); fetchReport(); }}
+            onClick={() => { setAutoReportData(null); setStartDate(""); setEndDate(""); setFilterAgentId(""); fetchReport(undefined, undefined); }}
             style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--fg-dim)", background: "none", border: "none", cursor: "pointer", transition: "color 120ms" }}
           >
             <MIcon name="refresh" className="text-lg" /> {t.refresh}
