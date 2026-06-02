@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
   }
 
   const dateFilter = startDate || endDate ? {
-    createdAt: {
+    callDate: {
       ...(startDate && { gte: new Date(startDate) }),
       ...(endDate && { lte: new Date(endDate + "T23:59:59.999Z") }),
     },
@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
         where: { teamId: leaderTeamId! },
         select: { id: true },
       });
-      const allowedIds = new Set(teamMembers.map((m) => m.id));
+      const allowedIds = new Set([...teamMembers.map((m) => m.id), user.id]);
       const filtered = requested.filter(id => allowedIds.has(id));
       if (filtered.length !== requested.length) {
         return NextResponse.json({ error: "Yetkisiz danışman ID'si." }, { status: 403 });
@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
       where: { teamId: leaderTeamId! },
       select: { id: true },
     });
-    whereBase.agentId = { in: teamMembers.map((m) => m.id) };
+    whereBase.agentId = { in: [...teamMembers.map((m) => m.id), user.id] };
   } else if (agentIdFilter) {
     whereBase.agentId = { in: agentIdFilter };
   }
@@ -153,7 +153,7 @@ export async function GET(req: NextRequest) {
   const evaluations = await prisma.evaluation.findMany({
     where: whereBase,
     include: { agent: { select: { name: true, email: true } } },
-    orderBy: { createdAt: "desc" },
+    orderBy: { callDate: "desc" },
   });
 
   return NextResponse.json({ evaluations });
