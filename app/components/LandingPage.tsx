@@ -1298,7 +1298,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   </p>
                 </div>
                 <div className={styles.card}>
-                  <ReportsView agentId={user.role === "AGENT" ? user.id : undefined} lang={lang} />
+                  <ReportsView agentId={user.role === "AGENT" ? user.id : undefined} userRole={user.role} lang={lang} />
                 </div>
               </div>
             )}

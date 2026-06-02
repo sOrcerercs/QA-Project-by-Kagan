@@ -8,10 +8,11 @@ import { translations } from "@/app/lib/i18n";
 
 interface ReportsViewProps {
   agentId?: string;
+  userRole?: string;
   lang?: "tr" | "en";
 }
 
-export default function ReportsView({ agentId, lang = "tr" }: ReportsViewProps) {
+export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsViewProps) {
   const t = translations[lang];
   const [autoReportData, setAutoReportData] = useState<any>(null);
   const [autoReportPeriod, setAutoReportPeriod] = useState<any>(null);
@@ -19,6 +20,25 @@ export default function ReportsView({ agentId, lang = "tr" }: ReportsViewProps) 
   const [loading, setLoading] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [filterAgentId, setFilterAgentId] = useState("");
+
+  const showConsultantFilter = userRole === "ADMIN" || userRole === "MANAGER" || userRole === "TEAM_LEADER";
+
+  useEffect(() => {
+    if (!showConsultantFilter) return;
+    const url = (userRole === "ADMIN" || userRole === "MANAGER") ? "/api/users" : "/api/team/members";
+    fetch(url)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        const list = (d.users || d.members || [])
+          .filter((u: any) => (userRole === "ADMIN" || userRole === "MANAGER") ? u.role === "AGENT" : true)
+          .map((u: any) => ({ id: u.id, name: u.name }));
+        setAgents(list);
+      })
+      .catch(() => {});
+  }, [userRole, showConsultantFilter]);
 
   const fetchReport = useCallback(async (start?: string, end?: string) => {
     setLoading(true);
@@ -26,7 +46,8 @@ export default function ReportsView({ agentId, lang = "tr" }: ReportsViewProps) 
       const params = new URLSearchParams();
       if (start) params.set("start", start);
       if (end) params.set("end", end);
-      if (agentId) params.set("agentId", agentId);
+      const effectiveAgentId = agentId ?? (filterAgentId || undefined);
+      if (effectiveAgentId) params.set("agentId", effectiveAgentId);
       const url = `/api/reports/auto${params.toString() ? `?${params}` : ""}`;
       const res = await fetch(url);
       if (res.ok) {
@@ -36,9 +57,9 @@ export default function ReportsView({ agentId, lang = "tr" }: ReportsViewProps) 
         setAutoReportIsDemo(result.isDemo || false);
       }
     } finally { setLoading(false); }
-  }, [agentId]);
+  }, [agentId, filterAgentId]);
 
-  useEffect(() => { fetchReport(); }, [fetchReport]);
+  useEffect(() => { fetchReport(startDate || undefined, endDate || undefined); }, [fetchReport]);
 
   return (
     <div>
@@ -66,14 +87,26 @@ export default function ReportsView({ agentId, lang = "tr" }: ReportsViewProps) 
             <MIcon name="refresh" className="text-lg" /> {t.refresh}
           </button>
         </div>
-        <DateRangePicker
-          startDate={startDate}
-          endDate={endDate}
-          onStartChange={setStartDate}
-          onEndChange={setEndDate}
-          onApply={() => { setAutoReportData(null); fetchReport(startDate || undefined, endDate || undefined); }}
-          lang={lang}
-        />
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+          <DateRangePicker
+            startDate={startDate}
+            endDate={endDate}
+            onStartChange={setStartDate}
+            onEndChange={setEndDate}
+            onApply={() => { setAutoReportData(null); fetchReport(startDate || undefined, endDate || undefined); }}
+            lang={lang}
+          />
+          {showConsultantFilter && agents.length > 0 && (
+            <select
+              value={filterAgentId}
+              onChange={e => { setFilterAgentId(e.target.value); }}
+              style={{ padding: "8px 12px", borderRadius: 10, background: "var(--glass-bg)", border: "1px solid var(--rule)", color: "var(--fg)", fontSize: 13, fontFamily: "inherit", outline: "none" }}
+            >
+              <option value="">{t.allConsultants}</option>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          )}
+        </div>
       </div>
       {loading ? (
         <div style={{ padding: "64px 0", textAlign: "center" }}>
