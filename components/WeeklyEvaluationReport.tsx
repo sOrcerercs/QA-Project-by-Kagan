@@ -7,10 +7,10 @@ import { translations } from "@/app/lib/i18n";
 
 interface ReportData {
   consultantPerformance: {
-    name: string; calls: number; healthScore: number;
-    firstCallScore: number | null; firstCallCount: number;
-    secondCallScore: number | null; secondCallCount: number;
+    agentId: string; name: string; calls: number; healthScore: number;
+    byPrompt: { promptId: string; promptName: string; avgScore: number; count: number }[];
   }[];
+  promptColumns: { promptId: string; promptName: string }[];
   dailyCallBreakdown: { date: string; firstCall: number; secondCall: number }[];
   callDurations: { name: string; calls: number; totalDuration: string; avgDuration: string }[];
   teamDistribution: { team: string; totalCalls: number; firstCall: number; secondCall: number }[];
@@ -83,6 +83,7 @@ export default function WeeklyEvaluationReport({ data, lang = "tr" }: { data?: R
 
   const {
     consultantPerformance,
+    promptColumns,
     dailyCallBreakdown,
     callDurations,
     teamDistribution,
@@ -176,33 +177,32 @@ export default function WeeklyEvaluationReport({ data, lang = "tr" }: { data?: R
                 <thead className="border-b border-outline-variant text-[10px] text-on-surface-variant/60 uppercase tracking-widest">
                   <tr>
                     <th className="px-6 py-3">{t.consultant}</th>
-                    <th className="px-6 py-3 text-right">{t.firstCallCol}</th>
-                    <th className="px-6 py-3 text-right">{t.secondCallCol}</th>
+                    {promptColumns.map(col => (
+                      <th key={col.promptId} className="px-6 py-3 text-right">{col.promptName}</th>
+                    ))}
                     <th className="px-6 py-3 text-right">{t.statusCol}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant">
                   {[...consultantPerformance].sort((a, b) => b.healthScore - a.healthScore).map((c, i) => {
                     const badge = getScoreBadge(c.healthScore);
+                    const scoreByPrompt = new Map(c.byPrompt.map(p => [p.promptId, p]));
                     return (
-                      <tr key={i} className="hover:bg-surface-container transition-colors">
+                      <tr key={c.agentId ?? i} className="hover:bg-surface-container transition-colors">
                         <td className="px-6 py-3 font-semibold text-on-surface">{c.name}</td>
-                        <td className="px-6 py-3 text-right">
-                          {c.firstCallScore !== null ? (
-                            <div className="flex flex-col items-end gap-0.5">
-                              <span className={`font-black text-lg ${getScoreColor(c.firstCallScore)}`}>%{c.firstCallScore}</span>
-                              <span className="text-[10px] text-on-surface-variant/60">{c.firstCallCount} {t.callsUnit}</span>
-                            </div>
-                          ) : <span className="text-on-surface-variant/30">—</span>}
-                        </td>
-                        <td className="px-6 py-3 text-right">
-                          {c.secondCallScore !== null ? (
-                            <div className="flex flex-col items-end gap-0.5">
-                              <span className={`font-black text-lg ${getScoreColor(c.secondCallScore)}`}>%{c.secondCallScore}</span>
-                              <span className="text-[10px] text-on-surface-variant/60">{c.secondCallCount} {t.callsUnit}</span>
-                            </div>
-                          ) : <span className="text-on-surface-variant/30">—</span>}
-                        </td>
+                        {promptColumns.map(col => {
+                          const ps = scoreByPrompt.get(col.promptId);
+                          return (
+                            <td key={col.promptId} className="px-6 py-3 text-right">
+                              {ps ? (
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span className={`font-black text-lg ${getScoreColor(ps.avgScore)}`}>%{ps.avgScore}</span>
+                                  <span className="text-[10px] text-on-surface-variant/60">{ps.count} {t.callsUnit}</span>
+                                </div>
+                              ) : <span className="text-on-surface-variant/30">—</span>}
+                            </td>
+                          );
+                        })}
                         <td className="px-6 py-3 text-right">
                           <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${badge.cls}`}>{badge.label}</span>
                         </td>

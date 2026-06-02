@@ -90,34 +90,46 @@ export async function GET(req: NextRequest) {
       ? allAgents.filter(a => teamScopedIds!.includes(a.id))
       : allAgents.filter(a => a.id === user.id);
 
-  // Danışman Performansı (First Call ve Second Call ayrı ayrı)
-  const agentMap: Record<string, {
+  // Danışman Performansı — kullanılan prompt başına ayrı skor
+  const promptRows = await prisma.prompt.findMany({ select: { id: true, name: true } });
+  const promptNameById = new Map(promptRows.map(p => [p.id, p.name]));
+  const NONE_PROMPT = "__none__";
+  const NONE_PROMPT_LABEL = "Belirtilmedi";
+
+  const promptColMap = new Map<string, string>(); // promptId -> promptName (distinct columns)
+  const perfMap: Record<string, {
     name: string; calls: number; totalScore: number;
-    firstCalls: number; firstTotalScore: number;
-    secondCalls: number; secondTotalScore: number;
+    byPrompt: Record<string, { sum: number; count: number }>;
   }> = {};
   for (const ev of evaluations) {
     const id = ev.agentId;
-    if (!agentMap[id]) agentMap[id] = { name: ev.agent.name, calls: 0, totalScore: 0, firstCalls: 0, firstTotalScore: 0, secondCalls: 0, secondTotalScore: 0 };
-    agentMap[id].calls++;
-    agentMap[id].totalScore += ev.score;
-    if (ev.callType === "FIRST_CALL") {
-      agentMap[id].firstCalls++;
-      agentMap[id].firstTotalScore += ev.score;
-    } else {
-      agentMap[id].secondCalls++;
-      agentMap[id].secondTotalScore += ev.score;
-    }
+    if (!perfMap[id]) perfMap[id] = { name: ev.agent.name, calls: 0, totalScore: 0, byPrompt: {} };
+    perfMap[id].calls++;
+    perfMap[id].totalScore += ev.score;
+    const pid = ev.promptId ?? NONE_PROMPT;
+    const pname = ev.promptId ? (promptNameById.get(ev.promptId) ?? ev.promptId) : NONE_PROMPT_LABEL;
+    promptColMap.set(pid, pname);
+    if (!perfMap[id].byPrompt[pid]) perfMap[id].byPrompt[pid] = { sum: 0, count: 0 };
+    perfMap[id].byPrompt[pid].sum += ev.score;
+    perfMap[id].byPrompt[pid].count++;
   }
-  const consultantPerformance = Object.values(agentMap)
-    .map(a => ({
+  const promptColumns = [...promptColMap.entries()]
+    .map(([promptId, promptName]) => ({ promptId, promptName }))
+    .sort((a, b) =>
+      a.promptId === NONE_PROMPT ? 1 : b.promptId === NONE_PROMPT ? -1 : a.promptName.localeCompare(b.promptName)
+    );
+  const consultantPerformance = Object.entries(perfMap)
+    .map(([agentId, a]) => ({
+      agentId,
       name: a.name,
       calls: a.calls,
       healthScore: a.calls > 0 ? Math.round((a.totalScore / a.calls) * 10) / 10 : 0,
-      firstCallScore: a.firstCalls > 0 ? Math.round((a.firstTotalScore / a.firstCalls) * 10) / 10 : null,
-      firstCallCount: a.firstCalls,
-      secondCallScore: a.secondCalls > 0 ? Math.round((a.secondTotalScore / a.secondCalls) * 10) / 10 : null,
-      secondCallCount: a.secondCalls,
+      byPrompt: Object.entries(a.byPrompt).map(([promptId, v]) => ({
+        promptId,
+        promptName: promptColMap.get(promptId)!,
+        avgScore: Math.round((v.sum / v.count) * 10) / 10,
+        count: v.count,
+      })),
     }))
     .sort((a, b) => b.calls - a.calls);
 
@@ -190,7 +202,7 @@ export async function GET(req: NextRequest) {
   if (totalEvaluations > 0) {
     return NextResponse.json({
       data: {
-        consultantPerformance, dailyCallBreakdown, callDurations, teamDistribution,
+        consultantPerformance, promptColumns, dailyCallBreakdown, callDurations, teamDistribution,
         consultantCallDistribution, unlistenedConsultants,
         summary: { totalEvaluations, totalSecondCalls, avgScore, highPotential, atRisk },
       },
@@ -204,6 +216,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       data: {
         consultantPerformance: [],
+        promptColumns: [],
         dailyCallBreakdown: [],
         callDurations: [],
         teamDistribution: [],
@@ -219,21 +232,15 @@ export async function GET(req: NextRequest) {
   // Demo veri — sadece ADMIN/MANAGER icin gercek evaluation yokken ornek gosterim
   const demoData = {
     consultantPerformance: [
-      { name: "Mehmet Akgul",     calls: 12, healthScore: 88.5, firstCallScore: 84.0, firstCallCount: 3, secondCallScore: 90.2, secondCallCount: 9 },
-      { name: "Damla Turkay",     calls: 10, healthScore: 82.0, firstCallScore: 78.5, firstCallCount: 2, secondCallScore: 83.1, secondCallCount: 8 },
-      { name: "Ibrahim Sik",      calls: 9,  healthScore: 79.3, firstCallScore: 75.0, firstCallCount: 2, secondCallScore: 81.0, secondCallCount: 7 },
-      { name: "Alexandra Boyko",  calls: 8,  healthScore: 76.0, firstCallScore: 72.3, firstCallCount: 3, secondCallScore: 78.4, secondCallCount: 5 },
-      { name: "Soufiane Slimane", calls: 8,  healthScore: 74.5, firstCallScore: 70.0, firstCallCount: 1, secondCallScore: 75.3, secondCallCount: 7 },
-      { name: "Guney Goc",        calls: 7,  healthScore: 85.0, firstCallScore: 81.5, firstCallCount: 2, secondCallScore: 86.8, secondCallCount: 5 },
-      { name: "Miray Ipek",       calls: 7,  healthScore: 71.0, firstCallScore: null, firstCallCount: 0, secondCallScore: 71.0, secondCallCount: 7 },
-      { name: "Melike Alara Bulut", calls: 6, healthScore: 68.2, firstCallScore: 65.0, firstCallCount: 2, secondCallScore: 70.0, secondCallCount: 4 },
-      { name: "Nurhan Guney",     calls: 6,  healthScore: 66.5, firstCallScore: 63.0, firstCallCount: 1, secondCallScore: 67.6, secondCallCount: 5 },
-      { name: "Mavican Tekuz",    calls: 5,  healthScore: 63.0, firstCallScore: 60.5, firstCallCount: 2, secondCallScore: 64.7, secondCallCount: 3 },
-      { name: "Furkan Kirik",     calls: 4,  healthScore: 61.0, firstCallScore: 58.0, firstCallCount: 1, secondCallScore: 62.3, secondCallCount: 3 },
-      { name: "Didem Ozbek",      calls: 3,  healthScore: 52.0, firstCallScore: 49.0, firstCallCount: 1, secondCallScore: 53.5, secondCallCount: 2 },
-      { name: "Emir Ozdemir",     calls: 2,  healthScore: 45.0, firstCallScore: 42.0, firstCallCount: 1, secondCallScore: 48.0, secondCallCount: 1 },
-      { name: "Sinem Bulur",      calls: 3,  healthScore: 75.0, firstCallScore: 72.0, firstCallCount: 1, secondCallScore: 76.5, secondCallCount: 2 },
-      { name: "Deniz Senavci",    calls: 2,  healthScore: 72.0, firstCallScore: null, firstCallCount: 0, secondCallScore: 72.0, secondCallCount: 2 },
+      { agentId: "d1", name: "Mehmet Akgul",   calls: 12, healthScore: 88.5, byPrompt: [ { promptId: "p_first", promptName: "SDR", avgScore: 84.0, count: 3 }, { promptId: "p_second", promptName: "Estenove Second Call Scorecard", avgScore: 90.2, count: 9 } ] },
+      { agentId: "d2", name: "Damla Turkay",   calls: 10, healthScore: 82.0, byPrompt: [ { promptId: "p_first", promptName: "SDR", avgScore: 78.5, count: 2 }, { promptId: "p_second", promptName: "Estenove Second Call Scorecard", avgScore: 83.1, count: 8 } ] },
+      { agentId: "d3", name: "Miray Ipek",     calls: 7,  healthScore: 71.0, byPrompt: [ { promptId: "p_second", promptName: "Estenove Second Call Scorecard", avgScore: 71.0, count: 7 } ] },
+      { agentId: "d4", name: "Guney Goc",      calls: 7,  healthScore: 85.0, byPrompt: [ { promptId: "p_first", promptName: "SDR", avgScore: 81.5, count: 2 }, { promptId: "p_second", promptName: "Estenove Second Call Scorecard", avgScore: 86.8, count: 5 } ] },
+      { agentId: "d5", name: "Didem Ozbek",    calls: 3,  healthScore: 52.0, byPrompt: [ { promptId: "p_first", promptName: "SDR", avgScore: 49.0, count: 1 }, { promptId: "p_second", promptName: "Estenove Second Call Scorecard", avgScore: 53.5, count: 2 } ] },
+    ],
+    promptColumns: [
+      { promptId: "p_first", promptName: "SDR" },
+      { promptId: "p_second", promptName: "Estenove Second Call Scorecard" },
     ],
     dailyCallBreakdown: [
       { date: "31 Mart", firstCall: 8, secondCall: 5 },
