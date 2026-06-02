@@ -10,6 +10,7 @@ import {
   buildTranscriptText,
   extractSpeakerNames,
   formatFirefliesDuration,
+  resolveDurationMinutes,
   isFirefliesConfigured,
   FirefliesTranscript,
 } from "@/app/lib/fireflies";
@@ -123,7 +124,7 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
 
   const transcriptText = buildTranscriptText(transcript.sentences);
   const agentName = matched?.name || speakerNames[0] || "Belirtilmedi";
-  const duration = formatFirefliesDuration(transcript.duration ?? 0);
+  const duration = formatFirefliesDuration(resolveDurationMinutes(transcript) ?? 0);
 
   const formData = new FormData();
   formData.append("transcript", transcriptText);

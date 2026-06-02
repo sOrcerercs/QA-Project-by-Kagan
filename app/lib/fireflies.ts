@@ -92,16 +92,34 @@ export async function fetchTranscriptsByDate(date: string): Promise<FirefliesTra
   );
 }
 
+/**
+ * Çağrı süresini dakika cinsinden çöz. Fireflies bazı gerçek çağrılar için
+ * duration=null döndürüyor; bu durumda son cümlenin end_time'ından (saniye) tahmin et.
+ * Ne süre ne de end_time varsa null döner.
+ */
+export function resolveDurationMinutes(t: FirefliesTranscript): number | null {
+  if (t.duration != null) return t.duration;
+  const maxEndSec = t.sentences.reduce(
+    (m, s) => Math.max(m, s.end_time ?? 0, s.start_time ?? 0),
+    0
+  );
+  return maxEndSec > 0 ? maxEndSec / 60 : null;
+}
+
 export function filterAnalyzableTranscripts(
   transcripts: FirefliesTranscript[],
   minDurationMinutes = 2
 ): FirefliesTranscript[] {
-  return transcripts.filter(t =>
-    t.duration != null &&
-    t.duration >= minDurationMinutes &&
-    t.sentences.length > 0 &&
-    buildTranscriptText(t.sentences).trim().length > 50
-  );
+  // Süre bilinmiyorsa (Fireflies bazen null döndürür) end_time'dan tahmin edilir;
+  // o da yoksa transcript içeriğine güvenilir (boşlar cümle/metin kontrolüyle elenir).
+  return transcripts.filter(t => {
+    const dur = resolveDurationMinutes(t);
+    return (
+      (dur == null || dur >= minDurationMinutes) &&
+      t.sentences.length > 0 &&
+      buildTranscriptText(t.sentences).trim().length > 50
+    );
+  });
 }
 
 export function buildTranscriptText(sentences: FirefliesSentence[]): string {
