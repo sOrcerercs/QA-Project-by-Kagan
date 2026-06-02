@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
 
   const evaluations = await prisma.evaluation.findMany({
     where: {
-      createdAt: { gte: start, lte: end },
+      callDate: { gte: start, lte: end },
       ...(scopedAgentId && { agentId: scopedAgentId }),
       ...(teamScopedIds && { agentId: { in: teamScopedIds } }),
     },
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
         select: { id: true, name: true, email: true, teamId: true, team: { select: { name: true } } },
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { callDate: "asc" },
   });
 
   const allAgents = await prisma.user.findMany({
@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
   // Günlük Çağrı Dağılımı
   const dailyMap: Record<string, { firstCall: number; secondCall: number }> = {};
   for (const ev of evaluations) {
-    const dateKey = new Date(ev.createdAt).toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
+    const dateKey = new Date(ev.callDate).toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
     if (!dailyMap[dateKey]) dailyMap[dateKey] = { firstCall: 0, secondCall: 0 };
     if (ev.callType === "FIRST_CALL") dailyMap[dateKey].firstCall++;
     else dailyMap[dateKey].secondCall++;
