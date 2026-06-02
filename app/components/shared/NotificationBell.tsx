@@ -33,9 +33,12 @@ const L = {
 
 interface Props {
   lang: "tr" | "en";
+  // SPA tab değiştirici — bildirim tıklanınca eski /settings/admin sayfasına
+  // gitmek yerine mevcut arayüzde ilgili sekmeye geçmek için.
+  onNavigateTab: (tab: string) => void;
 }
 
-export default function NotificationBell({ lang }: Props) {
+export default function NotificationBell({ lang, onNavigateTab }: Props) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -88,11 +91,11 @@ export default function NotificationBell({ lang }: Props) {
     if (!n.isRead) await markOneRead(n.id);
     setOpen(false);
     if (n.type === "FEEDBACK") {
-      router.push("/settings/admin?tab=feedbacks");
+      onNavigateTab("feedbacks");
     } else if (n.type === "EVALUATION" && n.referenceId) {
       router.push(`/evaluation/${n.referenceId}`);
     } else if (n.type === "UNASSIGNED_CALL") {
-      router.push("/settings/admin?tab=sync");
+      onNavigateTab("sync");
     }
   };
 

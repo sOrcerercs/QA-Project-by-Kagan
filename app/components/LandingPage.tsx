@@ -1019,7 +1019,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                 <span>{lang === "tr" ? "TR" : "EN"}</span>
               </button>
               {/* Bell */}
-              <NotificationBell lang={lang} />
+              <NotificationBell lang={lang} onNavigateTab={handleTab} />
               {/* New Analysis CTA — only for ADMIN */}
               {user.role === "ADMIN" && (
                 <button
