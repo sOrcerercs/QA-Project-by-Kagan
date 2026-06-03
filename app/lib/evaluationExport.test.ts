@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { groupByAgent, slugifyFilename, type ExportEvaluation } from "./evaluationExport";
+import {
+  groupByAgent,
+  slugifyFilename,
+  formatReportToHtml,
+  type ExportEvaluation,
+} from "./evaluationExport";
 
 function ev(partial: Partial<ExportEvaluation>): ExportEvaluation {
   return {
@@ -41,5 +46,27 @@ describe("slugifyFilename", () => {
   it("falls back to 'danisman' for empty input", () => {
     expect(slugifyFilename("   ")).toBe("danisman");
     expect(slugifyFilename("!!!")).toBe("danisman");
+  });
+});
+
+describe("formatReportToHtml", () => {
+  it("renders emoji section headers as bold headings", () => {
+    const html = formatReportToHtml("📊 Genel Değerlendirme");
+    expect(html).toContain("font-weight:700");
+    expect(html).toContain("📊 Genel Değerlendirme");
+  });
+
+  it("renders bullet lines", () => {
+    expect(formatReportToHtml("• İlk madde")).toContain("• İlk madde");
+  });
+
+  it("escapes HTML special characters", () => {
+    const html = formatReportToHtml("Müşteri <script>alert(1)</script>");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>");
+  });
+
+  it("renders blank lines as spacer divs", () => {
+    expect(formatReportToHtml("")).toContain("height:6px");
   });
 });
