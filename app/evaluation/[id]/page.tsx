@@ -237,7 +237,9 @@ export default function EvaluationDetailPage({
 
   const handleCopy = () => {
     if (!evaluation) return;
-    navigator.clipboard.writeText(evaluation.report);
+    // Ekranda gösterilen metni kopyala: EN seçiliyse ve çeviri hazırsa çeviriyi, yoksa orijinali.
+    const reportText = lang === "en" && translatedReport ? translatedReport : evaluation.report;
+    navigator.clipboard.writeText(reportText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
