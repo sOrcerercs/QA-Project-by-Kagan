@@ -134,3 +134,85 @@ export function formatReportToHtml(text: string): string {
     })
     .join("");
 }
+
+function wrapWordHtml(html: string): string {
+  return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body>${html}</body></html>`;
+}
+
+function docBlob(html: string): Blob {
+  return new Blob(["﻿" + wrapWordHtml(html)], { type: "application/msword" });
+}
+
+function triggerDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function downloadDoc(html: string, filename: string): void {
+  triggerDownload(docBlob(html), filename.endsWith(".doc") ? filename : `${filename}.doc`);
+}
+
+const PDF_OPTS = {
+  margin: 10,
+  image: { type: "jpeg", quality: 0.95 },
+  html2canvas: { scale: 2, useCORS: true },
+  jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+};
+
+// html2canvas needs the element in the DOM for correct layout.
+// Attach off-screen, render, then clean up.
+async function withPdfWorker<T>(html: string, run: (worker: any) => Promise<T>): Promise<T> {
+  const html2pdf = (await import("html2pdf.js" as any)).default;
+  const container = document.createElement("div");
+  container.style.position = "fixed";
+  container.style.left = "-9999px";
+  container.style.top = "0";
+  container.style.width = "760px";
+  container.innerHTML = html;
+  document.body.appendChild(container);
+  try {
+    return await run(html2pdf().set(PDF_OPTS).from(container));
+  } finally {
+    container.remove();
+  }
+}
+
+export async function downloadPdf(html: string, filename: string): Promise<void> {
+  await withPdfWorker(html, (worker) =>
+    worker.save(filename.endsWith(".pdf") ? filename : `${filename}.pdf`)
+  );
+}
+
+export async function buildPdfBlob(html: string): Promise<Blob> {
+  return withPdfWorker(html, (worker) => worker.outputPdf("blob"));
+}
+
+export async function downloadAllZip(
+  groups: AgentGroup[],
+  range: DateRange,
+  lang: Lang,
+  zipDate: string
+): Promise<{ skipped: string[] }> {
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+  const skipped: string[] = [];
+  for (const g of groups) {
+    try {
+      const html = buildEvaluationHtml(g.agentName, g.evals, range, lang);
+      const base = slugifyFilename(g.agentName);
+      zip.file(`${base}.pdf`, await buildPdfBlob(html));
+      zip.file(`${base}.doc`, docBlob(html));
+    } catch {
+      skipped.push(g.agentName);
+    }
+  }
+  const out = await zip.generateAsync({ type: "blob" });
+  triggerDownload(out, `degerlendirmeler_${zipDate}.zip`);
+  return { skipped };
+}
