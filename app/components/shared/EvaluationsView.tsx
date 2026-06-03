@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import EvaluationList from "@/app/components/shared/EvaluationList";
+import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect";
 import {
   buildEvaluationHtml,
   downloadPdf,
@@ -68,17 +69,17 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
   const [currentRange, setCurrentRange] = useState<{ startDate?: string; endDate?: string }>({});
   const [downloading, setDownloading] = useState(false);
 
-  const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string, agentId?: string) => {
+  const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string, agentIds?: string[]) => {
     setLoading(true);
     setCurrentRange({ startDate, endDate });
     const params = new URLSearchParams();
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
-    if (agentId) params.set("agentIds", agentId);
+    if (agentIds && agentIds.length) params.set("agentIds", agentIds.join(","));
     const qs = params.toString();
     try {
       const res = await fetch(`/api/evaluations${qs ? `?${qs}` : ""}`);
@@ -106,17 +107,17 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     setPreset(p);
     if (p === "custom") return;
     const dates = presetToDates(p);
-    fetchEvaluations(dates?.startDate, dates?.endDate, selectedAgentId || undefined);
+    fetchEvaluations(dates?.startDate, dates?.endDate, selectedAgentIds);
   };
 
   const handleApplyCustom = () => {
     if (!customStart || !customEnd || customStart > customEnd) return;
-    fetchEvaluations(customStart, customEnd, selectedAgentId || undefined);
+    fetchEvaluations(customStart, customEnd, selectedAgentIds);
   };
 
-  const handleSelectAgent = (id: string) => {
-    setSelectedAgentId(id);
-    fetchEvaluations(currentRange.startDate, currentRange.endDate, id || undefined);
+  const handleAgentsChange = (ids: string[]) => {
+    setSelectedAgentIds(ids);
+    fetchEvaluations(currentRange.startDate, currentRange.endDate, ids);
   };
 
   const handleToggleSelect = (id: string) => {
@@ -175,7 +176,8 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   };
 
   const selectedAgentName =
-    agents.find((a) => a.id === selectedAgentId)?.name ?? (lang === "tr" ? "Danışman" : "Consultant");
+    (selectedAgentIds.length === 1 ? agents.find((a) => a.id === selectedAgentIds[0])?.name : undefined) ??
+    (lang === "tr" ? "Danışman" : "Consultant");
 
   const buildFilename = (name: string) => {
     const r =
@@ -203,20 +205,14 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     downloadDoc(html, buildFilename(selectedAgentName));
   };
 
-  const handleDownloadAll = async () => {
+  const handleDownloadZip = async () => {
+    if (!evaluations.length) {
+      alert(lang === "tr" ? "İndirilecek değerlendirme yok." : "No evaluations to download.");
+      return;
+    }
     setDownloading(true);
     try {
-      const params = new URLSearchParams();
-      if (currentRange.startDate) params.set("startDate", currentRange.startDate);
-      if (currentRange.endDate) params.set("endDate", currentRange.endDate);
-      const qs = params.toString();
-      const res = await fetch(`/api/evaluations${qs ? `?${qs}` : ""}`);
-      const all: ExportEvaluation[] = res.ok ? (await res.json()).evaluations || [] : [];
-      if (!all.length) {
-        alert(lang === "tr" ? "İndirilecek değerlendirme yok." : "No evaluations to download.");
-        return;
-      }
-      const groups = groupByAgent(all);
+      const groups = groupByAgent(evaluations as ExportEvaluation[]);
       const zipDate = new Date().toISOString().split("T")[0];
       const { skipped } = await downloadAllZip(groups, currentRange, lang, zipDate);
       if (skipped.length) {
@@ -277,18 +273,14 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
       {isAdmin && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {agents.length > 0 && (
-            <select
-              value={selectedAgentId}
-              onChange={(e) => handleSelectAgent(e.target.value)}
-              style={{ padding: "8px 12px", borderRadius: 10, background: "var(--glass-bg)", border: "1px solid var(--rule)", color: "var(--fg)", fontSize: 13, fontFamily: "inherit", outline: "none" }}
-            >
-              <option value="">{lang === "tr" ? "Tüm Danışmanlar" : "All Consultants"}</option>
-              {agents.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
+            <ConsultantMultiSelect
+              agents={agents}
+              selectedIds={selectedAgentIds}
+              onChange={handleAgentsChange}
+              lang={lang}
+            />
           )}
-          {selectedAgentId && (
+          {selectedAgentIds.length === 1 && (
             <>
               <button
                 onClick={handleDownloadPdf}
@@ -306,13 +298,19 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
               </button>
             </>
           )}
-          <button
-            onClick={handleDownloadAll}
-            disabled={downloading}
-            style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--rule)", background: "transparent", color: "var(--fg-dim)", fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", opacity: downloading ? 0.4 : 1, transition: "opacity 0.15s" }}
-          >
-            {downloading ? (lang === "tr" ? "Hazırlanıyor…" : "Preparing…") : (lang === "tr" ? "Tümünü İndir (ZIP)" : "Download All (ZIP)")}
-          </button>
+          {selectedAgentIds.length !== 1 && (
+            <button
+              onClick={handleDownloadZip}
+              disabled={downloading}
+              style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--rule)", background: "transparent", color: "var(--fg-dim)", fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", opacity: downloading ? 0.4 : 1, transition: "opacity 0.15s" }}
+            >
+              {downloading
+                ? lang === "tr" ? "Hazırlanıyor…" : "Preparing…"
+                : selectedAgentIds.length === 0
+                ? lang === "tr" ? "Tümünü İndir (ZIP)" : "Download All (ZIP)"
+                : lang === "tr" ? "Seçilenleri İndir (ZIP)" : "Download Selected (ZIP)"}
+            </button>
+          )}
         </div>
       )}
 
