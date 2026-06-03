@@ -3,6 +3,7 @@ import {
   groupByAgent,
   slugifyFilename,
   formatReportToHtml,
+  buildEvaluationHtml,
   type ExportEvaluation,
 } from "./evaluationExport";
 
@@ -68,5 +69,43 @@ describe("formatReportToHtml", () => {
 
   it("renders blank lines as spacer divs", () => {
     expect(formatReportToHtml("")).toContain("height:6px");
+  });
+});
+
+describe("buildEvaluationHtml", () => {
+  const evals: ExportEvaluation[] = [
+    { id: "a", score: 80, customerName: "Müşteri A", callDuration: "05:00", callDate: "2026-06-01", report: "📊 Bölüm\n• madde" },
+    { id: "b", score: 60, customerName: "Müşteri B", callDuration: "03:00", callDate: "2026-06-02", report: "rapor b" },
+  ];
+
+  it("includes consultant name and computed average score", () => {
+    const html = buildEvaluationHtml("Ayşe", evals, {}, "tr");
+    expect(html).toContain("Ayşe");
+    expect(html).toContain("Danışman");
+    expect(html).toContain("%70"); // (80 + 60) / 2
+    expect(html).toContain("Müşteri A");
+    expect(html).toContain("Müşteri B");
+  });
+
+  it("adds a page break before every evaluation except the first", () => {
+    const html = buildEvaluationHtml("Ayşe", evals, {}, "tr");
+    const breaks = html.match(/page-break-before:always/g) ?? [];
+    expect(breaks).toHaveLength(1); // sadece ikinci değerlendirme
+  });
+
+  it("shows 'Tümü' range label when no dates given (tr)", () => {
+    expect(buildEvaluationHtml("Ayşe", evals, {}, "tr")).toContain("Tümü");
+  });
+
+  it("handles empty evaluation list with zero average", () => {
+    const html = buildEvaluationHtml("Ayşe", [], {}, "tr");
+    expect(html).toContain("%0");
+    expect(html).not.toContain("page-break-before:always");
+  });
+
+  it("uses English labels when lang is en", () => {
+    const html = buildEvaluationHtml("Ayşe", evals, {}, "en");
+    expect(html).toContain("Consultant");
+    expect(html).toContain("Evaluation Report");
   });
 });
