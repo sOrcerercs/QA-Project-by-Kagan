@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
+import { jsPDF } from "jspdf";
 import {
   groupByAgent,
   slugifyFilename,
   formatReportToHtml,
   buildEvaluationHtml,
+  classifyReportLine,
+  renderEvaluationsToDoc,
   type ExportEvaluation,
 } from "./evaluationExport";
 
@@ -107,5 +110,49 @@ describe("buildEvaluationHtml", () => {
     const html = buildEvaluationHtml("Ayşe", evals, {}, "en");
     expect(html).toContain("Consultant");
     expect(html).toContain("Evaluation Report");
+  });
+});
+
+describe("classifyReportLine", () => {
+  it("classifies each line kind", () => {
+    expect(classifyReportLine("📊 Bölüm")).toBe("section");
+    expect(classifyReportLine("Müşteri: X")).toBe("meta");
+    expect(classifyReportLine("• madde")).toBe("bullet");
+    expect(classifyReportLine("Kanıt: foo")).toBe("evidence");
+    expect(classifyReportLine("Olması Gereken: bar")).toBe("expected");
+    expect(classifyReportLine("")).toBe("blank");
+    expect(classifyReportLine("düz metin")).toBe("default");
+  });
+});
+
+describe("renderEvaluationsToDoc", () => {
+  const mk = (n: number): ExportEvaluation[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: String(i), score: 70, customerName: "Müşteri " + i,
+      callDuration: "05:00", callDate: "2026-06-01", report: "📊 Bölüm\n• madde\nKanıt: x",
+    }));
+
+  it("starts a new page for each evaluation", () => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    renderEvaluationsToDoc(doc, "Ayşe", mk(3), {}, "tr");
+    expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(3);
+  });
+
+  it("renders an empty list as a single page without throwing", () => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    expect(() => renderEvaluationsToDoc(doc, "Ayşe", [], {}, "tr")).not.toThrow();
+    expect(doc.getNumberOfPages()).toBe(1);
+  });
+
+  // Regression guard for the html2canvas hang: a huge report must paginate
+  // natively instead of overflowing a single canvas.
+  it("paginates a very large report without hanging or throwing", () => {
+    const huge: ExportEvaluation[] = [{
+      id: "x", score: 80, customerName: "Big", callDuration: "01:00",
+      callDate: "2026-06-01", report: "satır metni\n".repeat(20000),
+    }];
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    expect(() => renderEvaluationsToDoc(doc, "Ayşe", huge, {}, "tr")).not.toThrow();
+    expect(doc.getNumberOfPages()).toBeGreaterThan(10);
   });
 });

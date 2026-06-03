@@ -189,8 +189,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     if (!evaluations.length) return;
     setDownloading(true);
     try {
-      const html = buildEvaluationHtml(selectedAgentName, evaluations as ExportEvaluation[], currentRange, lang);
-      await downloadPdf(html, buildFilename(selectedAgentName));
+      await downloadPdf(selectedAgentName, evaluations as ExportEvaluation[], currentRange, lang, buildFilename(selectedAgentName));
     } catch {
       alert(lang === "tr" ? "İndirme başarısız." : "Download failed.");
     } finally {

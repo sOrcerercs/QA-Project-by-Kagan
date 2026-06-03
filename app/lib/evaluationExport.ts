@@ -109,29 +109,34 @@ export function buildEvaluationHtml(
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#111111;max-width:760px;">${header}${blocks}</div>`;
 }
 
+export type ReportLineKind = "section" | "meta" | "bullet" | "evidence" | "expected" | "blank" | "default";
+
+// Classify a single report line — shared by the HTML (Word) and PDF renderers
+// so both stay in sync with the on-screen formatReport rules.
+export function classifyReportLine(line: string): ReportLineKind {
+  if (SECTION_PREFIXES.some((p) => line.startsWith(p))) return "section";
+  if (/^(Temsilci:|Consultant:|Müşteri:|Customer:|Görüşme|Call |Genel Skor:|Overall Score:)/.test(line)) return "meta";
+  if (line.startsWith("•") || line.startsWith("-")) return "bullet";
+  if (line.includes("Kanıt:") || line.includes("Evidence:")) return "evidence";
+  if (line.includes("Olması Gereken:") || line.includes("Expected:")) return "expected";
+  if (line.trim() === "") return "blank";
+  return "default";
+}
+
+const HTML_STYLE: Record<ReportLineKind, (safe: string) => string> = {
+  section: (s) => `<div style="margin:18px 0 6px;font-weight:700;font-size:14px;color:#1d4ed8;border-bottom:1px solid #d1d5db;padding-bottom:4px;">${s}</div>`,
+  meta: (s) => `<div style="font-size:13px;font-weight:600;color:#111111;padding:1px 0;">${s}</div>`,
+  bullet: (s) => `<div style="font-size:13px;color:#111111;padding:2px 0 2px 12px;">${s}</div>`,
+  evidence: (s) => `<div style="font-size:12px;color:#047857;padding:1px 0 1px 24px;font-family:monospace;">${s}</div>`,
+  expected: (s) => `<div style="font-size:12px;color:#b45309;padding:1px 0 1px 24px;">${s}</div>`,
+  blank: () => `<div style="height:6px;"></div>`,
+  default: (s) => `<div style="font-size:13px;color:#374151;padding:1px 0;">${s}</div>`,
+};
+
 export function formatReportToHtml(text: string): string {
   return text
     .split("\n")
-    .map((line) => {
-      const safe = escapeHtml(line);
-      if (SECTION_PREFIXES.some((p) => line.startsWith(p))) {
-        return `<div style="margin:18px 0 6px;font-weight:700;font-size:14px;color:#1d4ed8;border-bottom:1px solid #d1d5db;padding-bottom:4px;">${safe}</div>`;
-      }
-      if (/^(Temsilci:|Consultant:|Müşteri:|Customer:|Görüşme|Call |Genel Skor:|Overall Score:)/.test(line)) {
-        return `<div style="font-size:13px;font-weight:600;color:#111111;padding:1px 0;">${safe}</div>`;
-      }
-      if (line.startsWith("•") || line.startsWith("-")) {
-        return `<div style="font-size:13px;color:#111111;padding:2px 0 2px 12px;">${safe}</div>`;
-      }
-      if (line.includes("Kanıt:") || line.includes("Evidence:")) {
-        return `<div style="font-size:12px;color:#047857;padding:1px 0 1px 24px;font-family:monospace;">${safe}</div>`;
-      }
-      if (line.includes("Olması Gereken:") || line.includes("Expected:")) {
-        return `<div style="font-size:12px;color:#b45309;padding:1px 0 1px 24px;">${safe}</div>`;
-      }
-      if (line.trim() === "") return `<div style="height:6px;"></div>`;
-      return `<div style="font-size:13px;color:#374151;padding:1px 0;">${safe}</div>`;
-    })
+    .map((line) => HTML_STYLE[classifyReportLine(line)](escapeHtml(line)))
     .join("");
 }
 
@@ -158,39 +163,176 @@ export function downloadDoc(html: string, filename: string): void {
   triggerDownload(docBlob(html), filename.endsWith(".doc") ? filename : `${filename}.doc`);
 }
 
-const PDF_OPTS = {
-  margin: 10,
-  image: { type: "jpeg", quality: 0.95 },
-  html2canvas: { scale: 2, useCORS: true },
-  jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-};
+// ---- PDF generation (text-based jsPDF) ----
+// We render real text (not a rasterized HTML snapshot) so documents of any
+// length paginate natively — no browser canvas-size limit, no truncation, far
+// faster. A Unicode TTF (DejaVuSans) is embedded so Turkish ş/ğ/ı/İ render.
 
-// html2canvas needs the element in the DOM for correct layout.
-// Attach off-screen, render, then clean up.
-async function withPdfWorker<T>(html: string, run: (worker: any) => Promise<T>): Promise<T> {
-  const html2pdf = (await import("html2pdf.js" as any)).default;
-  const container = document.createElement("div");
-  container.style.position = "fixed";
-  container.style.left = "-9999px";
-  container.style.top = "0";
-  container.style.width = "760px";
-  container.innerHTML = html;
-  document.body.appendChild(container);
+const PDF_FONT = "DejaVuSans";
+const PDF_FONT_FILES: Record<"normal" | "bold", { vfs: string; url: string }> = {
+  normal: { vfs: "DejaVuSans.ttf", url: "/fonts/DejaVuSans.ttf" },
+  bold: { vfs: "DejaVuSans-Bold.ttf", url: "/fonts/DejaVuSans-Bold.ttf" },
+};
+const fontCache: { normal?: string; bold?: string } = {};
+
+async function fetchFontBase64(url: string): Promise<string> {
+  const buf = await (await fetch(url)).arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+// Register the embedded Unicode font into a fresh jsPDF instance (VFS is
+// per-instance, so this runs per document; the base64 is cached across calls).
+// Returns the font family to use, falling back to a built-in font if loading fails.
+async function registerPdfFont(doc: any): Promise<string> {
   try {
-    return await run(html2pdf().set(PDF_OPTS).from(container));
-  } finally {
-    container.remove();
+    fontCache.normal ??= await fetchFontBase64(PDF_FONT_FILES.normal.url);
+    fontCache.bold ??= await fetchFontBase64(PDF_FONT_FILES.bold.url);
+    doc.addFileToVFS(PDF_FONT_FILES.normal.vfs, fontCache.normal);
+    doc.addFont(PDF_FONT_FILES.normal.vfs, PDF_FONT, "normal");
+    doc.addFileToVFS(PDF_FONT_FILES.bold.vfs, fontCache.bold);
+    doc.addFont(PDF_FONT_FILES.bold.vfs, PDF_FONT, "bold");
+    return PDF_FONT;
+  } catch {
+    return "helvetica"; // graceful fallback — PDF still generates (Turkish glyphs may be off)
   }
 }
 
-export async function downloadPdf(html: string, filename: string): Promise<void> {
-  await withPdfWorker(html, (worker) =>
-    worker.save(filename.endsWith(".pdf") ? filename : `${filename}.pdf`)
-  );
+interface PdfLineStyle {
+  size: number;
+  style: "normal" | "bold";
+  color: [number, number, number];
+  indent: number;
+  gapBefore?: number;
+  gapAfter?: number;
 }
 
-export async function buildPdfBlob(html: string): Promise<Blob> {
-  return withPdfWorker(html, (worker) => worker.outputPdf("blob"));
+const PDF_STYLE: Record<ReportLineKind, PdfLineStyle> = {
+  section: { size: 11, style: "bold", color: [29, 78, 216], indent: 0, gapBefore: 3, gapAfter: 1 },
+  meta: { size: 9.5, style: "bold", color: [17, 17, 17], indent: 0 },
+  bullet: { size: 9.5, style: "normal", color: [17, 17, 17], indent: 4 },
+  evidence: { size: 9, style: "normal", color: [4, 120, 87], indent: 8 },
+  expected: { size: 9, style: "normal", color: [180, 83, 9], indent: 8 },
+  blank: { size: 9, style: "normal", color: [55, 65, 81], indent: 0 },
+  default: { size: 9.5, style: "normal", color: [55, 65, 81], indent: 0 },
+};
+
+// Render a consultant's evaluations into an existing jsPDF doc. Exported for
+// unit testing (pass a plain jsPDF + the default font). The browser path uses
+// the embedded font via registerPdfFont.
+export function renderEvaluationsToDoc(
+  doc: any,
+  agentName: string,
+  evals: ExportEvaluation[],
+  range: DateRange,
+  lang: Lang,
+  fontFamily: string = "helvetica"
+): void {
+  const L = LABELS[lang];
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 12;
+  const maxW = pageW - margin * 2;
+  const bottom = pageH - margin;
+  let y = margin;
+
+  const writeLine = (text: string, st: PdfLineStyle) => {
+    doc.setFont(fontFamily, st.style);
+    doc.setFontSize(st.size);
+    doc.setTextColor(st.color[0], st.color[1], st.color[2]);
+    const lh = st.size * 0.3528 * 1.2; // pt → mm, with line spacing
+    const wrapped: string[] = doc.splitTextToSize(text, maxW - st.indent);
+    for (const w of wrapped) {
+      if (y + lh > bottom) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(w, margin + st.indent, y);
+      y += lh;
+    }
+  };
+
+  const avg = evals.length
+    ? Math.round(evals.reduce((a, e) => a + (e.score || 0), 0) / evals.length)
+    : 0;
+  const rangeText =
+    range.startDate || range.endDate
+      ? `${range.startDate ? fmtDate(range.startDate, lang) : "…"} — ${range.endDate ? fmtDate(range.endDate, lang) : "…"}`
+      : L.all;
+
+  writeLine(L.title, { size: 16, style: "bold", color: [17, 17, 17], indent: 0 });
+  y += 1;
+  writeLine(`${L.consultant}: ${agentName}`, { size: 11, style: "bold", color: [17, 17, 17], indent: 0 });
+  writeLine(`${L.range}: ${rangeText}`, { size: 9.5, style: "normal", color: [107, 114, 128], indent: 0 });
+  writeLine(`${L.total}: ${evals.length}  ·  ${L.avg}: %${avg}`, { size: 9.5, style: "normal", color: [107, 114, 128], indent: 0 });
+  doc.setDrawColor(29, 78, 216);
+  doc.setLineWidth(0.4);
+  doc.line(margin, y, pageW - margin, y);
+  y += 4;
+
+  evals.forEach((ev, idx) => {
+    if (idx > 0) {
+      doc.addPage();
+      y = margin;
+    }
+    writeLine(ev.customerName || "—", { size: 12, style: "bold", color: [17, 17, 17], indent: 0 });
+    const meta = [`${L.duration}: ${ev.callDuration || "—"}`];
+    if (ev.callType) meta.push(`${L.callType}: ${ev.callType}`);
+    meta.push(`${L.evalDate}: ${fmtDate(ev.callDate, lang)}`);
+    meta.push(`${L.score}: %${ev.score}`);
+    writeLine(meta.join("  ·  "), { size: 9, style: "normal", color: [107, 114, 128], indent: 0 });
+    y += 1;
+
+    for (const raw of (ev.report || "").split("\n")) {
+      const st = PDF_STYLE[classifyReportLine(raw)];
+      if (raw.trim() === "") {
+        y += 2;
+        continue;
+      }
+      if (st.gapBefore) y += st.gapBefore;
+      writeLine(raw, st);
+      if (st.gapAfter) y += st.gapAfter;
+    }
+  });
+}
+
+async function buildEvaluationDoc(
+  agentName: string,
+  evals: ExportEvaluation[],
+  range: DateRange,
+  lang: Lang
+): Promise<any> {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const fontFamily = await registerPdfFont(doc);
+  renderEvaluationsToDoc(doc, agentName, evals, range, lang, fontFamily);
+  return doc;
+}
+
+export async function downloadPdf(
+  agentName: string,
+  evals: ExportEvaluation[],
+  range: DateRange,
+  lang: Lang,
+  filename: string
+): Promise<void> {
+  const doc = await buildEvaluationDoc(agentName, evals, range, lang);
+  doc.save(filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
+}
+
+export async function buildPdfBlob(
+  agentName: string,
+  evals: ExportEvaluation[],
+  range: DateRange,
+  lang: Lang
+): Promise<Blob> {
+  const doc = await buildEvaluationDoc(agentName, evals, range, lang);
+  return doc.output("blob");
 }
 
 export async function downloadAllZip(
@@ -204,10 +346,9 @@ export async function downloadAllZip(
   const skipped: string[] = [];
   for (const g of groups) {
     try {
-      const html = buildEvaluationHtml(g.agentName, g.evals, range, lang);
       const base = slugifyFilename(g.agentName);
-      zip.file(`${base}.pdf`, await buildPdfBlob(html));
-      zip.file(`${base}.doc`, docBlob(html));
+      zip.file(`${base}.pdf`, await buildPdfBlob(g.agentName, g.evals, range, lang));
+      zip.file(`${base}.doc`, docBlob(buildEvaluationHtml(g.agentName, g.evals, range, lang)));
     } catch {
       skipped.push(g.agentName);
     }
