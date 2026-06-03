@@ -30,3 +30,19 @@ export function groupByAgent(evals: ExportEvaluation[]): AgentGroup[] {
   }
   return [...map.entries()].map(([agentName, evals]) => ({ agentName, evals }));
 }
+
+const TR_MAP: Record<string, string> = {
+  ç: "c", Ç: "C", ğ: "g", Ğ: "G", ı: "i", İ: "I",
+  ö: "o", Ö: "O", ş: "s", Ş: "S", ü: "u", Ü: "U",
+};
+
+export function slugifyFilename(name: string): string {
+  return (
+    name
+      .replace(/[çÇğĞıİöÖşŞüÜ]/g, (c) => TR_MAP[c] ?? c)
+      .normalize("NFKD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "danisman"
+  );
+}

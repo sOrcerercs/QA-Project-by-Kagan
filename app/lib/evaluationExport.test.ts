@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupByAgent, type ExportEvaluation } from "./evaluationExport";
+import { groupByAgent, slugifyFilename, type ExportEvaluation } from "./evaluationExport";
 
 function ev(partial: Partial<ExportEvaluation>): ExportEvaluation {
   return {
@@ -29,5 +29,17 @@ describe("groupByAgent", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].agentName).toBe("Atanmamış");
     expect(groups[0].evals).toHaveLength(2);
+  });
+});
+
+describe("slugifyFilename", () => {
+  it("transliterates Turkish characters and replaces spaces", () => {
+    expect(slugifyFilename("Ayşe Çelik")).toBe("Ayse_Celik");
+    expect(slugifyFilename("İrem Öztürk")).toBe("Irem_Ozturk");
+  });
+
+  it("falls back to 'danisman' for empty input", () => {
+    expect(slugifyFilename("   ")).toBe("danisman");
+    expect(slugifyFilename("!!!")).toBe("danisman");
   });
 });
