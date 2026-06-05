@@ -392,12 +392,10 @@ export default function EvaluationDetailPage({
 
   const formatReport = (text: string) =>
     text.split("\n").map((line, i) => {
-      if (
-        line.startsWith("📊") || line.startsWith("📝") || line.startsWith("💰") ||
-        line.startsWith("💭") || line.startsWith("🛑") || line.startsWith("🚨") ||
-        line.startsWith("📈") || line.startsWith("🔍") || line.startsWith("💡") ||
-        line.startsWith("🎯") || line.startsWith("✅")
-      ) {
+      // Any line starting with an emoji is a section heading. Matching all
+      // pictographs (not a fixed list) keeps every heading on the same style
+      // even as the prompt's heading emoji set changes.
+      if (/^\p{Extended_Pictographic}/u.test(line)) {
         return (
           <div key={i} className="mt-6 mb-2 text-primary font-bold text-base border-b border-outline-variant pb-2">
             {line}

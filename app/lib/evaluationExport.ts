@@ -47,7 +47,15 @@ export function slugifyFilename(name: string): string {
   );
 }
 
-const SECTION_PREFIXES = ["📊", "📝", "💰", "💭", "🛑", "🚨", "📈", "🔍", "💡", "🎯", "✅"];
+// Section headings in evaluation reports are prefixed with an emoji
+// (📊 🏆 ✅ ❌ 🔍 📋 📌 …). Match ANY leading emoji rather than a fixed
+// whitelist: the prompt's heading emoji set has changed over time, and a
+// hardcoded list silently demoted headings whose emoji wasn't included to
+// plain body text — which is why headings rendered with inconsistent
+// size/color. A structural "starts with a pictograph" rule keeps every
+// heading on the same section style. Bullets start with * / • / -, never an
+// emoji, so the two never collide.
+const SECTION_LEADING_EMOJI = /^\p{Extended_Pictographic}/u;
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -114,7 +122,7 @@ export type ReportLineKind = "section" | "meta" | "bullet" | "evidence" | "expec
 // Classify a single report line — shared by the HTML (Word) and PDF renderers
 // so both stay in sync with the on-screen formatReport rules.
 export function classifyReportLine(line: string): ReportLineKind {
-  if (SECTION_PREFIXES.some((p) => line.startsWith(p))) return "section";
+  if (SECTION_LEADING_EMOJI.test(line)) return "section";
   if (/^(Temsilci:|Consultant:|Müşteri:|Customer:|Görüşme|Call |Genel Skor:|Overall Score:)/.test(line)) return "meta";
   if (line.startsWith("•") || line.startsWith("-")) return "bullet";
   if (line.includes("Kanıt:") || line.includes("Evidence:")) return "evidence";
