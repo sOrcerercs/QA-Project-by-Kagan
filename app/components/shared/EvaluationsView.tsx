@@ -96,7 +96,10 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     if (isAdmin) {
       fetch("/api/users")
         .then(r => r.json())
-        .then(d => setAgents((d.users || []).filter((u: any) => ["AGENT", "MANAGER"].includes(u.role))))
+        // Consultants who can be evaluated / reassigned to. TEAM_LEADER must be
+        // included — team leaders also handle calls and get evaluated (e.g. they
+        // were missing from the filter despite having evaluations).
+        .then(d => setAgents((d.users || []).filter((u: any) => ["AGENT", "TEAM_LEADER", "MANAGER"].includes(u.role))))
         .catch(() => {
           // agents list unavailable — consultant selector simply won't render
         });
