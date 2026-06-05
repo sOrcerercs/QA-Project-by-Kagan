@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { rankByScore } from "@/app/lib/leaderboard";
 
 export async function GET(req: NextRequest) {
   const user = await getUserFromToken(req);
@@ -75,13 +76,10 @@ export async function GET(req: NextRequest) {
     const valid = scored.filter(
       (x): x is NonNullable<typeof x> => x !== null
     );
-    valid.sort((a, b) => b.avgScore - a.avgScore || b.callCount - a.callCount);
-
-    const limit = canChoosePeriod ? valid.length : 5;
-    const entries = valid.slice(0, limit).map((entry, i) => ({
-      rank: i + 1,
-      ...entry,
-    }));
+    // Numbered rank goes only to agents who reached RANK_MIN_CALLS; the rest
+    // appear with rank: null. Non-admins still see only the top slice.
+    const overallRanked = rankByScore(valid, (e) => e.avgScore);
+    const entries = canChoosePeriod ? overallRanked : overallRanked.slice(0, 5);
 
     // Team leaderboard — all teams with at least one evaluated agent
     const teamMap: Record<string, { teamName: string; totalScore: number; agentCount: number }> = {};
@@ -103,13 +101,12 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.avgScore - a.avgScore || b.agentCount - a.agentCount)
       .map((t, i) => ({ rank: i + 1, ...t }));
 
-    // Section-based rankings (only agents with sectionScores)
+    // Section-based rankings (only agents with sectionScores). Same min-call
+    // rule as the overall table: under the threshold → listed but unranked.
     const withSection = valid.filter((a) => a.sectionScores !== null);
     const makeSection = (key: "A" | "B" | "C") => {
-      const sorted = [...withSection].sort(
-        (a, b) => b.sectionScores![key] - a.sectionScores![key] || b.callCount - a.callCount
-      );
-      return sorted.slice(0, limit).map((e, i) => ({ rank: i + 1, ...e }));
+      const ranked = rankByScore(withSection, (e) => e.sectionScores![key]);
+      return canChoosePeriod ? ranked : ranked.slice(0, 5);
     };
     const sectionRankings = {
       A: makeSection("A"),

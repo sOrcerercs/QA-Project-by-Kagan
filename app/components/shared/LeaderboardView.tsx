@@ -9,7 +9,7 @@ interface SectionScores {
 }
 
 interface LeaderboardEntry {
-  rank: number;
+  rank: number | null; // null = listed but below the min-call threshold (unranked)
   agentId: string;
   name: string;
   teamName: string | null;
@@ -60,6 +60,8 @@ const L = {
     agents: "danışman",
     among: (n: number) => `${n} danışman arasından`,
     empty: "Henüz yeterli değerlendirme yok.",
+    unrankedDivider: "yetersiz çağrı",
+    rankWarning: "Sıralamaya girmek için en az 10 çağrı gerekli",
     sectionEmpty: "Bu bölüm için yeterli veri yok.",
     teamsEmpty: "Henüz takım verisi yok.",
     error: "Sıralama yüklenemedi.",
@@ -80,6 +82,8 @@ const L = {
     agents: "agents",
     among: (n: number) => `Among ${n} agents`,
     empty: "Not enough evaluations yet.",
+    unrankedDivider: "insufficient calls",
+    rankWarning: "At least 10 calls required to be ranked",
     sectionEmpty: "Not enough data for this section.",
     teamsEmpty: "No team data yet.",
     error: "Could not load rankings.",
@@ -103,6 +107,9 @@ function AgentTable({
   totalAgents,
   showFooter,
   scoreKey,
+  unrankedDivider,
+  rankWarning,
+  showRankWarning,
 }: {
   entries: LeaderboardEntry[];
   loading: boolean;
@@ -115,6 +122,9 @@ function AgentTable({
   totalAgents: number;
   showFooter: boolean;
   scoreKey?: keyof SectionScores;
+  unrankedDivider: string;
+  rankWarning: string;
+  showRankWarning: boolean;
 }) {
   const card: React.CSSProperties = {
     background: "var(--glass-bg)",
@@ -126,7 +136,7 @@ function AgentTable({
   const getScore = (entry: LeaderboardEntry) =>
     scoreKey && entry.sectionScores ? entry.sectionScores[scoreKey] : entry.avgScore;
 
-  const scoreColor = (rank: number) =>
+  const scoreColor = (rank: number | null) =>
     rank === 1 ? "#fbbf24" : rank === 2 ? "#94a3b8" : rank === 3 ? "#b47a3c" : "var(--fg)";
 
   return (
@@ -157,59 +167,90 @@ function AgentTable({
         <p style={{ fontSize: 13, color: "var(--fg-faint)", textAlign: "center", padding: "28px 20px" }}>{emptyText}</p>
       ) : (
         <>
-          {entries.map((entry, i) => (
-            <div
-              key={entry.agentId}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                padding: "14px 20px",
-                borderBottom: i < entries.length - 1 ? "1px solid var(--glass-border)" : "none",
-              }}
-            >
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: entry.rank <= 3 ? 18 : 13,
-                  fontWeight: 700,
-                  color: entry.rank <= 3 ? "var(--fg)" : "var(--fg-faint)",
-                  background:
-                    entry.rank === 1 ? "rgba(251,191,36,.15)"
-                    : entry.rank === 2 ? "rgba(148,163,184,.12)"
-                    : entry.rank === 3 ? "rgba(180,120,60,.12)"
-                    : "transparent",
-                  border: "1px solid var(--glass-border)",
-                  flexShrink: 0,
-                }}
-              >
-                {entry.rank <= 3 ? MEDALS[entry.rank - 1] : entry.rank}
-              </div>
-
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {entry.name}
-                </div>
-                {entry.teamName && (
-                  <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 2 }}>{entry.teamName}</div>
+          {entries.map((entry, i) => {
+            const isRanked = entry.rank !== null;
+            const isTopThree = isRanked && entry.rank! <= 3;
+            // Divider once, above the first unranked (sub-threshold) entry.
+            const showDivider = !isRanked && (i === 0 || entries[i - 1].rank !== null);
+            return (
+              <div key={entry.agentId}>
+                {showDivider && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 20px 6px",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      color: "var(--fg-faint)",
+                    }}
+                  >
+                    <span style={{ flex: 1, height: 1, background: "var(--glass-border)" }} />
+                    {unrankedDivider}
+                    <span style={{ flex: 1, height: 1, background: "var(--glass-border)" }} />
+                  </div>
                 )}
-              </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    padding: "14px 20px",
+                    borderBottom: i < entries.length - 1 ? "1px solid var(--glass-border)" : "none",
+                    opacity: isRanked ? 1 : 0.65,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: isTopThree ? 18 : 13,
+                      fontWeight: 700,
+                      color: isTopThree ? "var(--fg)" : "var(--fg-faint)",
+                      background:
+                        entry.rank === 1 ? "rgba(251,191,36,.15)"
+                        : entry.rank === 2 ? "rgba(148,163,184,.12)"
+                        : entry.rank === 3 ? "rgba(180,120,60,.12)"
+                        : "transparent",
+                      border: "1px solid var(--glass-border)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {isTopThree ? MEDALS[entry.rank! - 1] : isRanked ? entry.rank : "—"}
+                  </div>
 
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: scoreColor(entry.rank) }}>
-                  {getScore(entry)}
-                </div>
-                <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 1 }}>
-                  {entry.callCount} {callsLabel}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {entry.name}
+                    </div>
+                    {!isRanked && showRankWarning ? (
+                      <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 2 }}>⚠ {rankWarning}</div>
+                    ) : (
+                      entry.teamName && (
+                        <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 2 }}>{entry.teamName}</div>
+                      )
+                    )}
+                  </div>
+
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: scoreColor(entry.rank) }}>
+                      {getScore(entry)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 1 }}>
+                      {entry.callCount} {callsLabel}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {showFooter && (
             <div
@@ -324,6 +365,9 @@ export default function LeaderboardView({
         periodLabel={periodLabel}
         totalAgents={data?.totalAgents ?? 0}
         showFooter={true}
+        unrankedDivider={t.unrankedDivider}
+        rankWarning={t.rankWarning}
+        showRankWarning={!canChoosePeriod}
       />
 
       {/* 2 — Section A / B / C */}
@@ -356,6 +400,9 @@ export default function LeaderboardView({
             totalAgents={data?.totalAgents ?? 0}
             showFooter={false}
             scoreKey={key}
+            unrankedDivider={t.unrankedDivider}
+            rankWarning={t.rankWarning}
+            showRankWarning={!canChoosePeriod}
           />
         </div>
       ))}
