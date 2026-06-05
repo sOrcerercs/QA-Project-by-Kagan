@@ -2,6 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import EvaluationList from "@/app/components/shared/EvaluationList";
+import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect";
+import {
+  buildEvaluationHtml,
+  downloadPdf,
+  downloadDoc,
+  downloadAllZip,
+  groupByAgent,
+  slugifyFilename,
+  type ExportEvaluation,
+} from "@/app/lib/evaluationExport";
 
 type Preset = "all" | "week" | "month" | "3m" | "custom";
 
@@ -12,6 +22,8 @@ interface Evaluation {
   callDuration: string;
   callDate: string;
   createdAt: string;
+  callType?: string;
+  report: string;
   agent?: { name: string };
 }
 
@@ -57,12 +69,17 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
+  const [currentRange, setCurrentRange] = useState<{ startDate?: string; endDate?: string }>({});
+  const [downloading, setDownloading] = useState(false);
 
-  const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string) => {
+  const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string, agentIds?: string[]) => {
     setLoading(true);
+    setCurrentRange({ startDate, endDate });
     const params = new URLSearchParams();
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
+    if (agentIds && agentIds.length) params.set("agentIds", agentIds.join(","));
     const qs = params.toString();
     try {
       const res = await fetch(`/api/evaluations${qs ? `?${qs}` : ""}`);
@@ -79,7 +96,10 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     if (isAdmin) {
       fetch("/api/users")
         .then(r => r.json())
-        .then(d => setAgents((d.users || []).filter((u: any) => ["AGENT", "MANAGER"].includes(u.role))));
+        .then(d => setAgents((d.users || []).filter((u: any) => ["AGENT", "MANAGER"].includes(u.role))))
+        .catch(() => {
+          // agents list unavailable — consultant selector simply won't render
+        });
     }
   }, [fetchEvaluations, isAdmin]);
 
@@ -87,12 +107,17 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     setPreset(p);
     if (p === "custom") return;
     const dates = presetToDates(p);
-    fetchEvaluations(dates?.startDate, dates?.endDate);
+    fetchEvaluations(dates?.startDate, dates?.endDate, selectedAgentIds);
   };
 
   const handleApplyCustom = () => {
     if (!customStart || !customEnd || customStart > customEnd) return;
-    fetchEvaluations(customStart, customEnd);
+    fetchEvaluations(customStart, customEnd, selectedAgentIds);
+  };
+
+  const handleAgentsChange = (ids: string[]) => {
+    setSelectedAgentIds(ids);
+    fetchEvaluations(currentRange.startDate, currentRange.endDate, ids);
   };
 
   const handleToggleSelect = (id: string) => {
@@ -150,6 +175,56 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     }
   };
 
+  const selectedAgentName =
+    (selectedAgentIds.length === 1 ? agents.find((a) => a.id === selectedAgentIds[0])?.name : undefined) ??
+    (lang === "tr" ? "Danışman" : "Consultant");
+
+  const buildFilename = (name: string) => {
+    const r =
+      currentRange.startDate || currentRange.endDate
+        ? `_${currentRange.startDate ?? ""}_${currentRange.endDate ?? ""}`
+        : "";
+    return `${slugifyFilename(name)}_degerlendirmeler${r}`;
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!evaluations.length) return;
+    setDownloading(true);
+    try {
+      await downloadPdf(selectedAgentName, evaluations as ExportEvaluation[], currentRange, lang, buildFilename(selectedAgentName));
+    } catch {
+      alert(lang === "tr" ? "İndirme başarısız." : "Download failed.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleDownloadDoc = () => {
+    if (!evaluations.length) return;
+    const html = buildEvaluationHtml(selectedAgentName, evaluations as ExportEvaluation[], currentRange, lang);
+    downloadDoc(html, buildFilename(selectedAgentName));
+  };
+
+  const handleDownloadZip = async () => {
+    if (!evaluations.length) {
+      alert(lang === "tr" ? "İndirilecek değerlendirme yok." : "No evaluations to download.");
+      return;
+    }
+    setDownloading(true);
+    try {
+      const groups = groupByAgent(evaluations as ExportEvaluation[]);
+      const zipDate = new Date().toISOString().split("T")[0];
+      const { skipped } = await downloadAllZip(groups, currentRange, lang, zipDate);
+      if (skipped.length) {
+        alert((lang === "tr" ? "Atlanan danışmanlar: " : "Skipped consultants: ") + skipped.join(", "));
+      }
+    } catch {
+      alert(lang === "tr" ? "İndirme başarısız." : "Download failed.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const presets = lang === "tr" ? PRESETS_TR : PRESETS_EN;
 
   return (
@@ -192,6 +267,50 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
           >
             {lang === "tr" ? "Tümünü Sil" : "Delete All"}
           </button>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {agents.length > 0 && (
+            <ConsultantMultiSelect
+              agents={agents}
+              selectedIds={selectedAgentIds}
+              onChange={handleAgentsChange}
+              lang={lang}
+            />
+          )}
+          {selectedAgentIds.length === 1 && (
+            <>
+              <button
+                onClick={handleDownloadPdf}
+                disabled={downloading || evaluations.length === 0}
+                style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--accent)", background: "rgba(var(--accent-rgb, 59,130,246),.15)", color: "var(--accent)", fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", opacity: downloading || evaluations.length === 0 ? 0.4 : 1, transition: "opacity 0.15s" }}
+              >
+                {lang === "tr" ? "PDF İndir" : "Download PDF"}
+              </button>
+              <button
+                onClick={handleDownloadDoc}
+                disabled={downloading || evaluations.length === 0}
+                style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--accent)", background: "rgba(var(--accent-rgb, 59,130,246),.15)", color: "var(--accent)", fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", opacity: downloading || evaluations.length === 0 ? 0.4 : 1, transition: "opacity 0.15s" }}
+              >
+                {lang === "tr" ? "Word İndir" : "Download Word"}
+              </button>
+            </>
+          )}
+          {selectedAgentIds.length !== 1 && (
+            <button
+              onClick={handleDownloadZip}
+              disabled={downloading}
+              style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--rule)", background: "transparent", color: "var(--fg-dim)", fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", cursor: "pointer", opacity: downloading ? 0.4 : 1, transition: "opacity 0.15s" }}
+            >
+              {downloading
+                ? lang === "tr" ? "Hazırlanıyor…" : "Preparing…"
+                : selectedAgentIds.length === 0
+                ? lang === "tr" ? "Tümünü İndir (ZIP)" : "Download All (ZIP)"
+                : lang === "tr" ? "Seçilenleri İndir (ZIP)" : "Download Selected (ZIP)"}
+            </button>
+          )}
         </div>
       )}
 
