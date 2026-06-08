@@ -33,7 +33,9 @@ export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsV
       .then(d => {
         if (!d) return;
         const list = (d.users || d.members || [])
-          .filter((u: any) => (userRole === "ADMIN" || userRole === "MANAGER") ? u.role === "AGENT" : true)
+          // Team leaders also handle calls and get evaluated, so they must be
+          // selectable consultants in My Reports — not just AGENTs.
+          .filter((u: any) => (userRole === "ADMIN" || userRole === "MANAGER") ? ["AGENT", "TEAM_LEADER"].includes(u.role) : true)
           .map((u: any) => ({ id: u.id, name: u.name }));
         setAgents(list);
       })
