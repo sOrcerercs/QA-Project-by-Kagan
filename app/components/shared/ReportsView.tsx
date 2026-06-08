@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import WeeklyEvaluationReport from "@/components/WeeklyEvaluationReport";
 import MIcon from "@/app/components/shared/MIcon";
 import DateRangePicker from "@/app/components/shared/DateRangePicker";
+import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect";
 import { translations } from "@/app/lib/i18n";
 
 interface ReportsViewProps {
@@ -21,7 +22,7 @@ export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsV
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
-  const [filterAgentId, setFilterAgentId] = useState("");
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
 
   const showConsultantFilter = userRole === "ADMIN" || userRole === "MANAGER" || userRole === "TEAM_LEADER";
 
@@ -48,8 +49,10 @@ export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsV
       const params = new URLSearchParams();
       if (start) params.set("start", start);
       if (end) params.set("end", end);
-      const effectiveAgentId = agentId ?? (filterAgentId || undefined);
-      if (effectiveAgentId) params.set("agentId", effectiveAgentId);
+      // AGENT view is locked to its own id; everyone else can pick a subset of
+      // consultants. Empty selection = all consultants (no filter).
+      const ids = agentId ? [agentId] : selectedAgentIds;
+      if (ids.length) params.set("agentIds", ids.join(","));
       const url = `/api/reports/auto${params.toString() ? `?${params}` : ""}`;
       const res = await fetch(url);
       // Guard the body: a non-OK status or a non-JSON body (e.g. an HTML page
@@ -68,7 +71,7 @@ export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsV
     } catch (e) {
       console.warn("[reports] failed to load auto report:", e);
     } finally { setLoading(false); }
-  }, [agentId, filterAgentId]);
+  }, [agentId, selectedAgentIds]);
 
   useEffect(() => { fetchReport(startDate || undefined, endDate || undefined); }, [fetchReport]);
 
@@ -92,7 +95,7 @@ export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsV
             )}
           </div>
           <button
-            onClick={() => { setAutoReportData(null); setStartDate(""); setEndDate(""); setFilterAgentId(""); fetchReport(undefined, undefined); }}
+            onClick={() => { setAutoReportData(null); setStartDate(""); setEndDate(""); setSelectedAgentIds([]); fetchReport(undefined, undefined); }}
             style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--fg-dim)", background: "none", border: "none", cursor: "pointer", transition: "color 120ms" }}
           >
             <MIcon name="refresh" className="text-lg" /> {t.refresh}
@@ -108,14 +111,12 @@ export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsV
             lang={lang}
           />
           {showConsultantFilter && agents.length > 0 && (
-            <select
-              value={filterAgentId}
-              onChange={e => { setFilterAgentId(e.target.value); }}
-              style={{ padding: "8px 12px", borderRadius: 10, background: "var(--glass-bg)", border: "1px solid var(--rule)", color: "var(--fg)", fontSize: 13, fontFamily: "inherit", outline: "none" }}
-            >
-              <option value="">{t.allConsultants}</option>
-              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+            <ConsultantMultiSelect
+              agents={agents}
+              selectedIds={selectedAgentIds}
+              onChange={setSelectedAgentIds}
+              lang={lang}
+            />
           )}
         </div>
       </div>

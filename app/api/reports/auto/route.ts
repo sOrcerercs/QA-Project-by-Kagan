@@ -7,54 +7,41 @@ export async function GET(req: NextRequest) {
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
 
-  const agentIdParam = req.nextUrl.searchParams.get("agentId");
+  // Multi-select consultant filter: `agentIds` (comma-separated). Falls back to
+  // the legacy single `agentId`. Empty = all consultants the viewer may see.
+  const requestedIds = (
+    req.nextUrl.searchParams.get("agentIds") ??
+    req.nextUrl.searchParams.get("agentId") ??
+    ""
+  )
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
-  let scopedAgentId: string | null = null;
+  // Resolve which agent ids this report covers, enforcing per-role access.
+  // null = no agent filter (all consultants the viewer may see).
+  let scopedAgentIds: string[] | null = null;
 
-  // TEAM_LEADER için liderlik ettiği takımı bul (teamId null olabilir)
-  let leaderTeamId: string | null = null;
-  if (user.role === "TEAM_LEADER") {
+  if (user.role === "AGENT") {
+    scopedAgentIds = [user.id]; // agents only ever see their own data
+  } else if (user.role === "TEAM_LEADER") {
     const leadingTeam = await prisma.team.findUnique({
       where: { leaderId: user.id },
       select: { id: true },
     });
-    leaderTeamId = leadingTeam?.id ?? null;
-  }
-
-  if (agentIdParam) {
-    if (user.role === "AGENT") {
-      if (agentIdParam !== user.id) {
-        return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
-      }
-      scopedAgentId = user.id;
-    } else if (user.role === "TEAM_LEADER") {
-      const member = await prisma.user.findFirst({
-        where: { id: agentIdParam, teamId: leaderTeamId ?? undefined },
-      });
-      if (!member) {
-        return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
-      }
-      scopedAgentId = agentIdParam;
-    } else {
-      scopedAgentId = agentIdParam;
-    }
-  }
-
-  if (!agentIdParam && user.role === "AGENT") {
-    scopedAgentId = user.id;
-  }
-
-  // TEAM_LEADER için agentId yoksa takımın tüm üyelerini kapsama al
-  let teamScopedIds: string[] | null = null;
-  if (!agentIdParam && user.role === "TEAM_LEADER") {
-    if (!leaderTeamId) {
+    if (!leadingTeam) {
       return NextResponse.json({ error: "Takım ataması yapılmamış." }, { status: 403 });
     }
-    const teamMembers = await prisma.user.findMany({
-      where: { teamId: leaderTeamId },
-      select: { id: true },
-    });
-    teamScopedIds = teamMembers.map(m => m.id);
+    const memberIds = (
+      await prisma.user.findMany({ where: { teamId: leadingTeam.id }, select: { id: true } })
+    ).map((m) => m.id);
+    // A team leader can only ever scope within their own team.
+    scopedAgentIds = requestedIds.length
+      ? requestedIds.filter((id) => memberIds.includes(id))
+      : memberIds;
+  } else {
+    // ADMIN / MANAGER: the selected subset, or everyone when nothing is selected.
+    scopedAgentIds = requestedIds.length ? requestedIds : null;
   }
 
   const startParam = req.nextUrl.searchParams.get("start");
@@ -67,8 +54,7 @@ export async function GET(req: NextRequest) {
   const evaluations = await prisma.evaluation.findMany({
     where: {
       callDate: { gte: start, lte: end },
-      ...(scopedAgentId && { agentId: scopedAgentId }),
-      ...(teamScopedIds && { agentId: { in: teamScopedIds } }),
+      ...(scopedAgentIds && { agentId: { in: scopedAgentIds } }),
     },
     include: {
       agent: {
@@ -92,12 +78,11 @@ export async function GET(req: NextRequest) {
     select: { id: true, name: true, teamId: true, team: { select: { name: true } } },
   });
 
-  // Scope allAgents to prevent leaking names to non-admin roles
-  const visibleAgents = user.role === "ADMIN" || user.role === "MANAGER"
-    ? allAgents
-    : user.role === "TEAM_LEADER" && teamScopedIds
-      ? allAgents.filter(a => teamScopedIds!.includes(a.id))
-      : allAgents.filter(a => a.id === user.id);
+  // Scope the consultant list to the same set the report covers (also keeps
+  // non-admin roles from seeing names outside their scope).
+  const visibleAgents = scopedAgentIds
+    ? allAgents.filter(a => scopedAgentIds!.includes(a.id))
+    : allAgents;
 
   // Danışman Performansı — kullanılan prompt başına ayrı skor
   const promptRows = await prisma.prompt.findMany({ select: { id: true, name: true } });
