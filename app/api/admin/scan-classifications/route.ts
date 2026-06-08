@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
   }
 
   const evaluations = await prisma.evaluation.findMany({
-    where: { callType: { in: ["FIRST_CALL", "SECOND_CALL"] } },
+    // Skip ones an admin has already confirmed correct via the "Done" action.
+    where: { callType: { in: ["FIRST_CALL", "SECOND_CALL"] }, classificationVerified: false },
     select: {
       id: true,
       callType: true,
