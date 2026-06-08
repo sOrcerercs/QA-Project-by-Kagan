@@ -50,12 +50,21 @@ export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsV
       if (effectiveAgentId) params.set("agentId", effectiveAgentId);
       const url = `/api/reports/auto${params.toString() ? `?${params}` : ""}`;
       const res = await fetch(url);
-      if (res.ok) {
-        const result = await res.json();
-        setAutoReportData(result.data);
-        setAutoReportPeriod(result.period);
-        setAutoReportIsDemo(result.isDemo || false);
+      // Guard the body: a non-OK status or a non-JSON body (e.g. an HTML page
+      // returned transiently by the dev server during a recompile) must not
+      // crash the page with an unhandled res.json() SyntaxError — keep the
+      // previous data and fail quietly.
+      if (!res.ok) return;
+      if (!(res.headers.get("content-type") || "").includes("application/json")) {
+        console.warn("[reports] expected JSON, got", res.headers.get("content-type"), res.status);
+        return;
       }
+      const result = await res.json();
+      setAutoReportData(result.data);
+      setAutoReportPeriod(result.period);
+      setAutoReportIsDemo(result.isDemo || false);
+    } catch (e) {
+      console.warn("[reports] failed to load auto report:", e);
     } finally { setLoading(false); }
   }, [agentId, filterAgentId]);
 
