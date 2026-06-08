@@ -131,6 +131,7 @@ const PANEL_T = {
     reclassifyScanning: "Taranıyor...",
     reclassifyNoSuspicious: "Şüpheli sınıflandırma bulunamadı.",
     reclassifyFix: "Düzelt",
+    reclassifyGoTo: "Değerlendirmeye git",
     reclassifyFixAll: (n: number) => `Tümünü Düzelt (${n} değerlendirme)`,
     reclassifyProgress: (done: number, total: number) => `${done} / ${total} tamamlandı`,
     reclassifyHeader: ["Danışman", "Müşteri", "Mevcut", "Öneri", "Aksiyon"] as string[],
@@ -213,6 +214,7 @@ const PANEL_T = {
     reclassifyScanning: "Scanning...",
     reclassifyNoSuspicious: "No suspicious classifications found.",
     reclassifyFix: "Fix",
+    reclassifyGoTo: "Go to evaluation",
     reclassifyFixAll: (n: number) => `Fix All (${n} evaluations)`,
     reclassifyProgress: (done: number, total: number) => `${done} / ${total} completed`,
     reclassifyHeader: ["Consultant", "Customer", "Current", "Suggestion", "Action"] as string[],
@@ -1477,14 +1479,24 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                         </span>
                       </td>
                       <td style={{ padding: "10px 10px" }}>
-                        <button
-                          onClick={() => handleFixOne(item)}
-                          disabled={fixingId === item.id || bulkFixing}
-                          className={styles.btnSmall}
-                          style={{ fontSize: 11, padding: "3px 10px" }}
-                        >
-                          {fixingId === item.id ? "..." : t.reclassifyFix}
-                        </button>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", whiteSpace: "nowrap" as const }}>
+                          <a
+                            href={`/evaluation/${item.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: 11, color: "var(--accent)", textDecoration: "none" }}
+                          >
+                            {t.reclassifyGoTo} ↗
+                          </a>
+                          <button
+                            onClick={() => handleFixOne(item)}
+                            disabled={fixingId === item.id || bulkFixing}
+                            className={styles.btnSmall}
+                            style={{ fontSize: 11, padding: "3px 10px" }}
+                          >
+                            {fixingId === item.id ? "..." : t.reclassifyFix}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
