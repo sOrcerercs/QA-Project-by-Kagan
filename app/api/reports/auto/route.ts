@@ -78,8 +78,10 @@ export async function GET(req: NextRequest) {
     orderBy: { callDate: "asc" },
   });
 
+  // Team leaders are evaluated consultants too — include them so they appear
+  // in the report's consultant list (e.g. under "unlistened consultants").
   const allAgents = await prisma.user.findMany({
-    where: { role: "AGENT" },
+    where: { role: { in: ["AGENT", "TEAM_LEADER"] } },
     select: { id: true, name: true, teamId: true, team: { select: { name: true } } },
   });
 
