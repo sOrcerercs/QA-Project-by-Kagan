@@ -131,6 +131,7 @@ const PANEL_T = {
     reclassifyScanning: "Taranıyor...",
     reclassifyNoSuspicious: "Şüpheli sınıflandırma bulunamadı.",
     reclassifyFix: "Düzelt",
+    reclassifyDone: "Done",
     reclassifyGoTo: "Değerlendirmeye git",
     reclassifyFixAll: (n: number) => `Tümünü Düzelt (${n} değerlendirme)`,
     reclassifyProgress: (done: number, total: number) => `${done} / ${total} tamamlandı`,
@@ -214,6 +215,7 @@ const PANEL_T = {
     reclassifyScanning: "Scanning...",
     reclassifyNoSuspicious: "No suspicious classifications found.",
     reclassifyFix: "Fix",
+    reclassifyDone: "Done",
     reclassifyGoTo: "Go to evaluation",
     reclassifyFixAll: (n: number) => `Fix All (${n} evaluations)`,
     reclassifyProgress: (done: number, total: number) => `${done} / ${total} completed`,
@@ -334,6 +336,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const [bulkFixing, setBulkFixing] = useState(false);
   const [fixProgress, setFixProgress] = useState<{ done: number; total: number } | null>(null);
   const [fixingId, setFixingId] = useState<string | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   /* ── fetchers ── */
   const fetchUsers = () =>
@@ -434,6 +437,24 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
       setScanMsg(err.message);
     } finally {
       setFixingId(null);
+    }
+  };
+
+  // "Done" — stored call type is correct; mark verified so it drops off the
+  // suspicious list (now and on future scans).
+  const handleVerifyOne = async (item: typeof suspiciousItems[0]) => {
+    setVerifyingId(item.id);
+    try {
+      const res = await fetch(`/api/evaluations/${item.id}/verify-classification`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || t.errorOccurred);
+      }
+      setSuspiciousItems(prev => prev.filter(i => i.id !== item.id));
+    } catch (err: any) {
+      setScanMsg(err.message);
+    } finally {
+      setVerifyingId(null);
     }
   };
 
@@ -1489,8 +1510,17 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                             {t.reclassifyGoTo} ↗
                           </a>
                           <button
+                            onClick={() => handleVerifyOne(item)}
+                            disabled={verifyingId === item.id || fixingId === item.id || bulkFixing}
+                            className={styles.btnSmall}
+                            style={{ fontSize: 11, padding: "3px 10px", color: "#34d399", borderColor: "rgba(52,211,153,.4)" }}
+                            title={lang === "tr" ? "Tür doğru — listeden kaldır" : "Type is correct — remove from list"}
+                          >
+                            {verifyingId === item.id ? "..." : t.reclassifyDone}
+                          </button>
+                          <button
                             onClick={() => handleFixOne(item)}
-                            disabled={fixingId === item.id || bulkFixing}
+                            disabled={fixingId === item.id || verifyingId === item.id || bulkFixing}
                             className={styles.btnSmall}
                             style={{ fontSize: 11, padding: "3px 10px" }}
                           >

@@ -117,6 +117,7 @@ model Evaluation {
   score           Int
   callType        CallType  @default(SECOND_CALL)
   promptId        String?
+  classificationVerified Boolean @default(false) // admin confirmed the call type is correct → hidden from the suspicious-classifications scan
   sectionScores   Json?
   weakCriteria    Json?
   callDate        DateTime  @default(now())

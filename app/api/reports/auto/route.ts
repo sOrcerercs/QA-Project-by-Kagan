@@ -72,7 +72,14 @@ export async function GET(req: NextRequest) {
     },
     include: {
       agent: {
-        select: { id: true, name: true, email: true, teamId: true, team: { select: { name: true } } },
+        select: {
+          id: true, name: true, email: true, teamId: true,
+          team: { select: { name: true } },
+          // role + manager let us bucket a team leader's OWN calls under their
+          // manager's team instead of "Takimsiz" (team leaders have no teamId).
+          role: true,
+          manager: { select: { name: true } },
+        },
       },
     },
     orderBy: { callDate: "asc" },
@@ -166,9 +173,15 @@ export async function GET(req: NextRequest) {
   }).sort((a, b) => b.calls - a.calls);
 
   // Takım Dağılımı
+  // Team leaders have no teamId, so their own calls would land in "Takimsiz".
+  // Bucket them under their manager's team instead (e.g. "Muratcan Kurt'in Takımı").
+  const teamNameFor = (a: typeof evaluations[number]["agent"]): string =>
+    a.team?.name ||
+    (a.role === "TEAM_LEADER" && a.manager?.name ? `${a.manager.name}'in Takımı` : "Takimsiz");
+
   const teamMap: Record<string, { team: string; totalCalls: number; firstCall: number; secondCall: number }> = {};
   for (const ev of evaluations) {
-    const teamName = ev.agent.team?.name || "Takimsiz";
+    const teamName = teamNameFor(ev.agent);
     if (!teamMap[teamName]) teamMap[teamName] = { team: teamName, totalCalls: 0, firstCall: 0, secondCall: 0 };
     teamMap[teamName].totalCalls++;
     if (ev.callType === "FIRST_CALL") teamMap[teamName].firstCall++;
