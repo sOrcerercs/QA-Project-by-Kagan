@@ -49,19 +49,34 @@ export async function POST(
     return NextResponse.json({ error: "Prompt bulunamadı." }, { status: 404 });
   }
 
-  const fullPrompt = `${prompt.content}
+  // Surgical refine: this is NOT a re-evaluation. We hand the model the already
+  // completed report + its structured data and ask it to apply ONLY the change
+  // the manager note requests, leaving every other criterion byte-for-byte the
+  // same. (Re-running the full rubric made the AI re-judge unrelated items and
+  // regress ones that previously passed.)
+  const fullPrompt = `Aşağıda TAMAMLANMIŞ bir satış görüşmesi değerlendirme raporu var. Görevin bu raporu SIFIRDAN yeniden yapmak DEĞİL; yalnızca YÖNETİCİ NOTU'nda istenen düzeltmeyi uygulamaktır.
 
-=== DEĞERLENDİRİLECEK GÖRÜŞME BİLGİLERİ ===
-Temsilci Adı: ${evaluation.agent?.name ?? "Belirtilmedi"}
-Müşteri Adı: ${evaluation.customerName}
-Görüşme Süresi: ${evaluation.callDuration}
+KURALLAR (çok önemli):
+- Yalnızca yönetici notunun DOĞRUDAN ilgili olduğu madde(ler)i değiştir.
+- Diğer tüm maddelerin kararını, puanını ve açıklama metnini KESİNLİKLE OLDUĞU GİBİ koru. Hiçbir alakasız maddeyi yeniden yargılama veya yeniden ifade etme.
+- Yalnızca değiştirdiğin maddeye bağlı olarak ilgili bölüm puanını ve genel skoru tutarlı biçimde güncelle.
+- Çıktıyı, mevcut raporla AYNI ZORUNLU FORMATTA (===JSON_DATA=== bloğu dahil) üret.
 
-=== TRANSKRİPT ===
-${evaluation.transcript}
-
-=== YÖNETİCİ NOTU ===
+=== YÖNETİCİ NOTU (uygulanacak TEK değişiklik) ===
 ${feedback}
-Bu notu dikkate alarak değerlendirmeyi yeniden yap ve ZORUNLU ÇIKTI FORMATINDA Türkçe rapor üret.`;
+
+=== MEVCUT RAPOR (bunu temel al, minimal düzenle) ===
+${evaluation.report}
+
+=== MEVCUT YAPISAL VERİ (referans) ===
+sectionScores: ${JSON.stringify(evaluation.sectionScores ?? null)}
+weakCriteria: ${JSON.stringify(evaluation.weakCriteria ?? [])}
+
+=== DEĞERLENDİRME KURALLARI (yalnızca puanlama ölçeği/format referansı — yeniden değerlendirme için DEĞİL) ===
+${prompt.content}
+
+=== TRANSKRİPT (yalnızca gerekçeyi doğrulamak için referans) ===
+${evaluation.transcript}`;
 
   try {
     const geminiRes = await fetch(`${GEMINI_ENDPOINT}?key=${process.env.GOOGLE_AI_API_KEY}`, {
@@ -70,7 +85,8 @@ Bu notu dikkate alarak değerlendirmeyi yeniden yap ve ZORUNLU ÇIKTI FORMATINDA
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: "Sen bir satış koçusun." }] },
         contents: [{ parts: [{ text: fullPrompt }] }],
-        generationConfig: { maxOutputTokens: 65536, temperature: 0.3, thinkingConfig: { thinkingBudget: 0 } },
+        // temperature 0 → faithful minimal edit, less collateral drift.
+        generationConfig: { maxOutputTokens: 65536, temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
       }),
     });
 
