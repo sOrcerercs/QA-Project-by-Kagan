@@ -1008,10 +1008,6 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
             >
               <span /><span /><span />
             </button>
-            <div className={styles.tbSearch}>
-              <Icon name="search" size={14} />
-              <span style={{ fontSize: 13 }}>{lang === "tr" ? "Ara..." : "Search..."}</span>
-            </div>
             <div className={styles.tbRight}>
               {/* Language toggle */}
               <button className={styles.tbIcon} onClick={toggleLang}>
@@ -2399,8 +2395,8 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   <h1 className={styles.pageH1}>{navLabels.search}</h1>
                   <p className={styles.pageSub}>
                     {lang === "tr"
-                      ? "Müşteri adı veya transkript içeriğine göre ara"
-                      : "Search by customer name or transcript content"}
+                      ? "Müşteri adı, danışman adı veya transkript içeriğine göre ara"
+                      : "Search by customer name, consultant name or transcript content"}
                   </p>
                 </div>
                 <div className={styles.card}>

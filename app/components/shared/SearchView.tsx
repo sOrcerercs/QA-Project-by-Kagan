@@ -66,8 +66,8 @@ export default function SearchView({ lang }: SearchViewProps) {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={tr
-            ? "Müşteri adı veya transkript içeriği..."
-            : "Customer name or transcript content..."}
+            ? "Müşteri adı, danışman adı veya transkript içeriği..."
+            : "Customer name, consultant name or transcript content..."}
           style={{
             flex: 1,
             background: "rgba(255,255,255,.06)",

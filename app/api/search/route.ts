@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
       OR: [
         { customerName: { contains: q, mode: "insensitive" } },
         { transcript: { contains: q, mode: "insensitive" } },
+        { agent: { name: { contains: q, mode: "insensitive" } } },
       ],
     },
     select: {
