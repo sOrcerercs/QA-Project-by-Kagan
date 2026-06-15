@@ -1323,7 +1323,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
             )}
 
             {/* ── QA REPORT ── */}
-            {activeTab === "qaReport" && (
+            {activeTab === "qaReport" && isManagerLike && (
               <div className={styles.page}>
                 <div className={styles.pageHd}>
                   <h1 className={styles.pageH1}>{navLabels.qaReport}</h1>
