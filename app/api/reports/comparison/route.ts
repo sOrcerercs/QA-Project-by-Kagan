@@ -77,7 +77,9 @@ export async function GET(req: NextRequest) {
       curLabel = lang === "en" ? "Current period" : "Bu dönem";
     }
     const durationMs = curEnd.getTime() - curStart.getTime();
-    const prevEnd = new Date(curStart.getTime() - 86400000);
+    // 1ms before the current period starts — no gap/overlap. (curStart is
+    // midnight, so subtracting a full day would leave a ~24h blind spot.)
+    const prevEnd = new Date(curStart.getTime() - 1);
     const prevStart = new Date(prevEnd.getTime() - durationMs);
     const prevLabel = lang === "en" ? "Previous period" : "Önceki dönem";
     periods.push(await buildBucket(curStart, curEnd, curLabel, scopedAgentIds));
