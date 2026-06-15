@@ -11,6 +11,7 @@ import {
   isKrikoConfigured,
   KrikoCall,
 } from "@/app/lib/kriko";
+import { shouldForceFirstCall } from "@/app/lib/evaluationRules";
 
 const UNASSIGNED_EMAIL = "unassigned@estenove.local";
 const UNASSIGNED_NAME = "Atanmamış";
@@ -110,12 +111,14 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
   if (transcript.length < 50) return { status: "skipped" as const, reason: "no_transcript" };
 
   // Analiz et — internal /api/analyze çağrısı
+  const forceFirstCall = await shouldForceFirstCall(matched?.id);
+
   const formData = new FormData();
   formData.append("transcript", transcript);
   formData.append("agentName", call.agent_name || "Belirtilmedi");
   formData.append("customerName", call.customer_name || "Belirtilmedi");
   formData.append("callDuration", formatDuration(call.duration_seconds));
-  formData.append("callType", "AUTO");
+  formData.append("callType", forceFirstCall ? "FIRST_CALL" : "AUTO");
 
   const result = await analyzeWithRetry(formData, baseUrl);
   if (!result.ok) {

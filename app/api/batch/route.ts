@@ -3,6 +3,7 @@ import { $Enums } from "@prisma/client";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
 import { detectCallType } from "@/app/lib/callTypeDetector";
+import { shouldForceFirstCall } from "@/app/lib/evaluationRules";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -122,6 +123,14 @@ export async function POST(req: NextRequest) {
           : null;
       const resolvedAgentId = resolvedAgent?.id ?? user.id;
       const resolvedTeamName = resolvedAgent?.team?.name || "Belirtilmedi";
+
+      // Forced rule: members of Sümeyra Demir's team (and the leader) are always
+      // evaluated with the First Call prompt, overriding AUTO/detected type.
+      if (await shouldForceFirstCall(resolvedAgent?.id)) {
+        callType = "FIRST_CALL";
+        const forcedPrompt = await prisma.prompt.findFirst({ where: { callType: "FIRST_CALL", isActive: true } });
+        if (forcedPrompt) activePrompt = forcedPrompt;
+      }
 
       const fullPrompt = `${activePrompt.content}
 
