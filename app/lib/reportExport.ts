@@ -285,3 +285,193 @@ export async function downloadReportPdf(
   const base = filename || `haftalik_rapor_${slugifyFilename(fmtDate(period?.start, lang))}_${slugifyFilename(fmtDate(period?.end, lang))}`;
   doc.save(base.endsWith(".pdf") ? base : `${base}.pdf`);
 }
+
+// ---- Comparison report PDF ----
+interface CmpBucket { label: string; start: string; end: string; data: any }
+interface CmpResult { mode: "delta" | "trend"; periods: CmpBucket[] }
+
+export async function downloadComparisonPdf(result: CmpResult, lang: Lang, filename?: string): Promise<void> {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const font = await registerPdfFont(doc);
+  const t: any = (await import("@/app/lib/i18n")).translations[lang];
+  const margin = 14;
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const maxW = pageW - margin * 2;
+  const bottom = pageH - margin;
+  const state = { y: margin };
+  const lh = (pt: number) => pt * 0.3528 * 1.25;
+
+  const heading = (text: string) => {
+    if (state.y + 12 > bottom) { doc.addPage(); state.y = margin; }
+    state.y += 3;
+    doc.setFont(font, "bold"); doc.setFontSize(12); doc.setTextColor(29, 78, 216);
+    doc.text(text, margin, state.y); state.y += lh(12) + 1.5;
+  };
+
+  const table = (cols: { header: string; width: number; align?: "right" }[], rows: string[][]) => {
+    const size = 8.5, l = lh(size), padX = 2, padY = 1.3;
+    const totalW = cols.reduce((a, c) => a + c.width, 0);
+    const drawHeader = () => {
+      const h = l + padY * 2;
+      if (state.y + h + l > bottom) { doc.addPage(); state.y = margin; }
+      doc.setFillColor(29, 78, 216); doc.rect(margin, state.y, totalW, h, "F");
+      doc.setFont(font, "bold"); doc.setFontSize(size); doc.setTextColor(255, 255, 255);
+      let x = margin;
+      for (const c of cols) { doc.text(c.header, c.align === "right" ? x + c.width - padX : x + padX, state.y + padY + l * 0.78, { align: c.align === "right" ? "right" : "left" }); x += c.width; }
+      state.y += h;
+    };
+    drawHeader();
+    for (const row of rows) {
+      const wrapped = cols.map((c, i) => doc.splitTextToSize(String(row[i] ?? ""), c.width - padX * 2) as string[]);
+      const lines = Math.max(1, ...wrapped.map(w => w.length));
+      const h = lines * l + padY * 2;
+      if (state.y + h > bottom) { doc.addPage(); state.y = margin; drawHeader(); }
+      doc.setFont(font, "normal"); doc.setFontSize(size); doc.setTextColor(17, 17, 17);
+      let x = margin;
+      for (let i = 0; i < cols.length; i++) {
+        const c = cols[i]; let ty = state.y + padY + l * 0.78;
+        for (const ln of wrapped[i]) { doc.text(ln, c.align === "right" ? x + c.width - padX : x + padX, ty, { align: c.align === "right" ? "right" : "left" }); ty += l; }
+        x += c.width;
+      }
+      state.y += h; doc.setDrawColor(220); doc.setLineWidth(0.1); doc.line(margin, state.y, margin + totalW, state.y);
+    }
+    state.y += 2;
+  };
+
+  const d = (a: number, b: number) => (b === 0 ? (a === 0 ? "0%" : "+∞") : `${a - b > 0 ? "+" : ""}${Math.round(((a - b) / b) * 100)}%`);
+
+  doc.setFont(font, "bold"); doc.setFontSize(16); doc.setTextColor(17, 17, 17);
+  doc.text(t.comparison ?? "Karşılaştırma", margin, state.y + 4); state.y += 4 + lh(16) + 2;
+
+  const periods = result.periods;
+  if (result.mode === "delta") {
+    const [cur, prev] = periods;
+    const s = cur.data.summary, p = prev.data.summary;
+    const cols4 = (c1: string) => [{ header: c1, width: maxW * 0.4 }, { header: cur.label, width: maxW * 0.2, align: "right" as const }, { header: prev.label, width: maxW * 0.2, align: "right" as const }, { header: t.cmpDelta ?? "Δ", width: maxW * 0.2, align: "right" as const }];
+
+    heading(t.cmpModeDelta ?? "Dönem Karşılaştırma");
+    table(cols4(""), [
+      [t.totalEval ?? "Toplam", String(s.totalEvaluations), String(p.totalEvaluations), d(s.totalEvaluations, p.totalEvaluations)],
+      ["Second Call", String(s.totalSecondCalls), String(p.totalSecondCalls), d(s.totalSecondCalls, p.totalSecondCalls)],
+      [t.avgScoreLbl ?? "Ort. Skor", `%${s.avgScore}`, `%${p.avgScore}`, d(s.avgScore, p.avgScore)],
+      [t.highPotential ?? "Yüksek", String(s.highPotential), String(p.highPotential), d(s.highPotential, p.highPotential)],
+      [t.atRisk ?? "Riskli", String(s.atRisk), String(p.atRisk), d(s.atRisk, p.atRisk)],
+    ]);
+
+    // Fix 2: Consultant Performance — union cur+prev keyed by agentId
+    const curCp: any[] = cur.data.consultantPerformance ?? [];
+    const prevCp: any[] = prev.data.consultantPerformance ?? [];
+    const curCpMap = new Map<string, any>(curCp.map((c: any) => [c.agentId, c]));
+    const prevCpMap = new Map<string, any>(prevCp.map((c: any) => [c.agentId, c]));
+    const cpKeys = Array.from(new Set([...curCpMap.keys(), ...prevCpMap.keys()]));
+    const cpRows = cpKeys.map((agentId) => {
+      const c = curCpMap.get(agentId);
+      const p2 = prevCpMap.get(agentId);
+      const name = c?.name ?? p2?.name ?? agentId;
+      const curHealth = c?.healthScore ?? 0;
+      const prevHealth = p2?.healthScore ?? 0;
+      return [name, `%${curHealth}`, `%${prevHealth}`, d(curHealth, prevHealth)];
+    });
+    // Fix 4: skip empty section
+    if (cpRows.length) {
+      heading(lang === "tr" ? "Danışman Performansı" : "Consultant Performance");
+      table(cols4(t.consultant ?? "Danışman"), cpRows);
+    }
+
+    // Fix 2: Call Durations — union cur+prev keyed by name
+    const curDur: any[] = cur.data.callDurations ?? [];
+    const prevDur: any[] = prev.data.callDurations ?? [];
+    const curDurMap = new Map<string, any>(curDur.map((c: any) => [c.name, c]));
+    const prevDurMap = new Map<string, any>(prevDur.map((c: any) => [c.name, c]));
+    const durKeys = Array.from(new Set([...curDurMap.keys(), ...prevDurMap.keys()]));
+    const durRows = durKeys.map((name) => {
+      const c = curDurMap.get(name);
+      const p2 = prevDurMap.get(name);
+      const curCalls = c?.calls ?? 0;
+      const prevCalls = p2?.calls ?? 0;
+      return [name, String(curCalls), String(prevCalls), d(curCalls, prevCalls)];
+    });
+    // Fix 4: skip empty section
+    if (durRows.length) {
+      heading(lang === "tr" ? "Çağrı Süreleri" : "Call Durations");
+      table(cols4(t.consultant ?? "Danışman"), durRows);
+    }
+
+    // Fix 2: Team Distribution — union cur+prev keyed by team
+    const curTeam: any[] = cur.data.teamDistribution ?? [];
+    const prevTeam: any[] = prev.data.teamDistribution ?? [];
+    const curTeamMap = new Map<string, any>(curTeam.map((c: any) => [c.team, c]));
+    const prevTeamMap = new Map<string, any>(prevTeam.map((c: any) => [c.team, c]));
+    const teamKeys = Array.from(new Set([...curTeamMap.keys(), ...prevTeamMap.keys()]));
+    const teamRows = teamKeys.map((team) => {
+      const c = curTeamMap.get(team);
+      const p2 = prevTeamMap.get(team);
+      const curTotal = c?.totalCalls ?? 0;
+      const prevTotal = p2?.totalCalls ?? 0;
+      return [team, String(curTotal), String(prevTotal), d(curTotal, prevTotal)];
+    });
+    // Fix 4: skip empty section
+    if (teamRows.length) {
+      heading(t.teamCol ?? (lang === "tr" ? "Takım" : "Team"));
+      table(cols4(t.teamCol ?? (lang === "tr" ? "Takım" : "Team")), teamRows);
+    }
+
+    // Fix 2: Consultant Call Distribution — union cur+prev keyed by name
+    const curCcd: any[] = cur.data.consultantCallDistribution ?? [];
+    const prevCcd: any[] = prev.data.consultantCallDistribution ?? [];
+    const curCcdMap = new Map<string, any>(curCcd.map((c: any) => [c.name, c]));
+    const prevCcdMap = new Map<string, any>(prevCcd.map((c: any) => [c.name, c]));
+    const ccdKeys = Array.from(new Set([...curCcdMap.keys(), ...prevCcdMap.keys()]));
+    const ccdRows = ccdKeys.map((name) => {
+      const c = curCcdMap.get(name);
+      const p2 = prevCcdMap.get(name);
+      const curTotal = c?.totalCalls ?? 0;
+      const prevTotal = p2?.totalCalls ?? 0;
+      return [name, String(curTotal), String(prevTotal), d(curTotal, prevTotal)];
+    });
+    // Fix 4: skip empty section
+    if (ccdRows.length) {
+      heading(lang === "tr" ? "Çağrı Dağılımı" : "Call Distribution");
+      table(cols4(t.consultant ?? "Danışman"), ccdRows);
+    }
+  } else {
+    const periodCols = (c1: string) => [{ header: c1, width: maxW - periods.length * 24 }, ...periods.map(p => ({ header: p.label, width: 24, align: "right" as const }))];
+
+    // Fix 1: Trend summary — two rows with correct labels/values
+    heading(t.cmpModeTrend ?? "Trend");
+    table(
+      periodCols(lang === "tr" ? "Metrik" : "Metric"),
+      [
+        [t.avgScoreLbl ?? "Ort. Skor", ...periods.map(p => `%${p.data.summary.avgScore}`)],
+        [t.totalEval ?? "Toplam", ...periods.map(p => String(p.data.summary.totalEvaluations))],
+      ]
+    );
+
+    // Fix 3: null guard on consultantPerformance
+    const names = Array.from(new Set(periods.flatMap(p => (p.data.consultantPerformance ?? []).map((c: any) => c.name))));
+    // Fix 4: skip empty section
+    if (names.length) {
+      heading(lang === "tr" ? "Danışman Performansı" : "Consultant Performance");
+      table(periodCols(t.consultant ?? "Danışman"), names.map(name => [name, ...periods.map(p => { const c = (p.data.consultantPerformance ?? []).find((x: any) => x.name === name); return c ? `%${c.healthScore}` : "—"; })]));
+    }
+
+    // Team Distribution
+    const allTeams = Array.from(new Set(periods.flatMap(p => (p.data.teamDistribution ?? []).map((c: any) => c.team))));
+    if (allTeams.length) {
+      heading(t.teamCol ?? (lang === "tr" ? "Takım" : "Team"));
+      table(periodCols(t.teamCol ?? (lang === "tr" ? "Takım" : "Team")), allTeams.map(team => [team, ...periods.map(p => { const c = (p.data.teamDistribution ?? []).find((x: any) => x.team === team); return c ? String(c.totalCalls) : "—"; })]));
+    }
+
+    // Consultant Call Distribution
+    const allCcdNames = Array.from(new Set(periods.flatMap(p => (p.data.consultantCallDistribution ?? []).map((c: any) => c.name))));
+    if (allCcdNames.length) {
+      heading(lang === "tr" ? "Çağrı Dağılımı" : "Call Distribution");
+      table(periodCols(t.consultant ?? "Danışman"), allCcdNames.map(name => [name, ...periods.map(p => { const c = (p.data.consultantCallDistribution ?? []).find((x: any) => x.name === name); return c ? String(c.totalCalls) : "—"; })]));
+    }
+  }
+
+  const fname = filename || `karsilastirma_${result.mode}`;
+  doc.save(fname.endsWith(".pdf") ? fname : `${fname}.pdf`);
+}
