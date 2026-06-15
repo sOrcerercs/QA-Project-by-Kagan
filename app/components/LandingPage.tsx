@@ -8,6 +8,7 @@ import EvaluationsView from "@/app/components/shared/EvaluationsView";
 import ScoreView from "@/app/components/shared/ScoreView";
 import ReportsView from "@/app/components/shared/ReportsView";
 import ComparisonReportView from "@/app/components/shared/ComparisonReportView";
+import QaReportView from "@/app/components/shared/QaReportView";
 import DateRangePicker from "@/app/components/shared/DateRangePicker";
 import TeamMemberPicker from "@/app/components/shared/TeamMemberPicker";
 import NotificationBell from "@/app/components/shared/NotificationBell";
@@ -49,6 +50,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     search: "Arama",
     phoneStandards: "Phone Quality Standards",
     comparison: "Karşılaştırma",
+    qaReport: "QA Raporu",
   },
   en: {
     home: "Home", evaluations: "Evaluations", scores: "My Scores",
@@ -64,6 +66,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     search: "Search",
     phoneStandards: "Phone Quality Standards",
     comparison: "Comparison",
+    qaReport: "QA Report",
   },
 };
 
@@ -631,6 +634,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   mainNavItems.push({ key: "evaluations", icon: "list" });
   mainNavItems.push({ key: "reports", icon: "doc" });
   mainNavItems.push({ key: "comparison", icon: "compare" });
+  if (isManagerLike) mainNavItems.push({ key: "qaReport", icon: "doc" });
   if (!isManagerLike) mainNavItems.push({ key: "scores", icon: "star" });
   if (isManagerLike || user.role === "TEAM_LEADER") {
     mainNavItems.push({ key: "teamreports", icon: "chartBar" });
@@ -1314,6 +1318,21 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                 </div>
                 <div className={styles.card}>
                   <ComparisonReportView userRole={user.role} lang={lang} />
+                </div>
+              </div>
+            )}
+
+            {/* ── QA REPORT ── */}
+            {activeTab === "qaReport" && (
+              <div className={styles.page}>
+                <div className={styles.pageHd}>
+                  <h1 className={styles.pageH1}>{navLabels.qaReport}</h1>
+                  <p className={styles.pageSub}>
+                    {lang === "tr" ? "Günlük QA raporu — Excel yükle, çağrı kaydı eşleşmesi" : "Daily QA report — upload Excel, call-record matching"}
+                  </p>
+                </div>
+                <div className={styles.card}>
+                  <QaReportView lang={lang} />
                 </div>
               </div>
             )}
