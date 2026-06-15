@@ -360,50 +360,102 @@ export async function downloadComparisonPdf(result: CmpResult, lang: Lang, filen
       [t.atRisk ?? "Riskli", String(s.atRisk), String(p.atRisk), d(s.atRisk, p.atRisk)],
     ]);
 
-    const cpPrev = new Map<string, any>(prev.data.consultantPerformance.map((c: any) => [c.agentId, c]));
-    heading(lang === "tr" ? "Danışman Performansı" : "Consultant Performance");
-    table(cols4(t.consultant ?? "Danışman"), cur.data.consultantPerformance.map((c: any) => {
-      const pv = cpPrev.get(c.agentId)?.healthScore ?? 0;
-      return [c.name, `%${c.healthScore}`, `%${pv}`, d(c.healthScore, pv)];
-    }));
+    // Fix 2: Consultant Performance — union cur+prev keyed by agentId
+    const curCp: any[] = cur.data.consultantPerformance ?? [];
+    const prevCp: any[] = prev.data.consultantPerformance ?? [];
+    const curCpMap = new Map<string, any>(curCp.map((c: any) => [c.agentId, c]));
+    const prevCpMap = new Map<string, any>(prevCp.map((c: any) => [c.agentId, c]));
+    const cpKeys = Array.from(new Set([...curCpMap.keys(), ...prevCpMap.keys()]));
+    const cpRows = cpKeys.map((agentId) => {
+      const c = curCpMap.get(agentId);
+      const p2 = prevCpMap.get(agentId);
+      const name = c?.name ?? p2?.name ?? agentId;
+      const curHealth = c?.healthScore ?? 0;
+      const prevHealth = p2?.healthScore ?? 0;
+      return [name, `%${curHealth}`, `%${prevHealth}`, d(curHealth, prevHealth)];
+    });
+    // Fix 4: skip empty section
+    if (cpRows.length) {
+      heading(lang === "tr" ? "Danışman Performansı" : "Consultant Performance");
+      table(cols4(t.consultant ?? "Danışman"), cpRows);
+    }
 
-    // Call Durations
-    if (cur.data.callDurations?.length) {
-      const cdPrev = new Map<string, any>(prev.data.callDurations?.map((c: any) => [c.name, c]) ?? []);
+    // Fix 2: Call Durations — union cur+prev keyed by name
+    const curDur: any[] = cur.data.callDurations ?? [];
+    const prevDur: any[] = prev.data.callDurations ?? [];
+    const curDurMap = new Map<string, any>(curDur.map((c: any) => [c.name, c]));
+    const prevDurMap = new Map<string, any>(prevDur.map((c: any) => [c.name, c]));
+    const durKeys = Array.from(new Set([...curDurMap.keys(), ...prevDurMap.keys()]));
+    const durRows = durKeys.map((name) => {
+      const c = curDurMap.get(name);
+      const p2 = prevDurMap.get(name);
+      const curCalls = c?.calls ?? 0;
+      const prevCalls = p2?.calls ?? 0;
+      return [name, String(curCalls), String(prevCalls), d(curCalls, prevCalls)];
+    });
+    // Fix 4: skip empty section
+    if (durRows.length) {
       heading(lang === "tr" ? "Çağrı Süreleri" : "Call Durations");
-      table(cols4(t.consultant ?? "Danışman"), cur.data.callDurations.map((c: any) => {
-        const pv = cdPrev.get(c.name)?.calls ?? 0;
-        return [c.name, String(c.calls), String(pv), d(c.calls, pv)];
-      }));
+      table(cols4(t.consultant ?? "Danışman"), durRows);
     }
 
-    // Team Distribution
-    if (cur.data.teamDistribution?.length) {
-      const tdPrev = new Map<string, any>(prev.data.teamDistribution?.map((c: any) => [c.team, c]) ?? []);
+    // Fix 2: Team Distribution — union cur+prev keyed by team
+    const curTeam: any[] = cur.data.teamDistribution ?? [];
+    const prevTeam: any[] = prev.data.teamDistribution ?? [];
+    const curTeamMap = new Map<string, any>(curTeam.map((c: any) => [c.team, c]));
+    const prevTeamMap = new Map<string, any>(prevTeam.map((c: any) => [c.team, c]));
+    const teamKeys = Array.from(new Set([...curTeamMap.keys(), ...prevTeamMap.keys()]));
+    const teamRows = teamKeys.map((team) => {
+      const c = curTeamMap.get(team);
+      const p2 = prevTeamMap.get(team);
+      const curTotal = c?.totalCalls ?? 0;
+      const prevTotal = p2?.totalCalls ?? 0;
+      return [team, String(curTotal), String(prevTotal), d(curTotal, prevTotal)];
+    });
+    // Fix 4: skip empty section
+    if (teamRows.length) {
       heading(t.teamCol ?? (lang === "tr" ? "Takım" : "Team"));
-      table(cols4(t.teamCol ?? (lang === "tr" ? "Takım" : "Team")), cur.data.teamDistribution.map((c: any) => {
-        const pv = tdPrev.get(c.team)?.totalCalls ?? 0;
-        return [c.team, String(c.totalCalls), String(pv), d(c.totalCalls, pv)];
-      }));
+      table(cols4(t.teamCol ?? (lang === "tr" ? "Takım" : "Team")), teamRows);
     }
 
-    // Consultant Call Distribution
-    if (cur.data.consultantCallDistribution?.length) {
-      const ccdPrev = new Map<string, any>(prev.data.consultantCallDistribution?.map((c: any) => [c.name, c]) ?? []);
+    // Fix 2: Consultant Call Distribution — union cur+prev keyed by name
+    const curCcd: any[] = cur.data.consultantCallDistribution ?? [];
+    const prevCcd: any[] = prev.data.consultantCallDistribution ?? [];
+    const curCcdMap = new Map<string, any>(curCcd.map((c: any) => [c.name, c]));
+    const prevCcdMap = new Map<string, any>(prevCcd.map((c: any) => [c.name, c]));
+    const ccdKeys = Array.from(new Set([...curCcdMap.keys(), ...prevCcdMap.keys()]));
+    const ccdRows = ccdKeys.map((name) => {
+      const c = curCcdMap.get(name);
+      const p2 = prevCcdMap.get(name);
+      const curTotal = c?.totalCalls ?? 0;
+      const prevTotal = p2?.totalCalls ?? 0;
+      return [name, String(curTotal), String(prevTotal), d(curTotal, prevTotal)];
+    });
+    // Fix 4: skip empty section
+    if (ccdRows.length) {
       heading(lang === "tr" ? "Çağrı Dağılımı" : "Call Distribution");
-      table(cols4(t.consultant ?? "Danışman"), cur.data.consultantCallDistribution.map((c: any) => {
-        const pv = ccdPrev.get(c.name)?.totalCalls ?? 0;
-        return [c.name, String(c.totalCalls), String(pv), d(c.totalCalls, pv)];
-      }));
+      table(cols4(t.consultant ?? "Danışman"), ccdRows);
     }
   } else {
     const periodCols = (c1: string) => [{ header: c1, width: maxW - periods.length * 24 }, ...periods.map(p => ({ header: p.label, width: 24, align: "right" as const }))];
-    heading(t.cmpModeTrend ?? "Trend");
-    table(periodCols(t.avgScoreLbl ?? "Ort. Skor"), [[t.totalEval ?? "Toplam", ...periods.map(p => `%${p.data.summary.avgScore}`)]]);
 
-    const names = Array.from(new Set(periods.flatMap(p => p.data.consultantPerformance.map((c: any) => c.name))));
-    heading(lang === "tr" ? "Danışman Performansı" : "Consultant Performance");
-    table(periodCols(t.consultant ?? "Danışman"), names.map(name => [name, ...periods.map(p => { const c = p.data.consultantPerformance.find((x: any) => x.name === name); return c ? `%${c.healthScore}` : "—"; })]));
+    // Fix 1: Trend summary — two rows with correct labels/values
+    heading(t.cmpModeTrend ?? "Trend");
+    table(
+      periodCols(lang === "tr" ? "Metrik" : "Metric"),
+      [
+        [t.avgScoreLbl ?? "Ort. Skor", ...periods.map(p => `%${p.data.summary.avgScore}`)],
+        [t.totalEval ?? "Toplam", ...periods.map(p => String(p.data.summary.totalEvaluations))],
+      ]
+    );
+
+    // Fix 3: null guard on consultantPerformance
+    const names = Array.from(new Set(periods.flatMap(p => (p.data.consultantPerformance ?? []).map((c: any) => c.name))));
+    // Fix 4: skip empty section
+    if (names.length) {
+      heading(lang === "tr" ? "Danışman Performansı" : "Consultant Performance");
+      table(periodCols(t.consultant ?? "Danışman"), names.map(name => [name, ...periods.map(p => { const c = (p.data.consultantPerformance ?? []).find((x: any) => x.name === name); return c ? `%${c.healthScore}` : "—"; })]));
+    }
 
     // Team Distribution
     const allTeams = Array.from(new Set(periods.flatMap(p => (p.data.teamDistribution ?? []).map((c: any) => c.team))));
