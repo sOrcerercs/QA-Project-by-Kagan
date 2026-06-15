@@ -34,6 +34,8 @@ interface EvaluationsViewProps {
   isAdmin?: boolean;
   // ADMIN or MANAGER: consultant filter + downloads (backend GET allows both full access).
   canFilter?: boolean;
+  // Viewer role — TEAM_LEADER also gets the consultant filter, scoped to their team.
+  userRole?: string;
 }
 
 function presetToDates(preset: Preset): { startDate: string; endDate: string } | null {
@@ -63,7 +65,9 @@ const PRESETS_EN: { key: Preset; label: string }[] = [
   { key: "custom", label: "Custom" },
 ];
 
-export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin = false, canFilter = false }: EvaluationsViewProps) {
+export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin = false, canFilter = false, userRole }: EvaluationsViewProps) {
+  // ADMIN/MANAGER (canFilter) see all consultants; TEAM_LEADER sees their team only.
+  const showFilter = canFilter || userRole === "TEAM_LEADER";
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
   const [preset, setPreset] = useState<Preset>("all");
@@ -96,18 +100,23 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
 
   useEffect(() => {
     fetchEvaluations();
-    if (canFilter) {
-      fetch("/api/users")
-        .then(r => r.json())
-        // Consultants who can be evaluated / reassigned to. TEAM_LEADER must be
-        // included — team leaders also handle calls and get evaluated (e.g. they
-        // were missing from the filter despite having evaluations).
-        .then(d => setAgents((d.users || []).filter((u: any) => ["AGENT", "TEAM_LEADER", "MANAGER"].includes(u.role))))
-        .catch(() => {
-          // agents list unavailable — consultant selector simply won't render
-        });
-    }
-  }, [fetchEvaluations, canFilter]);
+    if (!showFilter) return;
+    // ADMIN/MANAGER pull every consultant; TEAM_LEADER pulls only their team.
+    const url = canFilter ? "/api/users" : "/api/team/members";
+    fetch(url)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!d) return;
+        const list = (d.users || d.members || [])
+          // For ADMIN/MANAGER keep evaluatable roles; /api/team/members is already team-scoped.
+          .filter((u: any) => (canFilter ? ["AGENT", "TEAM_LEADER", "MANAGER"].includes(u.role) : true))
+          .map((u: any) => ({ id: u.id, name: u.name }));
+        setAgents(list);
+      })
+      .catch(() => {
+        // agents list unavailable — consultant selector simply won't render
+      });
+  }, [fetchEvaluations, showFilter, canFilter]);
 
   const handlePreset = (p: Preset) => {
     setPreset(p);
@@ -276,7 +285,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
         </div>
       )}
 
-      {canFilter && (
+      {showFilter && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {agents.length > 0 && (
             <ConsultantMultiSelect
