@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect";
 import DateRangePicker from "@/app/components/shared/DateRangePicker";
 import { translations } from "@/app/lib/i18n";
-// TODO: Task 7 wires downloadComparisonPdf — import once it is exported from reportExport.ts
-// import { downloadComparisonPdf } from "@/app/lib/reportExport";
+import { downloadComparisonPdf } from "@/app/lib/reportExport";
 
 interface Props { userRole?: string; lang?: "tr" | "en" }
 type Mode = "delta" | "trend";
@@ -630,9 +629,7 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
         {result && (
           <button
             style={pill(false)}
-            onClick={() => {
-              // TODO: Task 7 wires downloadComparisonPdf — replace no-op once exported from reportExport.ts
-            }}
+            onClick={() => { downloadComparisonPdf(result, lang); }}
           >
             {t.cmpDownloadPdf}
           </button>
