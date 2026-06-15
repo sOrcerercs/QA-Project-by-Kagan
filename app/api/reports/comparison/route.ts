@@ -15,7 +15,14 @@ function monthBucket(ref: Date, monthsAgo: number, lang: "tr" | "en"): { start: 
   return { start, end, label };
 }
 
-async function buildBucket(start: Date, end: Date, label: string, scopedAgentIds: string[] | null): Promise<PeriodBucket> {
+async function buildBucket(
+  start: Date,
+  end: Date,
+  label: string,
+  scopedAgentIds: string[] | null,
+  allAgents: { id: string; name: string; teamId: string | null; team: { name: string } | null }[],
+  promptNameById: Map<string, string>,
+): Promise<PeriodBucket> {
   const evaluations = await prisma.evaluation.findMany({
     where: {
       callDate: { gte: start, lte: end },
@@ -25,13 +32,7 @@ async function buildBucket(start: Date, end: Date, label: string, scopedAgentIds
     include: { agent: { select: { id: true, name: true, email: true, teamId: true, team: { select: { name: true } }, role: true, manager: { select: { name: true } } } } },
     orderBy: { callDate: "asc" },
   });
-  const allAgents = await prisma.user.findMany({
-    where: { role: { in: [...REPORTABLE_ROLES] } },
-    select: { id: true, name: true, teamId: true, team: { select: { name: true } } },
-  });
   const visibleAgents = scopedAgentIds ? allAgents.filter(a => scopedAgentIds.includes(a.id)) : allAgents;
-  const promptRows = await prisma.prompt.findMany({ select: { id: true, name: true } });
-  const promptNameById = new Map(promptRows.map(p => [p.id, p.name]));
   const data = aggregateReport({
     evaluations: evaluations as any,
     visibleAgents: visibleAgents.map(a => ({ ...a, role: "AGENT" as const, manager: null })) as any,
@@ -52,6 +53,13 @@ export async function GET(req: NextRequest) {
   const { scopedAgentIds, error } = await resolveScopedAgentIds(user, requestedIds);
   if (error) return NextResponse.json({ error: error.message }, { status: error.status });
 
+  const allAgents = await prisma.user.findMany({
+    where: { role: { in: [...REPORTABLE_ROLES] } },
+    select: { id: true, name: true, teamId: true, team: { select: { name: true } } },
+  });
+  const promptRows = await prisma.prompt.findMany({ select: { id: true, name: true } });
+  const promptNameById = new Map(promptRows.map(p => [p.id, p.name]));
+
   const periods: PeriodBucket[] = [];
 
   if (mode === "trend") {
@@ -59,7 +67,7 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     for (let i = n - 1; i >= 0; i--) {
       const { start, end, label } = monthBucket(now, i, lang);
-      periods.push(await buildBucket(start, end, label, scopedAgentIds));
+      periods.push(await buildBucket(start, end, label, scopedAgentIds, allAgents, promptNameById));
     }
   } else {
     let curStart: Date, curEnd: Date, curLabel: string;
@@ -82,8 +90,8 @@ export async function GET(req: NextRequest) {
     const prevEnd = new Date(curStart.getTime() - 1);
     const prevStart = new Date(prevEnd.getTime() - durationMs);
     const prevLabel = lang === "en" ? "Previous period" : "Önceki dönem";
-    periods.push(await buildBucket(curStart, curEnd, curLabel, scopedAgentIds));
-    periods.push(await buildBucket(prevStart, prevEnd, prevLabel, scopedAgentIds));
+    periods.push(await buildBucket(curStart, curEnd, curLabel, scopedAgentIds, allAgents, promptNameById));
+    periods.push(await buildBucket(prevStart, prevEnd, prevLabel, scopedAgentIds, allAgents, promptNameById));
   }
 
   return NextResponse.json({ mode, periods });

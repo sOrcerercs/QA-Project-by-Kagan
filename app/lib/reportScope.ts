@@ -17,7 +17,7 @@ export async function resolveScopedAgentIds(user: ScopeUser, requestedIds: strin
   if (user.role === "TEAM_LEADER") {
     const leadingTeam = await prisma.team.findUnique({ where: { leaderId: user.id }, select: { id: true } });
     if (!leadingTeam) {
-      return { scopedAgentIds: [], error: { message: "Takım ataması yapılmamış.", status: 403 } };
+      return { scopedAgentIds: null, error: { message: "Takım ataması yapılmamış.", status: 403 } };
     }
     const memberIds = (await prisma.user.findMany({ where: { teamId: leadingTeam.id }, select: { id: true } })).map(m => m.id);
     return { scopedAgentIds: requestedIds.length ? requestedIds.filter(id => memberIds.includes(id)) : memberIds };
