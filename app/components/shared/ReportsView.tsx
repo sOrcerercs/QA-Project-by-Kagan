@@ -125,7 +125,7 @@ export default function ReportsView({ agentId, userRole, lang = "tr" }: ReportsV
           <div style={{ width: 20, height: 20, border: "2px solid var(--rule)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto" }} />
         </div>
       ) : (
-        <WeeklyEvaluationReport data={autoReportData} lang={lang} />
+        <WeeklyEvaluationReport data={autoReportData} lang={lang} period={autoReportPeriod} />
       )}
     </div>
   );

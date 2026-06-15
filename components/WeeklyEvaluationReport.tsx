@@ -4,6 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import { TrendingUp, AlertTriangle, Trophy, PhoneCall, Download } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { translations } from "@/app/lib/i18n";
+import { downloadReportPdf, type ReportPeriod } from "@/app/lib/reportExport";
 
 interface ReportData {
   consultantPerformance: {
@@ -30,10 +31,11 @@ const getScoreColor = (score: number) =>
   score >= 70 ? "text-blue-400" :
   score >= 60 ? "text-amber-400" : "text-red-400";
 
-export default function WeeklyEvaluationReport({ data, lang = "tr" }: { data?: ReportData | null; lang?: "tr" | "en" }) {
+export default function WeeklyEvaluationReport({ data, lang = "tr", period }: { data?: ReportData | null; lang?: "tr" | "en"; period?: ReportPeriod | null }) {
   const t = translations[lang];
   const reportRef = useRef<HTMLDivElement>(null);
   const [isLight, setIsLight] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const check = () => setIsLight(document.documentElement.classList.contains("light"));
@@ -59,17 +61,18 @@ export default function WeeklyEvaluationReport({ data, lang = "tr" }: { data?: R
   };
 
   const handleExportPDF = async () => {
-    if (!reportRef.current) return;
-    const html2pdf = (await import("html2pdf.js" as any)).default;
-    const opt = {
-      margin: [10, 15, 10, 15],
-      filename: "haftalik-degerlendirme-raporu.pdf",
-      image: { type: "png", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["avoid-all", "css", "legacy"] },
-    };
-    html2pdf().set(opt).from(reportRef.current).save();
+    if (!data || exporting) return;
+    setExporting(true);
+    try {
+      // Text/table-based jsPDF export — avoids html2canvas, which cannot parse
+      // Tailwind v4's oklch() colors and silently failed on this report.
+      await downloadReportPdf(data, period ?? null, lang);
+    } catch (e) {
+      console.error("[report] PDF export failed:", e);
+      alert(lang === "tr" ? "PDF oluşturulamadı." : "Failed to generate PDF.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (!data) {
@@ -101,9 +104,10 @@ export default function WeeklyEvaluationReport({ data, lang = "tr" }: { data?: R
       <div className="flex justify-end">
         <button
           onClick={handleExportPDF}
-          className="flex items-center gap-2 bg-surface-container hover:bg-surface-container-high text-on-surface px-4 py-2 rounded-xl text-sm border border-outline-variant transition-all"
+          disabled={exporting}
+          className="flex items-center gap-2 bg-surface-container hover:bg-surface-container-high text-on-surface px-4 py-2 rounded-xl text-sm border border-outline-variant transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Download className="h-4 w-4" /> {t.downloadPDF}
+          <Download className="h-4 w-4" /> {exporting ? (lang === "tr" ? "Hazırlanıyor…" : "Preparing…") : t.downloadPDF}
         </button>
       </div>
 

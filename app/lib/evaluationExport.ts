@@ -197,7 +197,7 @@ async function fetchFontBase64(url: string): Promise<string> {
 // Register the embedded Unicode font into a fresh jsPDF instance (VFS is
 // per-instance, so this runs per document; the base64 is cached across calls).
 // Returns the font family to use, falling back to a built-in font if loading fails.
-async function registerPdfFont(doc: any): Promise<string> {
+export async function registerPdfFont(doc: any): Promise<string> {
   try {
     fontCache.normal ??= await fetchFontBase64(PDF_FONT_FILES.normal.url);
     fontCache.bold ??= await fetchFontBase64(PDF_FONT_FILES.bold.url);
