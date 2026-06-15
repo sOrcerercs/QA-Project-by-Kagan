@@ -55,6 +55,10 @@ export async function GET(req: NextRequest) {
     where: {
       callDate: { gte: start, lte: end },
       ...(scopedAgentIds && { agentId: { in: scopedAgentIds } }),
+      // Reports cover consultants only — exclude MANAGER/ADMIN agents so their
+      // calls never appear (or inflate totals) when no consultant filter is set.
+      // Mirrors the consultant dropdown + allAgents list, which are AGENT/TEAM_LEADER only.
+      agent: { role: { in: ["AGENT", "TEAM_LEADER"] } },
     },
     include: {
       agent: {

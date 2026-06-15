@@ -30,7 +30,10 @@ interface Evaluation {
 interface EvaluationsViewProps {
   showAgent?: boolean;
   lang?: "tr" | "en";
+  // ADMIN-only: bulk/row delete + selection checkboxes (backend restricts DELETE to ADMIN).
   isAdmin?: boolean;
+  // ADMIN or MANAGER: consultant filter + downloads (backend GET allows both full access).
+  canFilter?: boolean;
 }
 
 function presetToDates(preset: Preset): { startDate: string; endDate: string } | null {
@@ -60,7 +63,7 @@ const PRESETS_EN: { key: Preset; label: string }[] = [
   { key: "custom", label: "Custom" },
 ];
 
-export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin = false }: EvaluationsViewProps) {
+export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin = false, canFilter = false }: EvaluationsViewProps) {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
   const [preset, setPreset] = useState<Preset>("all");
@@ -93,7 +96,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
 
   useEffect(() => {
     fetchEvaluations();
-    if (isAdmin) {
+    if (canFilter) {
       fetch("/api/users")
         .then(r => r.json())
         // Consultants who can be evaluated / reassigned to. TEAM_LEADER must be
@@ -104,7 +107,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
           // agents list unavailable — consultant selector simply won't render
         });
     }
-  }, [fetchEvaluations, isAdmin]);
+  }, [fetchEvaluations, canFilter]);
 
   const handlePreset = (p: Preset) => {
     setPreset(p);
@@ -273,7 +276,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
         </div>
       )}
 
-      {isAdmin && (
+      {canFilter && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {agents.length > 0 && (
             <ConsultantMultiSelect
