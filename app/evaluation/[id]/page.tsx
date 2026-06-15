@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Check, User, Clock, Calendar } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -31,6 +32,7 @@ const L = {
     evaluating: "Değerlendiriliyor...",
     notFound: "Değerlendirme bulunamadı.",
     backToDashboard: "Dashboard",
+    back: "Geri",
     refineError: "Yeniden değerlendirme başarısız.",
     translating: "Rapor çevriliyor...",
     translateError: "Çeviri başarısız — orijinal rapor gösteriliyor.",
@@ -80,6 +82,7 @@ const L = {
     evaluating: "Evaluating...",
     notFound: "Evaluation not found.",
     backToDashboard: "Dashboard",
+    back: "Back",
     refineError: "Re-evaluation failed.",
     translating: "Translating report...",
     translateError: "Translation failed — showing original report.",
@@ -127,6 +130,13 @@ export default function EvaluationDetailPage({
   const [refineError, setRefineError] = useState("");
   const [isDark, setIsDark] = useState(true);
   const [lang, setLang] = useState<"tr" | "en">("tr");
+  const router = useRouter();
+  // Return to the page the user came from, not always the dashboard. Fall back
+  // to home only when there's no in-app history (e.g. opened via direct URL).
+  const goBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) router.back();
+    else router.push("/");
+  };
   const [translatedReport, setTranslatedReport] = useState<string | null>(null);
   const [translatedWeakCriteria, setTranslatedWeakCriteria] = useState<Array<{ id: string; label: string; score: number; coachingNote: string }> | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -462,12 +472,12 @@ export default function EvaluationDetailPage({
       {/* Header */}
       <header className="bg-surface-container-low border-b border-outline-variant px-6 py-4 flex-shrink-0 z-10">
         <div className="flex justify-between items-center">
-          <Link
-            href="/"
-            className="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-2 text-sm"
+          <button
+            onClick={goBack}
+            className="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-2 text-sm bg-transparent border-none cursor-pointer p-0"
           >
-            <ArrowLeft className="w-4 h-4" /> {t.backToDashboard}
-          </Link>
+            <ArrowLeft className="w-4 h-4" /> {t.back}
+          </button>
           <h1 className="text-lg font-bold tracking-tight">{t.title}</h1>
           <div className="flex items-center gap-2">
             <button
