@@ -15,6 +15,7 @@ import {
   FirefliesTranscript,
 } from "@/app/lib/fireflies";
 import { yesterdayInTR } from "@/app/lib/kriko";
+import { shouldForceFirstCall } from "@/app/lib/evaluationRules";
 
 const UNASSIGNED_EMAIL = "unassigned@estenove.local";
 const UNASSIGNED_NAME = "Atanmamış";
@@ -121,6 +122,7 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
   const matched = await matchAgentFromSpeakers(speakerNames);
   const agentId = matched?.id ?? unassignedUserId;
   const isUnassigned = !matched;
+  const forceFirstCall = await shouldForceFirstCall(matched?.id);
 
   const transcriptText = buildTranscriptText(transcript.sentences);
   const agentName = matched?.name || speakerNames[0] || "Belirtilmedi";
@@ -131,7 +133,7 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
   formData.append("agentName", agentName);
   formData.append("customerName", "Belirtilmedi");
   formData.append("callDuration", duration);
-  formData.append("callType", "AUTO");
+  formData.append("callType", forceFirstCall ? "FIRST_CALL" : "AUTO");
   formData.append("extractNames", "true");
 
   const result = await analyzeWithRetry(formData, baseUrl);
