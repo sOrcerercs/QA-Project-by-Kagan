@@ -14,11 +14,13 @@ export async function POST(
   const evaluation = await prisma.evaluation.findUnique({ where: { id }, select: { agentId: true } });
   if (!evaluation) return NextResponse.json({ error: "Bulunamadı." }, { status: 404 });
 
-  if (user.role === "AGENT" && evaluation.agentId !== user.id) {
+  // AGENT and TEAM_LEADER can only acknowledge their OWN evaluation (team leaders
+  // get evaluated too, and the UI shows the button only on one's own evaluation).
+  if ((user.role === "AGENT" || user.role === "TEAM_LEADER") && evaluation.agentId !== user.id) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
-  if (!["AGENT", "ADMIN", "MANAGER"].includes(user.role)) {
+  if (!["AGENT", "TEAM_LEADER", "ADMIN", "MANAGER"].includes(user.role)) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
