@@ -100,7 +100,9 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
       callDate: new Date(call.call_date),
       externalCallId: call.id,
       externalAgentName: call.agent_name,
-      recordingUrl: call.recording_url || null,
+      recordingUrl: call.deal_id
+        ? `${process.env.KRIKO_API_BASE}/api/deals/${call.deal_id}/audio`
+        : (call.recording_url || null),
       unassigned: isUnassigned,
       source: "KRIKO",
     },
