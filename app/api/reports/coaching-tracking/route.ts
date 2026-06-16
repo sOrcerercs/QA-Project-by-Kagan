@@ -29,8 +29,20 @@ export async function GET(req: NextRequest) {
     : {};
 
   try {
+    // Optional team-leader scope: list the leader + their team members only.
+    const leaderId = params.get("leaderId");
+    let agentScope: { agentId?: { in: string[] } } = {};
+    if (leaderId) {
+      const team = await prisma.team.findUnique({ where: { leaderId }, select: { id: true } });
+      if (!team) {
+        return NextResponse.json({ summary: { totalEvaluations: 0, agentReadCount: 0, coachingDoneCount: 0 }, agents: [] });
+      }
+      const members = await prisma.user.findMany({ where: { teamId: team.id }, select: { id: true } });
+      agentScope = { agentId: { in: [leaderId, ...members.map((m) => m.id)] } };
+    }
+
     const rows = await prisma.evaluation.findMany({
-      where: { ...dateFilter, unassigned: false },
+      where: { ...dateFilter, unassigned: false, ...agentScope },
       select: {
         id: true,
         customerName: true,
