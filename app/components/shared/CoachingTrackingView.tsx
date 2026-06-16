@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import DateRangePicker from "@/app/components/shared/DateRangePicker";
 import { translations } from "@/app/lib/i18n";
 
@@ -111,8 +111,24 @@ export default function CoachingTrackingView({ lang = "tr" }: CoachingTrackingVi
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [fetched, setFetched] = useState(false);
   const [fetchError, setFetchError] = useState(false);
+  const [teamLeaders, setTeamLeaders] = useState<{ id: string; name: string; teamName: string }[]>([]);
+  const [selectedLeaderId, setSelectedLeaderId] = useState("");
 
-  const fetchData = useCallback(async (start?: string, end?: string) => {
+  useEffect(() => {
+    fetch("/api/teams")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setTeamLeaders(
+          (d.teams || [])
+            .filter((tm: any) => tm.leader)
+            .map((tm: any) => ({ id: tm.leader.id, name: tm.leader.name, teamName: tm.name }))
+        );
+      })
+      .catch(() => {});
+  }, []);
+
+  const fetchData = useCallback(async (start?: string, end?: string, leaderId?: string) => {
     setLoading(true);
     setFetchError(false);
     setSummary(null);
@@ -121,6 +137,7 @@ export default function CoachingTrackingView({ lang = "tr" }: CoachingTrackingVi
       const params = new URLSearchParams();
       if (start) params.set("startDate", start);
       if (end) params.set("endDate", end);
+      if (leaderId) params.set("leaderId", leaderId);
       const res = await fetch(`/api/reports/coaching-tracking${params.toString() ? `?${params}` : ""}`);
       if (res.ok) {
         const data = await res.json();
@@ -167,15 +184,29 @@ export default function CoachingTrackingView({ lang = "tr" }: CoachingTrackingVi
       </div>
 
       {/* Date range picker */}
-      <div style={{ borderRadius: 20, padding: "20px 24px", marginBottom: 20, background: "var(--glass-bg)", border: "1px solid var(--rule)" }}>
+      <div style={{ borderRadius: 20, padding: "20px 24px", marginBottom: 20, background: "var(--glass-bg)", border: "1px solid var(--rule)", display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
         <DateRangePicker
           startDate={startDate}
           endDate={endDate}
           onStartChange={setStartDate}
           onEndChange={setEndDate}
-          onApply={() => fetchData(startDate || undefined, endDate || undefined)}
+          onApply={() => fetchData(startDate || undefined, endDate || undefined, selectedLeaderId || undefined)}
           lang={lang}
         />
+        <select
+          value={selectedLeaderId}
+          onChange={(e) => {
+            const v = e.target.value;
+            setSelectedLeaderId(v);
+            fetchData(startDate || undefined, endDate || undefined, v || undefined);
+          }}
+          style={{ background: "var(--glass-bg)", border: "1px solid var(--rule)", borderRadius: 8, padding: "8px 12px", color: "var(--fg)", fontSize: 12, colorScheme: "dark" }}
+        >
+          <option value="">{lang === "tr" ? "Tüm Takımlar" : "All Teams"}</option>
+          {teamLeaders.map((tl) => (
+            <option key={tl.id} value={tl.id}>{tl.name}{tl.teamName ? ` — ${tl.teamName}` : ""}</option>
+          ))}
+        </select>
       </div>
 
       {/* Summary cards */}
