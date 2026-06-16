@@ -5,6 +5,7 @@ import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect
 import DateRangePicker from "@/app/components/shared/DateRangePicker";
 import { translations } from "@/app/lib/i18n";
 import { downloadComparisonPdf } from "@/app/lib/reportExport";
+import SortableTable, { type SortableColumn } from "@/app/components/shared/SortableTable";
 
 interface Props { userRole?: string; lang?: "tr" | "en" }
 type Mode = "delta" | "trend";
@@ -18,7 +19,7 @@ const pct = (cur: number, prev: number): string => {
 };
 const deltaColor = (cur: number, prev: number) =>
   cur > prev ? "#34d399" : cur < prev ? "#f87171" : "var(--fg-dim)";
-const sortArrow = (active: boolean, dir: "asc" | "desc") => (active ? (dir === "asc" ? " ▲" : " ▼") : "");
+const durSecs = (s: string) => { const m = /^(\d+):(\d+)$/.exec(s || ""); return m ? +m[1] * 60 + +m[2] : 0; };
 
 const card: React.CSSProperties = {
   background: "var(--glass-bg)",
@@ -101,17 +102,6 @@ function DeltaView({ result, t }: { result: Result; t: any }) {
       cpRows.push({ name: r.name, curScore: 0, prevScore: r.healthScore });
     }
   });
-  const [cpSort, setCpSort] = useState<{ key: "name" | "score"; dir: "asc" | "desc" }>({ key: "score", dir: "desc" });
-  const cpSortClick = (key: "name" | "score") =>
-    setCpSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" }));
-  const sortedCpRows = [...cpRows].sort((a, b) => {
-    if (cpSort.key === "name") {
-      const c = a.name.localeCompare(b.name, "tr");
-      return cpSort.dir === "asc" ? c : -c;
-    }
-    const c = a.curScore - b.curScore;
-    return cpSort.dir === "asc" ? c : -c;
-  });
 
   // ── 3. Call Durations ───────────────────────────────────────────────────
   const prevDurMap = new Map<string, any>();
@@ -191,32 +181,17 @@ function DeltaView({ result, t }: { result: Result; t: any }) {
       {cpRows.length > 0 && (
         <div style={card}>
           {heading("Danışman Performansı", "Consultant Performance")}
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, cursor: "pointer", userSelect: "none" }} onClick={() => cpSortClick("name")}>
-                  {t.consultant}{sortArrow(cpSort.key === "name", cpSort.dir)}
-                </th>
-                <th style={{ ...thR, cursor: "pointer", userSelect: "none" }} onClick={() => cpSortClick("score")}>
-                  {cur.label}{sortArrow(cpSort.key === "score", cpSort.dir)}
-                </th>
-                <th style={thR}>{prev?.label ?? t.cmpPrevious}</th>
-                <th style={thR}>{t.cmpDelta}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedCpRows.map((row) => (
-                <tr key={row.name}>
-                  <td style={td}>{row.name}</td>
-                  <td style={tdR}>{row.curScore > 0 ? `%${row.curScore}` : "—"}</td>
-                  <td style={tdR}>{row.prevScore > 0 ? `%${row.prevScore}` : "—"}</td>
-                  <td style={{ ...tdR, color: deltaColor(row.curScore, row.prevScore), fontFamily: "'JetBrains Mono', monospace" }}>
-                    {pct(row.curScore, row.prevScore)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SortableTable
+            rows={cpRows}
+            rowKey={(r) => r.name}
+            defaultSort={{ col: 1, dir: "desc" }}
+            columns={[
+              { header: t.consultant, cell: (r) => r.name, sortValue: (r) => r.name },
+              { header: cur.label, align: "right", cell: (r) => (r.curScore > 0 ? `%${r.curScore}` : "—"), sortValue: (r) => r.curScore },
+              { header: prev?.label ?? t.cmpPrevious, align: "right", cell: (r) => (r.prevScore > 0 ? `%${r.prevScore}` : "—"), sortValue: (r) => r.prevScore },
+              { header: t.cmpDelta, align: "right", cell: (r) => <span style={{ color: deltaColor(r.curScore, r.prevScore), fontFamily: "'JetBrains Mono', monospace" }}>{pct(r.curScore, r.prevScore)}</span>, sortValue: (r) => r.curScore - r.prevScore },
+            ]}
+          />
         </div>
       )}
 
@@ -224,32 +199,19 @@ function DeltaView({ result, t }: { result: Result; t: any }) {
       {durRows.length > 0 && (
         <div style={card}>
           {heading("Çağrı Süreleri", "Call Durations")}
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={th}>{t.consultant}</th>
-                <th style={thR}>{cur.label} {t.callsCol}</th>
-                <th style={thR}>{prev?.label ?? t.cmpPrevious} {t.callsCol}</th>
-                <th style={thR}>{t.cmpDelta}</th>
-                <th style={thR}>{cur.label} {t.avgDurationCol}</th>
-                <th style={thR}>{prev?.label ?? t.cmpPrevious} {t.avgDurationCol}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {durRows.map((row) => (
-                <tr key={row.name}>
-                  <td style={td}>{row.name}</td>
-                  <td style={tdR}>{row.curCalls}</td>
-                  <td style={tdR}>{row.prevCalls}</td>
-                  <td style={{ ...tdR, color: deltaColor(row.curCalls, row.prevCalls), fontFamily: "'JetBrains Mono', monospace" }}>
-                    {pct(row.curCalls, row.prevCalls)}
-                  </td>
-                  <td style={tdR}>{row.curAvg}</td>
-                  <td style={tdR}>{row.prevAvg}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SortableTable
+            rows={durRows}
+            rowKey={(r) => r.name}
+            defaultSort={{ col: 1, dir: "desc" }}
+            columns={[
+              { header: t.consultant, cell: (r) => r.name, sortValue: (r) => r.name },
+              { header: `${cur.label} ${t.callsCol}`, align: "right", cell: (r) => r.curCalls, sortValue: (r) => r.curCalls },
+              { header: `${prev?.label ?? t.cmpPrevious} ${t.callsCol}`, align: "right", cell: (r) => r.prevCalls, sortValue: (r) => r.prevCalls },
+              { header: t.cmpDelta, align: "right", cell: (r) => <span style={{ color: deltaColor(r.curCalls, r.prevCalls), fontFamily: "'JetBrains Mono', monospace" }}>{pct(r.curCalls, r.prevCalls)}</span>, sortValue: (r) => r.curCalls - r.prevCalls },
+              { header: `${cur.label} ${t.avgDurationCol}`, align: "right", cell: (r) => r.curAvg, sortValue: (r) => durSecs(r.curAvg) },
+              { header: `${prev?.label ?? t.cmpPrevious} ${t.avgDurationCol}`, align: "right", cell: (r) => r.prevAvg, sortValue: (r) => durSecs(r.prevAvg) },
+            ]}
+          />
         </div>
       )}
 
@@ -257,28 +219,17 @@ function DeltaView({ result, t }: { result: Result; t: any }) {
       {teamRows.length > 0 && (
         <div style={card}>
           {heading("Takım Dağılımı", "Team Distribution")}
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={th}>{t.teamCol}</th>
-                <th style={thR}>{cur.label}</th>
-                <th style={thR}>{prev?.label ?? t.cmpPrevious}</th>
-                <th style={thR}>{t.cmpDelta}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teamRows.map((row) => (
-                <tr key={row.team}>
-                  <td style={td}>{row.team}</td>
-                  <td style={tdR}>{row.curTotal}</td>
-                  <td style={tdR}>{row.prevTotal}</td>
-                  <td style={{ ...tdR, color: deltaColor(row.curTotal, row.prevTotal), fontFamily: "'JetBrains Mono', monospace" }}>
-                    {pct(row.curTotal, row.prevTotal)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SortableTable
+            rows={teamRows}
+            rowKey={(r) => r.team}
+            defaultSort={{ col: 1, dir: "desc" }}
+            columns={[
+              { header: t.teamCol, cell: (r) => r.team, sortValue: (r) => r.team },
+              { header: cur.label, align: "right", cell: (r) => r.curTotal, sortValue: (r) => r.curTotal },
+              { header: prev?.label ?? t.cmpPrevious, align: "right", cell: (r) => r.prevTotal, sortValue: (r) => r.prevTotal },
+              { header: t.cmpDelta, align: "right", cell: (r) => <span style={{ color: deltaColor(r.curTotal, r.prevTotal), fontFamily: "'JetBrains Mono', monospace" }}>{pct(r.curTotal, r.prevTotal)}</span>, sortValue: (r) => r.curTotal - r.prevTotal },
+            ]}
+          />
         </div>
       )}
 
@@ -286,28 +237,17 @@ function DeltaView({ result, t }: { result: Result; t: any }) {
       {ccdRows.length > 0 && (
         <div style={card}>
           {heading("Çağrı Dağılımı", "Call Distribution")}
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={th}>{t.consultant}</th>
-                <th style={thR}>{cur.label}</th>
-                <th style={thR}>{prev?.label ?? t.cmpPrevious}</th>
-                <th style={thR}>{t.cmpDelta}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ccdRows.map((row) => (
-                <tr key={row.name}>
-                  <td style={td}>{row.name}</td>
-                  <td style={tdR}>{row.curTotal}</td>
-                  <td style={tdR}>{row.prevTotal}</td>
-                  <td style={{ ...tdR, color: deltaColor(row.curTotal, row.prevTotal), fontFamily: "'JetBrains Mono', monospace" }}>
-                    {pct(row.curTotal, row.prevTotal)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SortableTable
+            rows={ccdRows}
+            rowKey={(r) => r.name}
+            defaultSort={{ col: 1, dir: "desc" }}
+            columns={[
+              { header: t.consultant, cell: (r) => r.name, sortValue: (r) => r.name },
+              { header: cur.label, align: "right", cell: (r) => r.curTotal, sortValue: (r) => r.curTotal },
+              { header: prev?.label ?? t.cmpPrevious, align: "right", cell: (r) => r.prevTotal, sortValue: (r) => r.prevTotal },
+              { header: t.cmpDelta, align: "right", cell: (r) => <span style={{ color: deltaColor(r.curTotal, r.prevTotal), fontFamily: "'JetBrains Mono', monospace" }}>{pct(r.curTotal, r.prevTotal)}</span>, sortValue: (r) => r.curTotal - r.prevTotal },
+            ]}
+          />
         </div>
       )}
     </div>
@@ -347,28 +287,12 @@ function TrendView({ result, t }: { result: Result; t: any }) {
     (p.data.consultantPerformance ?? []).forEach((r: any) => cpNameSet.add(r.name))
   );
   const cpNames = Array.from(cpNameSet);
-  const lastPeriod = periods[periods.length - 1];
-  const cpRowsData = cpNames.map((name) => ({
-    name,
-    latestScore: (() => {
-      const f = (lastPeriod?.data.consultantPerformance ?? []).find((r: any) => r.name === name);
-      return f ? f.healthScore : -Infinity;
-    })(),
-    vals: periods.map((p) => {
-      const found = (p.data.consultantPerformance ?? []).find((r: any) => r.name === name);
-      return found ? `%${found.healthScore}` : "—";
-    }),
-  }));
-  const [cpSort, setCpSort] = useState<{ key: "name" | "score"; dir: "asc" | "desc" }>({ key: "score", dir: "desc" });
-  const cpSortClick = (key: "name" | "score") =>
-    setCpSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" }));
-  const sortedCpRowsData = [...cpRowsData].sort((a, b) => {
-    if (cpSort.key === "name") {
-      const c = a.name.localeCompare(b.name, "tr");
-      return cpSort.dir === "asc" ? c : -c;
-    }
-    const c = a.latestScore - b.latestScore;
-    return cpSort.dir === "asc" ? c : -c;
+  const cpRowsData = cpNames.map((name) => {
+    const cells = periods.map((p) => {
+      const f = (p.data.consultantPerformance ?? []).find((r: any) => r.name === name);
+      return { val: f ? `%${f.healthScore}` : "—", num: f ? f.healthScore : -Infinity };
+    });
+    return { name, vals: cells.map((c) => c.val), nums: cells.map((c) => c.num) };
   });
 
   // ── 3. Team Distribution ────────────────────────────────────────────────
@@ -377,13 +301,13 @@ function TrendView({ result, t }: { result: Result; t: any }) {
     (p.data.teamDistribution ?? []).forEach((r: any) => teamNameSet.add(r.team))
   );
   const teamNames = Array.from(teamNameSet);
-  const teamRowsData = teamNames.map((team) => ({
-    name: team,
-    vals: periods.map((p) => {
-      const found = (p.data.teamDistribution ?? []).find((r: any) => r.team === team);
-      return found ? String(found.totalCalls) : "—";
-    }),
-  }));
+  const teamRowsData = teamNames.map((team) => {
+    const cells = periods.map((p) => {
+      const f = (p.data.teamDistribution ?? []).find((r: any) => r.team === team);
+      return { val: f ? String(f.totalCalls) : "—", num: f ? f.totalCalls : -Infinity };
+    });
+    return { name: team, vals: cells.map((c) => c.val), nums: cells.map((c) => c.num) };
+  });
 
   // ── 4. Consultant Call Distribution ────────────────────────────────────
   const ccdNameSet = new Set<string>();
@@ -391,13 +315,26 @@ function TrendView({ result, t }: { result: Result; t: any }) {
     (p.data.consultantCallDistribution ?? []).forEach((r: any) => ccdNameSet.add(r.name))
   );
   const ccdNames = Array.from(ccdNameSet);
-  const ccdRowsData = ccdNames.map((name) => ({
-    name,
-    vals: periods.map((p) => {
-      const found = (p.data.consultantCallDistribution ?? []).find((r: any) => r.name === name);
-      return found ? String(found.totalCalls) : "—";
-    }),
-  }));
+  const ccdRowsData = ccdNames.map((name) => {
+    const cells = periods.map((p) => {
+      const f = (p.data.consultantCallDistribution ?? []).find((r: any) => r.name === name);
+      return { val: f ? String(f.totalCalls) : "—", num: f ? f.totalCalls : -Infinity };
+    });
+    return { name, vals: cells.map((c) => c.val), nums: cells.map((c) => c.num) };
+  });
+
+  // Shared column builder for trend tables (name col + one sortable col per period).
+  type TrendRow = { name: string; vals: string[]; nums: number[] };
+  const trendColumns = (firstHeader: string): SortableColumn<TrendRow>[] => [
+    { header: firstHeader, cell: (r) => r.name, sortValue: (r) => r.name },
+    ...periods.map((p, i) => ({
+      header: p.label,
+      align: "right" as const,
+      cell: (r: TrendRow) => r.vals[i],
+      sortValue: (r: TrendRow) => r.nums[i],
+    })),
+  ];
+  const trendDefaultSort = { col: periods.length, dir: "desc" as const };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -428,34 +365,7 @@ function TrendView({ result, t }: { result: Result; t: any }) {
       {cpRowsData.length > 0 && (
         <div style={card}>
           {heading("Danışman Performansı", "Consultant Performance")}
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, cursor: "pointer", userSelect: "none" }} onClick={() => cpSortClick("name")}>
-                  {t.consultant}{sortArrow(cpSort.key === "name", cpSort.dir)}
-                </th>
-                {periods.map((p, i) =>
-                  i === periods.length - 1 ? (
-                    <th key={p.label} style={{ ...thR, cursor: "pointer", userSelect: "none" }} onClick={() => cpSortClick("score")}>
-                      {p.label}{sortArrow(cpSort.key === "score", cpSort.dir)}
-                    </th>
-                  ) : (
-                    <th key={p.label} style={thR}>{p.label}</th>
-                  )
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedCpRowsData.map((row) => (
-                <tr key={row.name}>
-                  <td style={td}>{row.name}</td>
-                  {row.vals.map((v, i) => (
-                    <td key={i} style={tdR}>{v}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SortableTable rows={cpRowsData} rowKey={(r) => r.name} defaultSort={trendDefaultSort} columns={trendColumns(t.consultant)} />
         </div>
       )}
 
@@ -463,24 +373,7 @@ function TrendView({ result, t }: { result: Result; t: any }) {
       {teamRowsData.length > 0 && (
         <div style={card}>
           {heading("Takım Dağılımı", "Team Distribution")}
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={th}>{t.teamCol}</th>
-                {periodHeaders}
-              </tr>
-            </thead>
-            <tbody>
-              {teamRowsData.map((row) => (
-                <tr key={row.name}>
-                  <td style={td}>{row.name}</td>
-                  {row.vals.map((v, i) => (
-                    <td key={i} style={tdR}>{v}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SortableTable rows={teamRowsData} rowKey={(r) => r.name} defaultSort={trendDefaultSort} columns={trendColumns(t.teamCol)} />
         </div>
       )}
 
@@ -488,24 +381,7 @@ function TrendView({ result, t }: { result: Result; t: any }) {
       {ccdRowsData.length > 0 && (
         <div style={card}>
           {heading("Çağrı Dağılımı", "Call Distribution")}
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={th}>{t.consultant}</th>
-                {periodHeaders}
-              </tr>
-            </thead>
-            <tbody>
-              {ccdRowsData.map((row) => (
-                <tr key={row.name}>
-                  <td style={td}>{row.name}</td>
-                  {row.vals.map((v, i) => (
-                    <td key={i} style={tdR}>{v}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SortableTable rows={ccdRowsData} rowKey={(r) => r.name} defaultSort={trendDefaultSort} columns={trendColumns(t.consultant)} />
         </div>
       )}
     </div>
