@@ -171,3 +171,37 @@ model CoachingSummary {
   evalCount   Int       @default(0)
   updatedAt   DateTime  @updatedAt
 }
+
+model QaReport {
+  id             String        @id @default(cuid())
+  reportDate     DateTime
+  uploadedById   String
+  uploadedByName String
+  createdAt      DateTime      @default(now())
+  rows           QaReportRow[]
+
+  @@index([reportDate])
+}
+
+model QaReportRow {
+  id                  String   @id @default(cuid())
+  qaReportId          String
+  report              QaReport @relation(fields: [qaReportId], references: [id], onDelete: Cascade)
+  salesOwner          String?
+  status              String?
+  bookingDate         String?
+  crmId               String?
+  customerName        String?
+  dealStage           String?
+  contactType         String?
+  contactMethod       String?
+  recentNote          String?
+  country             String?
+  timeFrame           String?
+  callRecord          Boolean  @default(false)
+  matchedEvaluationId String?
+  manualOverride      Boolean  @default(false)
+  qaNotes             String?
+
+  @@index([qaReportId])
+}

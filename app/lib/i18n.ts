@@ -257,6 +257,18 @@ export const translations = {
     ctAgent: "Danışman",
     ctFetchError: "Veri yüklenirken hata oluştu.",
     noEvaluationsLast7Days: "Son 7 günde değerlendirme bulunamadı.",
+
+    // QA Report
+    qaReport: "QA Raporu",
+    qaUpload: "Excel Yükle",
+    qaReportDate: "Rapor Tarihi",
+    qaUploading: "Yükleniyor...",
+    qaNoReports: "Henüz rapor yüklenmedi.",
+    qaCallRecord: "Çağrı Kaydı",
+    qaNotes: "QA Notları",
+    qaConsultant: "Danışman",
+    qaCustomer: "Müşteri",
+    qaView: "Görüntüle",
   },
   en: {
     // Sidebar
@@ -514,6 +526,18 @@ export const translations = {
     ctAgent: "Consultant",
     ctFetchError: "An error occurred while loading data.",
     noEvaluationsLast7Days: "No evaluations found in the last 7 days.",
+
+    // QA Report
+    qaReport: "QA Report",
+    qaUpload: "Upload Excel",
+    qaReportDate: "Report Date",
+    qaUploading: "Uploading...",
+    qaNoReports: "No reports uploaded yet.",
+    qaCallRecord: "Call Record",
+    qaNotes: "QA Notes",
+    qaConsultant: "Consultant",
+    qaCustomer: "Customer",
+    qaView: "View",
   },
 } as const;
 
