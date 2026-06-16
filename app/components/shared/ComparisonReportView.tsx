@@ -18,6 +18,7 @@ const pct = (cur: number, prev: number): string => {
 };
 const deltaColor = (cur: number, prev: number) =>
   cur > prev ? "#34d399" : cur < prev ? "#f87171" : "var(--fg-dim)";
+const sortArrow = (active: boolean, dir: "asc" | "desc") => (active ? (dir === "asc" ? " ▲" : " ▼") : "");
 
 const card: React.CSSProperties = {
   background: "var(--glass-bg)",
@@ -99,6 +100,17 @@ function DeltaView({ result, t }: { result: Result; t: any }) {
     if (!curCpIds.has(r.agentId)) {
       cpRows.push({ name: r.name, curScore: 0, prevScore: r.healthScore });
     }
+  });
+  const [cpSort, setCpSort] = useState<{ key: "name" | "score"; dir: "asc" | "desc" }>({ key: "score", dir: "desc" });
+  const cpSortClick = (key: "name" | "score") =>
+    setCpSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" }));
+  const sortedCpRows = [...cpRows].sort((a, b) => {
+    if (cpSort.key === "name") {
+      const c = a.name.localeCompare(b.name, "tr");
+      return cpSort.dir === "asc" ? c : -c;
+    }
+    const c = a.curScore - b.curScore;
+    return cpSort.dir === "asc" ? c : -c;
   });
 
   // ── 3. Call Durations ───────────────────────────────────────────────────
@@ -182,14 +194,18 @@ function DeltaView({ result, t }: { result: Result; t: any }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={th}>{t.consultant}</th>
-                <th style={thR}>{cur.label}</th>
+                <th style={{ ...th, cursor: "pointer", userSelect: "none" }} onClick={() => cpSortClick("name")}>
+                  {t.consultant}{sortArrow(cpSort.key === "name", cpSort.dir)}
+                </th>
+                <th style={{ ...thR, cursor: "pointer", userSelect: "none" }} onClick={() => cpSortClick("score")}>
+                  {cur.label}{sortArrow(cpSort.key === "score", cpSort.dir)}
+                </th>
                 <th style={thR}>{prev?.label ?? t.cmpPrevious}</th>
                 <th style={thR}>{t.cmpDelta}</th>
               </tr>
             </thead>
             <tbody>
-              {cpRows.map((row) => (
+              {sortedCpRows.map((row) => (
                 <tr key={row.name}>
                   <td style={td}>{row.name}</td>
                   <td style={tdR}>{row.curScore > 0 ? `%${row.curScore}` : "—"}</td>
@@ -331,13 +347,29 @@ function TrendView({ result, t }: { result: Result; t: any }) {
     (p.data.consultantPerformance ?? []).forEach((r: any) => cpNameSet.add(r.name))
   );
   const cpNames = Array.from(cpNameSet);
+  const lastPeriod = periods[periods.length - 1];
   const cpRowsData = cpNames.map((name) => ({
     name,
+    latestScore: (() => {
+      const f = (lastPeriod?.data.consultantPerformance ?? []).find((r: any) => r.name === name);
+      return f ? f.healthScore : -Infinity;
+    })(),
     vals: periods.map((p) => {
       const found = (p.data.consultantPerformance ?? []).find((r: any) => r.name === name);
       return found ? `%${found.healthScore}` : "—";
     }),
   }));
+  const [cpSort, setCpSort] = useState<{ key: "name" | "score"; dir: "asc" | "desc" }>({ key: "score", dir: "desc" });
+  const cpSortClick = (key: "name" | "score") =>
+    setCpSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" }));
+  const sortedCpRowsData = [...cpRowsData].sort((a, b) => {
+    if (cpSort.key === "name") {
+      const c = a.name.localeCompare(b.name, "tr");
+      return cpSort.dir === "asc" ? c : -c;
+    }
+    const c = a.latestScore - b.latestScore;
+    return cpSort.dir === "asc" ? c : -c;
+  });
 
   // ── 3. Team Distribution ────────────────────────────────────────────────
   const teamNameSet = new Set<string>();
@@ -399,12 +431,22 @@ function TrendView({ result, t }: { result: Result; t: any }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={th}>{t.consultant}</th>
-                {periodHeaders}
+                <th style={{ ...th, cursor: "pointer", userSelect: "none" }} onClick={() => cpSortClick("name")}>
+                  {t.consultant}{sortArrow(cpSort.key === "name", cpSort.dir)}
+                </th>
+                {periods.map((p, i) =>
+                  i === periods.length - 1 ? (
+                    <th key={p.label} style={{ ...thR, cursor: "pointer", userSelect: "none" }} onClick={() => cpSortClick("score")}>
+                      {p.label}{sortArrow(cpSort.key === "score", cpSort.dir)}
+                    </th>
+                  ) : (
+                    <th key={p.label} style={thR}>{p.label}</th>
+                  )
+                )}
               </tr>
             </thead>
             <tbody>
-              {cpRowsData.map((row) => (
+              {sortedCpRowsData.map((row) => (
                 <tr key={row.name}>
                   <td style={td}>{row.name}</td>
                   {row.vals.map((v, i) => (
