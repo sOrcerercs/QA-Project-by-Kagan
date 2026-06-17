@@ -99,7 +99,18 @@ async function analyzeWithRetry(formData: FormData, baseUrl: string, maxRetries 
 async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: string) {
   // Mükerrer kontrolü
   const existing = await prisma.evaluation.findUnique({ where: { externalCallId: call.id } });
-  if (existing) return { status: "skipped" as const, reason: "already_imported" };
+  if (existing) {
+    // Kriko, deal_id'yi (ve ses kaydını) gecikmeyle ekler — ilk sync deal_id'siz
+    // yakalanırsa recordingUrl NULL kalır. Sonraki sync'lerde deal_id geldiyse
+    // ses URL'ini geriye doldur. İdempotent: aynı URL'de no-op.
+    const dealUrl = call.deal_id
+      ? `${process.env.KRIKO_API_BASE}/api/deals/${call.deal_id}/audio`
+      : null;
+    if (dealUrl && existing.recordingUrl !== dealUrl) {
+      await prisma.evaluation.update({ where: { id: existing.id }, data: { recordingUrl: dealUrl } });
+    }
+    return { status: "skipped" as const, reason: "already_imported" };
+  }
 
   // Agent eşleşmesi
   const matched = await matchAgent(call.agent_name);
