@@ -41,7 +41,7 @@ async function main() {
 
   const dealUrl = (dealId: string) => `${BASE}/api/deals/${dealId}/audio`;
   const isDealUrl = (u: string | null) => !!u && u.startsWith(`${BASE}/api/deals/`);
-  const trDate = (d: Date) => new Date(d.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
   const evals: { id: string; externalCallId: string | null; callDate: Date; recordingUrl: string | null }[] =
     await prisma.evaluation.findMany({
@@ -51,39 +51,41 @@ async function main() {
   const targets = evals.filter((e) => e.externalCallId && !isDealUrl(e.recordingUrl));
   console.log(`KRIKO evals: ${evals.length} | missing/needs-fix (target): ${targets.length}`);
 
-  const byDate = new Map<string, typeof targets>();
+  // Kriko çağrıları UTC gününe göre gruplar; callDate'i TR'ye (+3s) çevirip tek gün
+  // çekmek 21:00–24:00 UTC (gece yarısı TR) çağrılarını yanlış güne kaydırıp kaçırır.
+  // Her hedef için UTC günü ±1'i adaylara ekle, hepsini tek sefer çekip global id->call
+  // haritası kur. Böylece gün-sınırı çağrıları da bulunur.
+  const candidateDates = new Set<string>();
   for (const e of targets) {
-    const d = trDate(e.callDate);
-    const list = byDate.get(d) ?? [];
-    list.push(e);
-    byDate.set(d, list);
+    const t = e.callDate.getTime();
+    for (const off of [-1, 0, 1]) candidateDates.add(ymd(new Date(t + off * 86400000)));
   }
-  console.log(`distinct dates to fetch from Kriko: ${byDate.size}`);
+  console.log(`distinct dates to fetch from Kriko: ${candidateDates.size}`);
 
-  let fixable = 0, noDeal = 0, notFound = 0, updated = 0;
-  for (const [date, group] of byDate) {
-    let calls: any[];
+  const byId = new Map<string, any>();
+  const failedDates: string[] = [];
+  for (const date of candidateDates) {
     try {
-      calls = (await fetchCallsByDate(date)).calls;
+      for (const c of (await fetchCallsByDate(date)).calls) byId.set(c.id, c);
     } catch (err: any) {
-      console.warn(`  ${date}: Kriko fetch failed (${err?.message}); ${group.length} rows skipped`);
-      notFound += group.length;
-      await sleep(300);
-      continue;
-    }
-    const byId = new Map<string, any>(calls.map((c) => [c.id, c]));
-    for (const e of group) {
-      const call = byId.get(e.externalCallId!);
-      if (!call) { notFound++; continue; }
-      if (!call.deal_id) { noDeal++; continue; }
-      fixable++;
-      if (APPLY) {
-        await prisma.evaluation.update({ where: { id: e.id }, data: { recordingUrl: dealUrl(call.deal_id) } });
-        updated++;
-      }
+      console.warn(`  ${date}: Kriko fetch failed (${err?.message})`);
+      failedDates.push(date);
     }
     await sleep(300);
   }
+
+  let fixable = 0, noDeal = 0, notFound = 0, updated = 0;
+  for (const e of targets) {
+    const call = byId.get(e.externalCallId!);
+    if (!call) { notFound++; continue; }
+    if (!call.deal_id) { noDeal++; continue; }
+    fixable++;
+    if (APPLY) {
+      await prisma.evaluation.update({ where: { id: e.id }, data: { recordingUrl: dealUrl(call.deal_id) } });
+      updated++;
+    }
+  }
+  if (failedDates.length) console.log(`(note: ${failedDates.length} date fetch(es) failed; some rows may be undercounted)`);
 
   console.log(`\n--- Summary ---`);
   console.log(`fixable (deal_id found in Kriko): ${fixable}`);
