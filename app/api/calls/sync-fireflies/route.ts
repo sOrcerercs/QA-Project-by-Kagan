@@ -319,7 +319,12 @@ export async function runSync(req: NextRequest, trigger: "MANUAL" | "CRON") {
       else if (result.status === "unassigned") { imported++; unassigned++; }
       else if (result.status === "skipped") skipped++;
       else { failed++; errors.push(`${analyzable[i].id}: ${result.reason}`); }
-      if (i < analyzable.length - 1) await sleep(12000);
+      // Analiz çağrıları arası throttle. Eski 12sn Groq rate-limit'i içindi; sistem artık
+      // Gemini kullanıyor ve callGemini 429'ları kendi içinde retry/backoff ile yönetiyor,
+      // bu yüzden 3sn yeterli. "skipped" (zaten içe aktarılmış, dedup'ta erken dönen) çağrı
+      // analiz çağırmaz → orada beklemek boşaydı ve 5dk fonksiyon limitinde tekrar-tetiklemenin
+      // günü bitirememesine yol açıyordu; o yüzden yalnızca gerçekten analiz edilende uyu.
+      if (result.status !== "skipped" && i < analyzable.length - 1) await sleep(3000);
     }
 
     skipped += transcripts.length - analyzable.length;
