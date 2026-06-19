@@ -205,7 +205,11 @@ export async function GET(req: NextRequest) {
       else if (r.status === "unassigned") { imported++; unassigned++; }
       else if (r.status === "skipped") skipped++;
       else failed++;
-      if (i < analyzable.length - 1) await new Promise(rs => setTimeout(rs, 12000));
+      // Analiz çağrıları arası throttle. Eski 12sn Groq rate-limit'i içindi; sistem artık
+      // Gemini kullanıyor (callGemini 429'ları kendi retry/backoff'uyla yönetir), 3sn yeterli.
+      // "skipped" (zaten içe aktarılmış / kısa transkript) çağrı analiz çağırmaz → orada
+      // beklemek boşaydı ve fonksiyon zaman limitinde backlog'un telafisini engelliyordu.
+      if (r.status !== "skipped" && i < analyzable.length - 1) await new Promise(rs => setTimeout(rs, 3000));
     }
 
     if (unassigned > 0) {
