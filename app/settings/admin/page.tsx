@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { motion } from "motion/react";
@@ -184,7 +184,7 @@ const ACTION_LABELS: Record<"tr" | "en", Record<string, string>> = {
   en: { LOGIN: "Logged In", LOGOUT: "Logged Out", PAGE_VIEW: "Page Viewed" },
 };
 
-export default function AdminSettingsPage() {
+function AdminSettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawTab = searchParams.get("tab");
@@ -1786,5 +1786,13 @@ export default function AdminSettingsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AdminSettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminSettingsPageInner />
+    </Suspense>
   );
 }
