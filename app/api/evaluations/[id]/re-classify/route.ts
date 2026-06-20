@@ -1,6 +1,6 @@
 // app/api/evaluations/[id]/re-classify/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { $Enums } from "@prisma/client";
+import { $Enums } from "@/app/generated/prisma";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
 
