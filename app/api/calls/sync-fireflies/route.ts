@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 300;
 import prisma from "@/app/lib/prisma";
+import { isUniqueConstraintError } from "@/app/lib/prismaErrors";
 import { getUserFromToken } from "@/app/lib/auth";
 import {
   fetchTranscriptsByDate,
@@ -169,26 +170,36 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
   const weakCriteria = result.data.weakCriteria ?? null;
   const sectionScores = result.data.sectionScores ?? null;
 
-  const evaluation = await prisma.evaluation.create({
-    data: {
-      agentId: finalAgentId,
-      customerName: finalCustomerName,
-      callDuration: duration,
-      transcript: transcriptText,
-      report,
-      score,
-      callType: callType as any,
-      promptId,
-      callDate: new Date(transcript.date),
-      externalCallId,
-      externalAgentName: speakerNames[0] || detectedAgentName || null,
-      unassigned: finalIsUnassigned,
-      source: "FIREFLIES",
-      recordingUrl: `https://app.fireflies.ai/view/${transcript.id}`,
-      weakCriteria,
-      sectionScores,
-    },
-  });
+  let evaluation;
+  try {
+    evaluation = await prisma.evaluation.create({
+      data: {
+        agentId: finalAgentId,
+        customerName: finalCustomerName,
+        callDuration: duration,
+        transcript: transcriptText,
+        report,
+        score,
+        callType: callType as any,
+        promptId,
+        callDate: new Date(transcript.date),
+        externalCallId,
+        externalAgentName: speakerNames[0] || detectedAgentName || null,
+        unassigned: finalIsUnassigned,
+        source: "FIREFLIES",
+        recordingUrl: `https://app.fireflies.ai/view/${transcript.id}`,
+        weakCriteria,
+        sectionScores,
+      },
+    });
+  } catch (e) {
+    // Eşzamanlı bir sync aynı çağrıyı bizden önce ekledi (findUnique → create
+    // atomik değil). Unique index yarışı engelledi; mükerrer atlanır.
+    if (isUniqueConstraintError(e, "externalCallId")) {
+      return { status: "skipped" as const, reason: "already_imported" };
+    }
+    throw e;
+  }
 
   if (!finalIsUnassigned) {
     const agent = await prisma.user.findUnique({ where: { id: finalAgentId }, select: { teamId: true } });

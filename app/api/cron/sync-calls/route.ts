@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 300;
 import prisma from "@/app/lib/prisma";
+import { isUniqueConstraintError } from "@/app/lib/prismaErrors";
 import {
   fetchCallsByDate,
   filterAnalyzableCalls,
@@ -100,24 +101,33 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
     }
   }
 
-  await prisma.evaluation.create({
-    data: {
-      agentId,
-      customerName: call.customer_name || "Bilinmiyor",
-      callDuration: formatDuration(call.duration_seconds),
-      transcript, report, score,
-      callType: callType as any,
-      promptId,
-      callDate: new Date(call.call_date),
-      externalCallId: call.id,
-      externalAgentName: call.agent_name,
-      recordingUrl: call.deal_id
-        ? `${process.env.KRIKO_API_BASE}/api/deals/${call.deal_id}/audio`
-        : (call.recording_url || null),
-      unassigned: isUnassigned,
-      source: "KRIKO",
-    },
-  });
+  try {
+    await prisma.evaluation.create({
+      data: {
+        agentId,
+        customerName: call.customer_name || "Bilinmiyor",
+        callDuration: formatDuration(call.duration_seconds),
+        transcript, report, score,
+        callType: callType as any,
+        promptId,
+        callDate: new Date(call.call_date),
+        externalCallId: call.id,
+        externalAgentName: call.agent_name,
+        recordingUrl: call.deal_id
+          ? `${process.env.KRIKO_API_BASE}/api/deals/${call.deal_id}/audio`
+          : (call.recording_url || null),
+        unassigned: isUnassigned,
+        source: "KRIKO",
+      },
+    });
+  } catch (e) {
+    // Eşzamanlı bir sync aynı çağrıyı bizden önce ekledi (findUnique → create
+    // atomik değil). Unique index yarışı engelledi; mükerrer atlanır.
+    if (isUniqueConstraintError(e, "externalCallId")) {
+      return { status: "skipped" as const };
+    }
+    throw e;
+  }
 
   return { status: isUnassigned ? "unassigned" as const : "imported" as const };
 }
