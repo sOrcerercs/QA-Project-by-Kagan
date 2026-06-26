@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import EvaluationList from "@/app/components/shared/EvaluationList";
 import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect";
+import { selfLabel } from "@/app/lib/teamMembers";
 import {
   buildEvaluationHtml,
   downloadPdf,
@@ -101,22 +102,24 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   useEffect(() => {
     fetchEvaluations();
     if (!showFilter) return;
-    // ADMIN/MANAGER pull every consultant; TEAM_LEADER pulls only their team.
-    const url = canFilter ? "/api/users" : "/api/team/members";
+    // ADMIN/MANAGER pull every consultant; TEAM_LEADER pulls only their team
+    // plus themselves (includeSelf), since a leader can also filter their own calls.
+    const url = canFilter ? "/api/users" : "/api/team/members?includeSelf=true";
     fetch(url)
       .then(r => (r.ok ? r.json() : null))
       .then(d => {
         if (!d) return;
-        const list = (d.users || d.members || [])
+        type AgentRow = { id: string; name: string; role: string; isSelf?: boolean };
+        const list = ((d.users || d.members || []) as AgentRow[])
           // For ADMIN/MANAGER keep evaluatable roles; /api/team/members is already team-scoped.
-          .filter((u: any) => (canFilter ? ["AGENT", "TEAM_LEADER", "MANAGER"].includes(u.role) : true))
-          .map((u: any) => ({ id: u.id, name: u.name }));
+          .filter((u) => (canFilter ? ["AGENT", "TEAM_LEADER", "MANAGER"].includes(u.role) : true))
+          .map((u) => ({ id: u.id, name: selfLabel(u.name, u.isSelf, lang) }));
         setAgents(list);
       })
       .catch(() => {
         // agents list unavailable — consultant selector simply won't render
       });
-  }, [fetchEvaluations, showFilter, canFilter]);
+  }, [fetchEvaluations, showFilter, canFilter, lang]);
 
   const handlePreset = (p: Preset) => {
     setPreset(p);

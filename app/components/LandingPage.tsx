@@ -303,7 +303,10 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   };
 
   const fetchMembers = () =>
-    fetch("/api/team/members").then(r => r.json()).then(d => setMembers(d.members || []));
+    // includeSelf: a team leader leads but isn't a member of their team, so they
+    // would otherwise be absent from the My Team picker. The picker labels the
+    // self row at render time, so it reacts to language changes.
+    fetch("/api/team/members?includeSelf=true").then(r => r.json()).then(d => setMembers(d.members || []));
 
   const fetchUsers = () =>
     fetch("/api/users").then(r => r.json()).then(d => setUsers(d.users || []));
