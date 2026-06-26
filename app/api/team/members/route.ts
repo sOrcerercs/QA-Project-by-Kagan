@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { attachSelf } from "@/app/lib/teamMembers";
 
 // Takım üyelerini getir
 export async function GET(req: NextRequest) {
@@ -37,5 +38,14 @@ export async function GET(req: NextRequest) {
     orderBy: { name: "asc" },
   });
 
-  return NextResponse.json({ members });
+  // A team leader leads their team but is not a member of it, so they are
+  // absent from the list above. Filter/view screens pass includeSelf=true so
+  // the leader can also select themselves; team-management calls omit it.
+  const includeSelf =
+    user.role === "TEAM_LEADER" &&
+    req.nextUrl.searchParams.get("includeSelf") === "true";
+
+  return NextResponse.json({
+    members: attachSelf(members, user, includeSelf),
+  });
 }
