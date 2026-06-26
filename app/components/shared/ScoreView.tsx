@@ -51,7 +51,7 @@ export default function ScoreView({
               {isDemo && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">DEMO</span>}
             </div>
             <p className="text-sm text-slate-400 flex items-center gap-2 mt-1">
-              <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold border border-primary/20 bg-primary/10 text-primary">{agent.team}</span>
+              <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold border border-primary/20 bg-primary/10 text-primary">{agent.team || t.noTeam}</span>
               <span className="flex items-center gap-1"><MIcon name="emoji_events" className="text-amber-400 text-sm" /> #{rank} / {totalAgents}</span>
             </p>
           </div>
@@ -78,14 +78,14 @@ export default function ScoreView({
         <div className="bg-surface-container rounded-3xl p-8">
           <h3 className="font-headline text-lg font-bold mb-6 flex items-center gap-2">
             <MIcon name="analytics" className="text-primary" />
-            Bölüm Analizi
-            <span className="text-xs text-slate-500 font-normal ml-1">({stats.totalCalls} çağrı ortalaması)</span>
+            {t.sectionAnalysisTitle}
+            <span className="text-xs text-slate-500 font-normal ml-1">({stats.totalCalls} {t.callsAverageSuffix})</span>
           </h3>
           <div className="space-y-4">
             {([
-              { key: "A" as const, label: "A — Giriş & Profilleme", weight: "%20" },
-              { key: "B" as const, label: "B — Çözüm & Otorite", weight: "%45" },
-              { key: "C" as const, label: "C — Kapanış & Köprü", weight: "%35" },
+              { key: "A" as const, label: t.sectionAIntro, weight: "%20" },
+              { key: "B" as const, label: t.sectionBSolution, weight: "%45" },
+              { key: "C" as const, label: t.sectionCClosing, weight: "%35" },
             ]).map(({ key, label, weight }) => {
               const val = avgSectionScores[key];
               const barColor = val >= 85 ? "bg-emerald-500" : val >= 70 ? "bg-primary" : val >= 55 ? "bg-amber-500" : "bg-red-500";
@@ -110,7 +110,7 @@ export default function ScoreView({
           </div>
           {topWeakCriteria && topWeakCriteria.length > 0 && (
             <div className="mt-6 pt-5 border-t border-outline-variant">
-              <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-3">En Zayıf Kriterler</p>
+              <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-3">{t.weakestCriteria}</p>
               <div className="space-y-2">
                 {topWeakCriteria.map(c => {
                   const isRed = c.avgScore < 55;
