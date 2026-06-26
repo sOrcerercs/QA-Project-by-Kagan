@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { translations } from "@/app/lib/i18n";
 
-interface Props { lang?: "tr" | "en" }
+interface Props { lang?: "tr" | "en"; canEdit?: boolean }
 interface ReportMeta { id: string; reportDate: string; uploadedByName: string; createdAt: string; _count: { rows: number } }
 interface Row {
   id: string; salesOwner: string | null; status: string | null; bookingDate: string | null; crmId: string | null;
@@ -18,7 +18,7 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function QaReportView({ lang = "tr" }: Props) {
+export default function QaReportView({ lang = "tr", canEdit = false }: Props) {
   const t: any = translations[lang];
   const [reports, setReports] = useState<ReportMeta[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -28,6 +28,8 @@ export default function QaReportView({ lang = "tr" }: Props) {
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<string>("");
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+  const [linkDraft, setLinkDraft] = useState<Record<string, string>>({});
+  const [linkErr, setLinkErr] = useState<Record<string, string>>({});
 
   const loadReports = useCallback(async () => {
     const res = await fetch("/api/qa-reports");
@@ -73,6 +75,24 @@ export default function QaReportView({ lang = "tr" }: Props) {
     if (res.ok) { const d = await res.json(); setRows(prev => prev.map(r => r.id === rowId ? d.row : r)); }
   };
 
+  // Manually link an unmatched row to an evaluation by pasted URL/id. The backend
+  // validates the id exists and ticks the call-record flag on success.
+  const attachLink = async (rowId: string) => {
+    const link = (linkDraft[rowId] ?? "").trim();
+    if (!link) return;
+    const res = await fetch(`/api/qa-reports/rows/${rowId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationLink: link }),
+    });
+    if (res.ok) {
+      const d = await res.json();
+      setRows(prev => prev.map(r => r.id === rowId ? d.row : r));
+      setLinkDraft(prev => { const n = { ...prev }; delete n[rowId]; return n; });
+      setLinkErr(prev => { const n = { ...prev }; delete n[rowId]; return n; });
+    } else {
+      setLinkErr(prev => ({ ...prev, [rowId]: t.qaLinkInvalid }));
+    }
+  };
+
   const fmtDate = (s: string) => new Date(s).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR");
 
   const th: React.CSSProperties = { textAlign: "left", padding: "8px 10px", fontSize: 10.5, color: "var(--fg-faint)", textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" };
@@ -81,17 +101,19 @@ export default function QaReportView({ lang = "tr" }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)}
-          style={{ background: "var(--glass-bg)", border: "1px solid var(--rule)", borderRadius: 8, padding: "6px 12px", color: "var(--fg)", fontSize: 12, colorScheme: "dark" }} />
-        <input type="file" accept=".xlsx,.xls" onChange={e => setFile(e.target.files?.[0] ?? null)}
-          style={{ fontSize: 12, color: "var(--fg-dim)" }} />
-        <button onClick={handleUpload} disabled={uploading || !file}
-          style={{ padding: "6px 16px", borderRadius: 8, border: "1px solid var(--accent)", background: "rgba(var(--accent-rgb, 59,130,246),.15)", color: "var(--accent)", fontSize: 12, cursor: uploading || !file ? "not-allowed" : "pointer", opacity: uploading || !file ? 0.5 : 1 }}>
-          {uploading ? t.qaUploading : t.qaUpload}
-        </button>
-        {msg && <span style={{ fontSize: 12, color: "var(--fg-dim)" }}>{msg}</span>}
-      </div>
+      {canEdit && (
+        <div style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)}
+            style={{ background: "var(--glass-bg)", border: "1px solid var(--rule)", borderRadius: 8, padding: "6px 12px", color: "var(--fg)", fontSize: 12, colorScheme: "dark" }} />
+          <input type="file" accept=".xlsx,.xls" onChange={e => setFile(e.target.files?.[0] ?? null)}
+            style={{ fontSize: 12, color: "var(--fg-dim)" }} />
+          <button onClick={handleUpload} disabled={uploading || !file}
+            style={{ padding: "6px 16px", borderRadius: 8, border: "1px solid var(--accent)", background: "rgba(var(--accent-rgb, 59,130,246),.15)", color: "var(--accent)", fontSize: 12, cursor: uploading || !file ? "not-allowed" : "pointer", opacity: uploading || !file ? 0.5 : 1 }}>
+            {uploading ? t.qaUploading : t.qaUpload}
+          </button>
+          {msg && <span style={{ fontSize: 12, color: "var(--fg-dim)" }}>{msg}</span>}
+        </div>
+      )}
 
       {reports.length === 0 ? (
         <p style={{ fontSize: 13, color: "var(--fg-faint)" }}>{t.qaNoReports}</p>
@@ -123,25 +145,49 @@ export default function QaReportView({ lang = "tr" }: Props) {
                   <td style={td}>{r.salesOwner ?? "—"}</td>
                   <td style={td}>{r.customerName ?? "—"}</td>
                   <td style={td}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <button onClick={() => patchRow(r.id, { callRecord: !r.callRecord })}
-                        title={r.manualOverride ? "manuel" : "otomatik"}
-                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15 }}>
-                        {r.callRecord ? "✅" : "❌"}
-                      </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      {canEdit ? (
+                        <button onClick={() => patchRow(r.id, { callRecord: !r.callRecord })}
+                          title={r.manualOverride ? "manuel" : "otomatik"}
+                          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15 }}>
+                          {r.callRecord ? "✅" : "❌"}
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: 15 }}>{r.callRecord ? "✅" : "❌"}</span>
+                      )}
                       {r.matchedEvaluationId && (
                         <Link href={`/evaluation/${r.matchedEvaluationId}`} style={{ fontSize: 11, color: "var(--accent)" }}>{t.qaView}</Link>
                       )}
+                      {canEdit && !r.matchedEvaluationId && (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <input
+                            value={linkDraft[r.id] ?? ""}
+                            onChange={e => setLinkDraft(prev => ({ ...prev, [r.id]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === "Enter") attachLink(r.id); }}
+                            placeholder={t.qaAttachLinkPh}
+                            style={{ width: 150, background: "rgba(255,255,255,.04)", border: "1px solid var(--rule)", borderRadius: 6, padding: "3px 6px", color: "var(--fg)", fontSize: 11 }}
+                          />
+                          <button onClick={() => attachLink(r.id)}
+                            style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, cursor: "pointer" }}>
+                            {t.qaAttachBtn}
+                          </button>
+                        </span>
+                      )}
                     </div>
+                    {linkErr[r.id] && <div style={{ fontSize: 10.5, color: "var(--error, #f87171)", marginTop: 4 }}>{linkErr[r.id]}</div>}
                   </td>
                   <td style={{ ...td, minWidth: 240 }}>
-                    <textarea
-                      value={noteDraft[r.id] ?? r.qaNotes ?? ""}
-                      onChange={e => setNoteDraft(prev => ({ ...prev, [r.id]: e.target.value }))}
-                      onBlur={() => { const v = noteDraft[r.id]; if (v !== undefined && v !== (r.qaNotes ?? "")) patchRow(r.id, { qaNotes: v }); }}
-                      rows={2}
-                      style={{ width: "100%", background: "rgba(255,255,255,.04)", border: "1px solid var(--rule)", borderRadius: 6, padding: "6px 8px", color: "var(--fg)", fontSize: 12, fontFamily: "inherit", resize: "vertical" }}
-                    />
+                    {canEdit ? (
+                      <textarea
+                        value={noteDraft[r.id] ?? r.qaNotes ?? ""}
+                        onChange={e => setNoteDraft(prev => ({ ...prev, [r.id]: e.target.value }))}
+                        onBlur={() => { const v = noteDraft[r.id]; if (v !== undefined && v !== (r.qaNotes ?? "")) patchRow(r.id, { qaNotes: v }); }}
+                        rows={2}
+                        style={{ width: "100%", background: "rgba(255,255,255,.04)", border: "1px solid var(--rule)", borderRadius: 6, padding: "6px 8px", color: "var(--fg)", fontSize: 12, fontFamily: "inherit", resize: "vertical" }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: 12, color: "var(--fg-dim)", whiteSpace: "pre-wrap" }}>{r.qaNotes ?? "—"}</span>
+                    )}
                   </td>
                 </tr>
               ))}

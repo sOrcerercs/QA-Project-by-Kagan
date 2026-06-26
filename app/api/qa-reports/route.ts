@@ -3,12 +3,13 @@ import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
 import { parseQaWorkbook } from "@/app/lib/qaReportParse";
 import { matchEvaluationForRow } from "@/app/lib/qaMatch";
+import { canEditQa } from "@/app/lib/qaPermissions";
 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const user = await getUserFromToken(req);
-  if (!user || !["ADMIN", "MANAGER"].includes(user.role)) {
+  if (!user || !canEditQa(user.email)) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
@@ -40,24 +41,26 @@ export async function POST(req: NextRequest) {
 
   // Preserve QA Notes + manual overrides from an existing report for the same date (keyed by crmId).
   const existing = await prisma.qaReport.findFirst({ where: { reportDate }, include: { rows: true } });
-  const preserved = new Map<string, { qaNotes: string | null; manualOverride: boolean; callRecord: boolean }>();
+  const preserved = new Map<string, { qaNotes: string | null; manualOverride: boolean; callRecord: boolean; matchedEvaluationId: string | null }>();
   if (existing) {
     for (const r of existing.rows) {
-      if (r.crmId) preserved.set(r.crmId, { qaNotes: r.qaNotes, manualOverride: r.manualOverride, callRecord: r.callRecord });
+      if (r.crmId) preserved.set(r.crmId, { qaNotes: r.qaNotes, manualOverride: r.manualOverride, callRecord: r.callRecord, matchedEvaluationId: r.matchedEvaluationId });
     }
   }
 
   const rowsData = parsed.map(p => {
-    const matchedEvaluationId = matchEvaluationForRow(p, candidates);
-    const auto = !!matchedEvaluationId;
+    const autoMatchId = matchEvaluationForRow(p, candidates);
     const prev = p.crmId ? preserved.get(p.crmId) : undefined;
+    // A manually-corrected row (tick toggled or evaluation linked) wins over
+    // auto-matching on re-upload, so manual links/ticks survive new Excel uploads.
+    const manual = prev?.manualOverride ?? false;
     return {
       salesOwner: p.salesOwner, status: p.status, bookingDate: p.bookingDate, crmId: p.crmId,
       customerName: p.customerName, dealStage: p.dealStage, contactType: p.contactType,
       contactMethod: p.contactMethod, recentNote: p.recentNote, country: p.country, timeFrame: p.timeFrame,
-      matchedEvaluationId,
-      callRecord: prev?.manualOverride ? prev.callRecord : auto,
-      manualOverride: prev?.manualOverride ?? false,
+      matchedEvaluationId: manual ? prev!.matchedEvaluationId : autoMatchId,
+      callRecord: manual ? prev!.callRecord : !!autoMatchId,
+      manualOverride: manual,
       qaNotes: prev?.qaNotes ?? p.qaNotes,
     };
   });
