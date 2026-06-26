@@ -501,7 +501,7 @@ export default function EvaluationDetailPage({
       <div className="px-6 pt-5 flex-shrink-0">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-5">
           {/* Danışman kartı — admin/manager için yeniden atama içerir */}
-          <div className="bg-surface-container border border-outline-variant rounded-2xl p-4">
+          <div className="min-w-0 bg-surface-container border border-outline-variant rounded-2xl p-4">
             <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-2">
               <User className="w-3 h-3" /> {t.consultant}
             </div>
@@ -559,7 +559,7 @@ export default function EvaluationDetailPage({
               </div>
             ) : (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-                <p className="text-sm font-semibold text-on-surface">{evaluation.agent?.name || "—"}</p>
+                <p className="min-w-0 break-words text-sm font-semibold text-on-surface">{evaluation.agent?.name || "—"}</p>
                 {canEdit && (
                   <button
                     onClick={() => setReassignOpen(true)}
@@ -590,11 +590,11 @@ export default function EvaluationDetailPage({
             { label: t.date, icon: <Calendar className="w-3 h-3" />, value: new Date(evaluation.createdAt).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR") },
             { label: t.evaluationDate, icon: <Calendar className="w-3 h-3" />, value: new Date(evaluation.callDate).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR") },
           ].map(({ label, icon, value }) => (
-            <div key={label} className="bg-surface-container border border-outline-variant rounded-2xl p-4">
+            <div key={label} className="min-w-0 bg-surface-container border border-outline-variant rounded-2xl p-4">
               <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-2">
                 {icon} {label}
               </div>
-              <p className="text-sm font-semibold text-on-surface">{value}</p>
+              <p className="text-sm font-semibold text-on-surface break-words">{value}</p>
             </div>
           ))}
         </div>
@@ -700,7 +700,7 @@ export default function EvaluationDetailPage({
       {/* Split Content */}
       <div className="flex-1 min-h-0 px-6 pb-2 grid grid-cols-2 gap-4">
         {/* Left: Report */}
-        <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6 leading-relaxed">
+        <div className="min-w-0 break-words bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6 leading-relaxed">
           {evaluation.weakCriteria && Array.isArray(evaluation.weakCriteria) && (evaluation.weakCriteria as any[]).length > 0 && (
             <div className="mb-6 bg-surface-container-high border border-primary/20 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-4">
@@ -726,7 +726,7 @@ export default function EvaluationDetailPage({
                         <span className={`flex-shrink-0 w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center ${p.num}`}>
                           {idx + 1}
                         </span>
-                        <div>
+                        <div className="min-w-0 break-words">
                           <p className={`text-[11px] font-semibold mb-1 ${p.label}`}>{c.id} — {c.label}</p>
                           <p className="text-[11px] text-on-surface-variant leading-relaxed">{c.coachingNote}</p>
                         </div>
@@ -753,7 +753,7 @@ export default function EvaluationDetailPage({
         </div>
 
         {/* Right: Transcript */}
-        <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6">
+        <div className="min-w-0 break-words bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
               {t.transcript}
