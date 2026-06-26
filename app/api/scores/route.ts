@@ -155,7 +155,7 @@ export async function GET(req: NextRequest) {
   // Gercek veri varsa dondur
   if (totalCalls > 0) {
     return NextResponse.json({
-      agent: { id: agent.id, name: agent.name, role: agent.role, team: agent.team?.name || "Takimsiz" },
+      agent: { id: agent.id, name: agent.name, role: agent.role, team: agent.team?.name || "" },
       rank, totalAgents: allAgents.length,
       stats: { totalCalls, avgScore, highestScore },
       weeklyProgress, recentCalls, isDemo: false,
@@ -218,7 +218,7 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({
-    agent: { id: agent.id, name: agent.name, role: agent.role, team: agent.team?.name || "Takimsiz" },
+    agent: { id: agent.id, name: agent.name, role: agent.role, team: agent.team?.name || "" },
     rank: demo.rank, totalAgents: demoTotalAgents,
     stats: { totalCalls: demo.calls, avgScore: demo.avg, highestScore: demo.highest },
     weeklyProgress: demoWeeklyProgress, recentCalls: demoRecentCalls, isDemo: true,

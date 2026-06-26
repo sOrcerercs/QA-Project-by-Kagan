@@ -1563,7 +1563,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                                         <div>
                                           <div style={{ fontSize: 14, fontWeight: 500, color: "var(--fg)" }}>{d.agent.name}</div>
                                           <div style={{ fontSize: 11, color: "var(--fg-faint)", fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                                            #{d.rank} · {d.agent.team}
+                                            #{d.rank} · {d.agent.team || (lang === "tr" ? "Takımsız" : "No Team")}
                                           </div>
                                         </div>
                                       </div>
@@ -1917,7 +1917,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                             <div>
                               <div style={{ fontSize: 14, fontWeight: 500, color: "var(--fg)" }}>{d.agent.name}</div>
                               <div style={{ fontSize: 11, color: "var(--fg-faint)", fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                                #{d.rank} · {d.agent.team}
+                                #{d.rank} · {d.agent.team || (lang === "tr" ? "Takımsız" : "No Team")}
                               </div>
                             </div>
                           </div>
