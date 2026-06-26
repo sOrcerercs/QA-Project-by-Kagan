@@ -275,6 +275,9 @@ export const translations = {
     qaConsultant: "Danışman",
     qaCustomer: "Müşteri",
     qaView: "Görüntüle",
+    qaAttachLinkPh: "Değerlendirme linki yapıştır",
+    qaAttachBtn: "Bağla",
+    qaLinkInvalid: "Geçersiz veya bulunamayan değerlendirme linki.",
   },
   en: {
     // Sidebar
@@ -550,6 +553,9 @@ export const translations = {
     qaConsultant: "Consultant",
     qaCustomer: "Customer",
     qaView: "View",
+    qaAttachLinkPh: "Paste evaluation link",
+    qaAttachBtn: "Attach",
+    qaLinkInvalid: "Invalid or not-found evaluation link.",
   },
 } as const;
 

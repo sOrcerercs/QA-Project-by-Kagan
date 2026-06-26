@@ -19,15 +19,17 @@ function nameMatches(a: string, b: string): boolean {
 
 // Returns the matched evaluation id or null. Candidates MUST already be
 // pre-filtered by the caller to the relevant date window.
+//
+// Both the customer name AND the consultant (salesOwner) must match. Matching on
+// the customer alone attributed calls to the wrong consultant when two customers
+// shared a name, so a customer-only match is intentionally left unmatched for
+// manual linking rather than auto-bound to a possibly-wrong evaluation.
 export function matchEvaluationForRow(row: MatchRow, candidates: MatchCandidate[]): string | null {
   const cust = norm(row.customerName);
-  if (!cust) return null;
-  const customerMatches = candidates.filter(c => nameMatches(norm(c.customerName), cust));
-  if (customerMatches.length === 0) return null;
   const owner = norm(row.salesOwner);
-  if (owner) {
-    const sameAgent = customerMatches.find(c => nameMatches(norm(c.agentName), owner));
-    if (sameAgent) return sameAgent.id;
-  }
-  return customerMatches[0].id;
+  if (!cust || !owner) return null;
+  const match = candidates.find(
+    c => nameMatches(norm(c.customerName), cust) && nameMatches(norm(c.agentName), owner)
+  );
+  return match ? match.id : null;
 }

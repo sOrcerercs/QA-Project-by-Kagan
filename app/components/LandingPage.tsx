@@ -9,6 +9,7 @@ import ScoreView from "@/app/components/shared/ScoreView";
 import ReportsView from "@/app/components/shared/ReportsView";
 import ComparisonReportView from "@/app/components/shared/ComparisonReportView";
 import QaReportView from "@/app/components/shared/QaReportView";
+import { canEditQa } from "@/app/lib/qaPermissions";
 import DateRangePicker from "@/app/components/shared/DateRangePicker";
 import TeamMemberPicker from "@/app/components/shared/TeamMemberPicker";
 import NotificationBell from "@/app/components/shared/NotificationBell";
@@ -1335,7 +1336,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   </p>
                 </div>
                 <div className={styles.card}>
-                  <QaReportView lang={lang} />
+                  <QaReportView lang={lang} canEdit={canEditQa(user.email)} />
                 </div>
               </div>
             )}
