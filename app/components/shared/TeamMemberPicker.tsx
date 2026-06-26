@@ -1,11 +1,13 @@
 "use client";
 
 import { translations } from "@/app/lib/i18n";
+import { selfLabel } from "@/app/lib/teamMembers";
 
 interface Member {
   id: string;
   name: string;
   role: string;
+  isSelf?: boolean;
 }
 
 interface TeamMemberPickerProps {
@@ -47,7 +49,7 @@ export default function TeamMemberPicker({ members, selectedIds, onChange, lang 
             <div className="w-8 h-8 rounded-lg bg-primary-container/20 flex items-center justify-center text-primary text-xs font-bold">
               {m.name.charAt(0)}
             </div>
-            <span className="text-sm font-medium text-on-surface">{m.name}</span>
+            <span className="text-sm font-medium text-on-surface">{selfLabel(m.name, m.isSelf, lang)}</span>
           </label>
         ))}
         {members.length === 0 && <p className="text-slate-500 text-sm text-center py-4">{t.noConsultantsInTeam}</p>}

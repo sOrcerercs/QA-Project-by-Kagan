@@ -21,3 +21,12 @@ export function attachSelf<T extends MemberLite>(
   if (members.some((m) => m.id === self.id)) return members;
   return [{ ...self, isSelf: true }, ...members];
 }
+
+/**
+ * Display name for a member row. The leader's own row (isSelf) gets a localized
+ * "(Siz)"/"(You)" suffix. Applied at render time so it reacts to language changes.
+ */
+export function selfLabel(name: string, isSelf: boolean | undefined, lang: "tr" | "en"): string {
+  if (!isSelf) return name;
+  return name + (lang === "tr" ? " (Siz)" : " (You)");
+}
