@@ -49,6 +49,9 @@ const L = {
     coachingSave: "Kaydet",
     coachingSaving: "Kaydediliyor...",
     coachingEdit: "Düzenle",
+    coachingModalTitle: "Coaching Notları",
+    coachingReadHint: "Takım liderinin bu çağrı için bıraktığı notlar",
+    coachingEmpty: "Henüz coaching notu girilmemiş.",
     coachingCards: "Bu Çağrıda Yapılabilecek 3 Şey",
     reclassify: "Yeniden Değerlendir",
     reclassifying: "Değerlendiriliyor...",
@@ -99,6 +102,9 @@ const L = {
     coachingSave: "Save",
     coachingSaving: "Saving...",
     coachingEdit: "Edit",
+    coachingModalTitle: "Coaching Notes",
+    coachingReadHint: "Notes your team leader left for this call",
+    coachingEmpty: "No coaching notes yet.",
     coachingCards: "3 Things to Improve This Call",
     reclassify: "Re-evaluate",
     reclassifying: "Evaluating...",
@@ -277,7 +283,8 @@ export default function EvaluationDetailPage({
   };
 
   const [isAcknowledging, setIsAcknowledging] = useState(false);
-  const [coachingExpanded, setCoachingExpanded] = useState(false);
+  const [coachingModalOpen, setCoachingModalOpen] = useState(false);
+  const [coachingModalMode, setCoachingModalMode] = useState<"edit" | "read">("read");
   const [coachingNotes, setCoachingNotes] = useState("");
   const [coachingSaving, setCoachingSaving] = useState(false);
 
@@ -308,7 +315,7 @@ export default function EvaluationDetailPage({
       if (!res.ok) return;
       const data = await res.json();
       setEvaluation((prev: any) => ({ ...prev, ...data }));
-      if (done) setCoachingExpanded(false);
+      if (done) setCoachingModalOpen(false);
     } catch {
       // silent fail
     } finally {
@@ -468,7 +475,7 @@ export default function EvaluationDetailPage({
   }
 
   return (
-    <div className="bg-surface text-on-surface h-screen flex flex-col font-sans overflow-hidden">
+    <div className="bg-surface text-on-surface min-h-screen flex flex-col font-sans">
       {/* Header */}
       <header className="bg-surface-container-low border-b border-outline-variant px-6 py-4 flex-shrink-0 z-10">
         <div className="flex justify-between items-center">
@@ -698,7 +705,7 @@ export default function EvaluationDetailPage({
       </div>
 
       {/* Split Content */}
-      <div className="flex-1 min-h-0 px-6 pb-2 grid grid-cols-2 gap-4">
+      <div className="flex-1 min-h-[420px] px-6 pb-2 grid grid-cols-2 gap-4">
         {/* Left: Report */}
         <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6 leading-relaxed">
           {evaluation.weakCriteria && Array.isArray(evaluation.weakCriteria) && (evaluation.weakCriteria as any[]).length > 0 && (
@@ -784,7 +791,7 @@ export default function EvaluationDetailPage({
       </div>
 
       {/* Agent Read + Coaching Row */}
-      <div className="px-6 pb-4 grid grid-cols-2 gap-4 flex-shrink-0">
+      <div className="px-6 pb-4 grid grid-cols-2 gap-4 flex-shrink-0 items-start">
         {/* Agent Read Section */}
         <div className="bg-surface-container border border-outline-variant rounded-2xl px-5 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -817,78 +824,65 @@ export default function EvaluationDetailPage({
         </div>
 
         {/* Coaching Section */}
-        <div className="bg-surface-container border border-outline-variant rounded-2xl px-5 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <MIcon name="psychology" className={`text-xl flex-shrink-0 ${evaluation.coachingDone ? "text-primary" : "text-slate-500"}`} />
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.coachingTitle}</p>
-                {evaluation.coachingDone ? (
-                  <p className="text-xs text-primary font-semibold mt-0.5">
-                    ✓ {t.coachingDoneLabel}
-                    {evaluation.coachingByName && (
-                      <span className="text-slate-500 font-normal ml-1.5">— {evaluation.coachingByName}</span>
-                    )}
-                    {evaluation.coachingDoneAt && (
-                      <span className="text-slate-500 font-normal ml-1.5">
-                        {new Date(evaluation.coachingDoneAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}
-                      </span>
-                    )}
-                  </p>
-                ) : (
-                  <p className="text-xs text-slate-500 mt-0.5">{t.coachingPending}</p>
+        {(() => {
+          const isCoach = ["TEAM_LEADER", "ADMIN", "MANAGER"].includes(currentUser?.role);
+          const canRead = !!(evaluation.coachingDone && evaluation.coachingNotes);
+          const openEdit = () => {
+            setCoachingNotes(evaluation.coachingNotes || "");
+            setCoachingModalMode("edit");
+            setCoachingModalOpen(true);
+          };
+          const openRead = () => {
+            setCoachingModalMode("read");
+            setCoachingModalOpen(true);
+          };
+          return (
+            <div
+              onClick={canRead ? openRead : undefined}
+              className={`bg-surface-container border border-outline-variant rounded-2xl px-5 py-4 flex items-center justify-between gap-4 ${canRead ? "cursor-pointer hover:bg-surface-container-high transition-colors" : ""}`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <MIcon name="psychology" className={`text-xl flex-shrink-0 ${evaluation.coachingDone ? "text-primary" : "text-slate-500"}`} />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.coachingTitle}</p>
+                  {evaluation.coachingDone ? (
+                    <p className="text-xs text-primary font-semibold mt-0.5">
+                      ✓ {t.coachingDoneLabel}
+                      {evaluation.coachingByName && (
+                        <span className="text-slate-500 font-normal ml-1.5">— {evaluation.coachingByName}</span>
+                      )}
+                      {evaluation.coachingDoneAt && (
+                        <span className="text-slate-500 font-normal ml-1.5">
+                          {new Date(evaluation.coachingDoneAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}
+                        </span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500 mt-0.5">{t.coachingPending}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {evaluation.coachingDone && isCoach && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openEdit(); }}
+                    className="text-slate-500 hover:text-on-surface transition-colors text-xs px-2 py-1 rounded-lg hover:bg-surface-container-high"
+                  >
+                    {t.coachingEdit}
+                  </button>
+                )}
+                {!evaluation.coachingDone && isCoach && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openEdit(); }}
+                    className="flex-shrink-0 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+                  >
+                    {t.coachingBtn}
+                  </button>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {evaluation.coachingDone && ["TEAM_LEADER", "ADMIN", "MANAGER"].includes(currentUser?.role) && (
-                <button
-                  onClick={() => {
-                    setCoachingNotes(evaluation.coachingNotes || "");
-                    setCoachingExpanded(!coachingExpanded);
-                  }}
-                  className="text-slate-500 hover:text-on-surface transition-colors text-xs px-2 py-1 rounded-lg hover:bg-surface-container-high"
-                >
-                  {t.coachingEdit}
-                </button>
-              )}
-              {!evaluation.coachingDone && ["TEAM_LEADER", "ADMIN", "MANAGER"].includes(currentUser?.role) && (
-                <button
-                  onClick={() => setCoachingExpanded(true)}
-                  className="flex-shrink-0 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
-                >
-                  {t.coachingBtn}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Notes area — shows when expanded or when coaching is done and there are notes */}
-          {(coachingExpanded || (evaluation.coachingDone && evaluation.coachingNotes && !coachingExpanded)) && (
-            <div className="mt-3 pt-3 border-t border-outline-variant">
-              {coachingExpanded && ["TEAM_LEADER", "ADMIN", "MANAGER"].includes(currentUser?.role) ? (
-                <div className="flex gap-2 items-end">
-                  <textarea
-                    value={coachingNotes}
-                    onChange={(e) => setCoachingNotes(e.target.value)}
-                    placeholder={t.coachingNotesPlaceholder}
-                    rows={2}
-                    className="flex-1 bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2 text-xs text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline transition-colors"
-                  />
-                  <button
-                    onClick={() => handleCoachingSave(true)}
-                    disabled={coachingSaving}
-                    className="bg-primary hover:opacity-90 disabled:opacity-50 text-on-primary px-3 py-2 rounded-xl text-xs font-semibold h-[52px] whitespace-nowrap transition-all"
-                  >
-                    {coachingSaving ? t.coachingSaving : t.coachingSave}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-xs text-on-surface-variant leading-relaxed whitespace-pre-wrap">{evaluation.coachingNotes}</p>
-              )}
-            </div>
-          )}
-        </div>
+          );
+        })()}
       </div>
 
       {/* Feedback Panel */}
@@ -948,6 +942,83 @@ export default function EvaluationDetailPage({
                   )}
                 </button>
               </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Coaching Notes Modal */}
+      <AnimatePresence>
+        {coachingModalOpen && (
+          <>
+            <motion.div
+              className="fixed inset-0 bg-black/60 z-40"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !coachingSaving && setCoachingModalOpen(false)}
+            />
+            <motion.div
+              className="fixed bottom-0 left-0 right-0 bg-surface-container-low border-t border-outline-variant px-6 py-5 z-50"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="text-sm font-bold text-on-surface">{t.coachingModalTitle}</div>
+                  <div className="text-xs text-on-surface-variant mt-0.5">
+                    {coachingModalMode === "edit" ? t.coachingNotesPlaceholder : t.coachingReadHint}
+                  </div>
+                </div>
+                {!coachingSaving && (
+                  <button
+                    onClick={() => setCoachingModalOpen(false)}
+                    className="text-on-surface-variant hover:text-on-surface transition-colors text-lg leading-none"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {coachingModalMode === "edit" ? (
+                <div className="flex gap-3 items-end">
+                  <textarea
+                    className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[160px] transition-colors"
+                    placeholder={t.coachingNotesPlaceholder}
+                    value={coachingNotes}
+                    onChange={(e) => setCoachingNotes(e.target.value)}
+                    rows={3}
+                    disabled={coachingSaving}
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => handleCoachingSave(true)}
+                    disabled={coachingSaving || !coachingNotes.trim()}
+                    className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-[52px] flex items-center gap-2 whitespace-nowrap transition-all"
+                  >
+                    {coachingSaving ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />
+                        {t.coachingSaving}
+                      </>
+                    ) : (
+                      t.coachingSave
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="max-h-[40vh] overflow-y-auto">
+                  {evaluation.coachingByName && (
+                    <p className="text-xs text-on-surface-variant mb-2">
+                      {t.coachingBy}: <span className="text-on-surface font-semibold">{evaluation.coachingByName}</span>
+                    </p>
+                  )}
+                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">
+                    {evaluation.coachingNotes || t.coachingEmpty}
+                  </p>
+                </div>
+              )}
             </motion.div>
           </>
         )}
