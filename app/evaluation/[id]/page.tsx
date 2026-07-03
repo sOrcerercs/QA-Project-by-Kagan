@@ -475,7 +475,7 @@ export default function EvaluationDetailPage({
   }
 
   return (
-    <div className="bg-surface text-on-surface h-screen flex flex-col font-sans overflow-hidden">
+    <div className="bg-surface text-on-surface min-h-screen flex flex-col font-sans">
       {/* Header */}
       <header className="bg-surface-container-low border-b border-outline-variant px-6 py-4 flex-shrink-0 z-10">
         <div className="flex justify-between items-center">
@@ -705,7 +705,7 @@ export default function EvaluationDetailPage({
       </div>
 
       {/* Split Content */}
-      <div className="flex-1 min-h-0 px-6 pb-2 grid grid-cols-2 gap-4">
+      <div className="flex-1 min-h-[420px] px-6 pb-2 grid grid-cols-2 gap-4">
         {/* Left: Report */}
         <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6 leading-relaxed">
           {evaluation.weakCriteria && Array.isArray(evaluation.weakCriteria) && (evaluation.weakCriteria as any[]).length > 0 && (
