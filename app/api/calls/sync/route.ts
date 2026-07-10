@@ -35,7 +35,7 @@ async function getOrCreateUnassignedUser() {
 /** Kriko agent_name → DB'deki User. Diakritik/case duyarsız. */
 async function matchAgent(agentName: string | null) {
   if (!agentName) return null;
-  const norm = agentName.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const norm = agentName.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[ıİI]/g, "i").toLowerCase().replace(/x/g, "ks").trim();
   if (!norm) return null;
 
   // Tüm agent rolündeki kullanıcılarla karşılaştır
@@ -45,19 +45,19 @@ async function matchAgent(agentName: string | null) {
   });
 
   for (const u of candidates) {
-    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[ıİI]/g, "i").toLowerCase().replace(/x/g, "ks").trim();
     if (uNorm === norm) return u;
   }
   // Kısmi eşleşme: ad + soyad içeriyorsa
   const parts = norm.split(/\s+/).filter(Boolean);
   for (const u of candidates) {
-    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[ıİI]/g, "i").toLowerCase().replace(/x/g, "ks").trim();
     if (parts.length >= 2 && uNorm.includes(parts[0]) && uNorm.includes(parts[1])) return u;
   }
   // Tek kelimelik isim eşleşmesi: DB'deki ismin ilk kelimesiyle karşılaştır
   if (parts.length === 1) {
     for (const u of candidates) {
-      const uFirst = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/\s+/)[0];
+      const uFirst = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[ıİI]/g, "i").toLowerCase().replace(/x/g, "ks").split(/\s+/)[0];
       if (uFirst === parts[0]) return u;
     }
   }
