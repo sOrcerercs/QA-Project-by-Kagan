@@ -26,6 +26,11 @@ interface Evaluation {
   callType?: string;
   report: string;
   agent?: { name: string };
+  agentRead?: boolean;
+  agentReadAt?: string | null;
+  coachingDone?: boolean;
+  coachingDoneAt?: string | null;
+  coachingByName?: string | null;
 }
 
 interface EvaluationsViewProps {
@@ -442,6 +447,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
           onDeleteOne={handleDeleteOne}
           agents={agents}
           onReassignOne={handleReassignOne}
+          userRole={userRole}
         />
       )}
     </div>
