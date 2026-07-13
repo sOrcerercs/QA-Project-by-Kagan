@@ -12,3 +12,32 @@
 .row:hover {
   background: rgba(128,128,128,.06);
 }
+
+/* Rozet üzerine gelince açılan tooltip (coaching tarihi + yapan kişi) */
+.badgeWrap {
+  position: relative;
+  display: inline-flex;
+}
+.tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  white-space: nowrap;
+  background: var(--glass-bg, #1a1a2e);
+  border: 1px solid var(--rule);
+  color: var(--fg);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 5px 8px;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.3);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity 120ms, transform 120ms;
+  z-index: 20;
+}
+.badgeWrap:hover .tip {
+  opacity: 1;
+  transform: translateY(0);
+}

@@ -13,10 +13,9 @@ const scoreColor = (score: number) =>
   score >= 70 ? "var(--accent)" :
   score >= 55 ? "#f59e0b" : "#f87171";
 
-function StatusBadge({ done, doneLabel, notDoneLabel, title }: { done: boolean; doneLabel: string; notDoneLabel: string; title?: string }) {
-  return (
+function StatusBadge({ done, doneLabel, notDoneLabel, tip }: { done: boolean; doneLabel: string; notDoneLabel: string; tip?: string }) {
+  const badge = (
     <span
-      title={title}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -32,6 +31,13 @@ function StatusBadge({ done, doneLabel, notDoneLabel, title }: { done: boolean; 
       }}
     >
       {done ? "✓" : ""} {done ? doneLabel : notDoneLabel}
+    </span>
+  );
+  if (!tip) return badge;
+  return (
+    <span className={styles.badgeWrap}>
+      {badge}
+      <span className={styles.tip}>{tip}</span>
     </span>
   );
 }
@@ -163,7 +169,7 @@ export default function EvaluationList({
                     done={!!ev.agentRead}
                     doneLabel={lang === "tr" ? "Okundu" : "Read"}
                     notDoneLabel={lang === "tr" ? "Okunmadı" : "Not Read"}
-                    title={ev.agentRead && ev.agentReadAt ? new Date(ev.agentReadAt).toLocaleString(lang === "en" ? "en-GB" : "tr-TR") : undefined}
+                    tip={ev.agentRead && ev.agentReadAt ? new Date(ev.agentReadAt).toLocaleString(lang === "en" ? "en-GB" : "tr-TR") : undefined}
                   />
                 )}
                 {showCoaching && (
@@ -171,7 +177,7 @@ export default function EvaluationList({
                     done={!!ev.coachingDone}
                     doneLabel={lang === "tr" ? "Coaching Yapıldı" : "Coaching Done"}
                     notDoneLabel={lang === "tr" ? "Coaching Bekliyor" : "Coaching Pending"}
-                    title={ev.coachingDone && ev.coachingDoneAt
+                    tip={ev.coachingDone && ev.coachingDoneAt
                       ? `${new Date(ev.coachingDoneAt).toLocaleString(lang === "en" ? "en-GB" : "tr-TR")}${ev.coachingByName ? ` · ${ev.coachingByName}` : ""}`
                       : undefined}
                   />
