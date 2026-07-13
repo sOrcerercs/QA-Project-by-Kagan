@@ -5,12 +5,42 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import { ArrowUpRight, Trash2, ArrowLeftRight } from "lucide-react";
 import MIcon from "@/app/components/shared/MIcon";
+import { evaluationBadgeVisibility } from "@/app/lib/evaluationBadges";
 import styles from "./EvaluationList.module.css";
 
 const scoreColor = (score: number) =>
   score >= 85 ? "#34d399" :
   score >= 70 ? "var(--accent)" :
   score >= 55 ? "#f59e0b" : "#f87171";
+
+function StatusBadge({ done, doneLabel, notDoneLabel, tip }: { done: boolean; doneLabel: string; notDoneLabel: string; tip?: string }) {
+  const badge = (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: 10,
+        fontWeight: 600,
+        padding: "2px 8px",
+        borderRadius: 99,
+        background: done ? "rgba(34,197,94,.12)" : "rgba(148,163,184,.12)",
+        color: done ? "#22c55e" : "var(--fg-dim)",
+        border: `1px solid ${done ? "rgba(34,197,94,.25)" : "var(--rule)"}`,
+        whiteSpace: "nowrap" as const,
+      }}
+    >
+      {done ? "✓" : ""} {done ? doneLabel : notDoneLabel}
+    </span>
+  );
+  if (!tip) return badge;
+  return (
+    <span className={styles.badgeWrap}>
+      {badge}
+      <span className={styles.tip}>{tip}</span>
+    </span>
+  );
+}
 
 interface Evaluation {
   id: string;
@@ -20,6 +50,11 @@ interface Evaluation {
   callDate: string;
   createdAt: string;
   agent?: { name: string };
+  agentRead?: boolean;
+  agentReadAt?: string | null;
+  coachingDone?: boolean;
+  coachingDoneAt?: string | null;
+  coachingByName?: string | null;
 }
 
 interface Agent {
@@ -39,6 +74,7 @@ interface EvaluationListProps {
   onDeleteOne?: (id: string) => void;
   agents?: Agent[];
   onReassignOne?: (evalId: string, agentId: string) => Promise<void>;
+  userRole?: string;
 }
 
 export default function EvaluationList({
@@ -53,9 +89,11 @@ export default function EvaluationList({
   onDeleteOne,
   agents,
   onReassignOne,
+  userRole,
 }: EvaluationListProps) {
   const resolvedDetailLabel = detailLabel ?? (lang === "en" ? "Detail" : "Detay");
   const resolvedEmptyMessage = emptyMessage ?? (lang === "en" ? "No evaluations yet." : "Henüz değerlendirme yok.");
+  const { showRead, showCoaching } = evaluationBadgeVisibility(userRole);
 
   const [reassigningId, setReassigningId] = useState<string | null>(null);
   const [reassignValue, setReassignValue] = useState<Record<string, string>>({});
@@ -123,6 +161,29 @@ export default function EvaluationList({
             <span style={{ fontWeight: 700, fontSize: 14, color: scoreColor(ev.score) }}>
               %{ev.score}
             </span>
+
+            {(showRead || showCoaching) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                {showRead && (
+                  <StatusBadge
+                    done={!!ev.agentRead}
+                    doneLabel={lang === "tr" ? "Okundu" : "Read"}
+                    notDoneLabel={lang === "tr" ? "Okunmadı" : "Not Read"}
+                    tip={ev.agentRead && ev.agentReadAt ? new Date(ev.agentReadAt).toLocaleString(lang === "en" ? "en-GB" : "tr-TR") : undefined}
+                  />
+                )}
+                {showCoaching && (
+                  <StatusBadge
+                    done={!!ev.coachingDone}
+                    doneLabel={lang === "tr" ? "Coaching Yapıldı" : "Coaching Done"}
+                    notDoneLabel={lang === "tr" ? "Coaching Bekliyor" : "Coaching Pending"}
+                    tip={ev.coachingDone && ev.coachingDoneAt
+                      ? `${new Date(ev.coachingDoneAt).toLocaleString(lang === "en" ? "en-GB" : "tr-TR")}${ev.coachingByName ? ` · ${ev.coachingByName}` : ""}`
+                      : undefined}
+                  />
+                )}
+              </div>
+            )}
 
             {/* Reassign */}
             {isAdmin && agents && agents.length > 0 && (
