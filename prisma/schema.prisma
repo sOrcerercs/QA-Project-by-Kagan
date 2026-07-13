@@ -138,6 +138,12 @@ model Evaluation {
   coachingNotes   String?
   coachingById    String?
   coachingByName  String?
+
+  // Agent feedback ve itiraz alanları
+  agentFeedback    String?
+  agentFeedbackAt  DateTime?
+  objectionText    String?
+  objectionAt      DateTime?
 }
 
 model SyncLog {
