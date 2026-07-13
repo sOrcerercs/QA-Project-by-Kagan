@@ -18,8 +18,10 @@ describe("evaluationBadgeVisibility", () => {
     expect(evaluationBadgeVisibility("ADMIN")).toEqual({ showRead: true, showCoaching: true });
   });
 
-  it("rol yoksa (undefined/null) coaching gizlenir, okuma görünür", () => {
-    expect(evaluationBadgeVisibility(undefined)).toEqual({ showRead: true, showCoaching: false });
-    expect(evaluationBadgeVisibility(null)).toEqual({ showRead: true, showCoaching: false });
+  it("rol yoksa (undefined/null) hiç rozet gösterilmez — sadece rol geçilen listeler rozet alır", () => {
+    // EvaluationList birden çok yerde kullanılıyor; userRole geçmeyen çağrılarda
+    // (Takım sekmesi, Takım Raporu, Skorlarım) rozet hiç çıkmamalı.
+    expect(evaluationBadgeVisibility(undefined)).toEqual({ showRead: false, showCoaching: false });
+    expect(evaluationBadgeVisibility(null)).toEqual({ showRead: false, showCoaching: false });
   });
 });
