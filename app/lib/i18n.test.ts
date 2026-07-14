@@ -22,3 +22,22 @@ describe("i18n ScoreView section-analysis keys", () => {
     }
   });
 });
+
+describe("i18n Known Issues keys", () => {
+  const keys = [
+    "kiTitle", "kiSubtitle", "kiEmpty", "kiAddBtn", "kiEditBtn", "kiDeleteBtn",
+    "kiSaveBtn", "kiCancelBtn", "kiDeleteConfirm", "kiTitleLabel", "kiDescLabel",
+    "kiStatusLabel", "kiStatusInvestigating", "kiStatusInProgress", "kiStatusResolved",
+    "kiUpdatedAt", "kiLoadError", "kiSaveError", "kiReportBtn",
+  ] as const;
+
+  it("exist and are localized in both tr and en", () => {
+    const tr = translations.tr as Record<string, unknown>;
+    const en = translations.en as Record<string, unknown>;
+    for (const k of keys) {
+      expect(tr[k], `tr.${k}`).toBeTruthy();
+      expect(en[k], `en.${k}`).toBeTruthy();
+      expect(en[k], `en.${k} should be translated, not the tr value`).not.toBe(tr[k]);
+    }
+  });
+});

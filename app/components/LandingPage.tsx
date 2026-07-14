@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import AdminPanel from "@/app/components/shared/AdminPanel";
 import styles from "./LandingPage.module.css";
+import { translations } from "@/app/lib/i18n";
 import EvaluationList from "@/app/components/shared/EvaluationList";
 import EvaluationsView from "@/app/components/shared/EvaluationsView";
 import ScoreView from "@/app/components/shared/ScoreView";
@@ -19,6 +20,7 @@ import LeaderboardView from "@/app/components/shared/LeaderboardView";
 import CoachingTrackingView from "@/app/components/shared/CoachingTrackingView";
 import SearchView from "@/app/components/shared/SearchView";
 import PromptsView from "@/app/components/shared/PromptsView";
+import KnownIssuesView from "./shared/KnownIssuesView";
 
 /* ── Theme tokens ── */
 const DARK_THEME = {
@@ -52,6 +54,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     phoneStandards: "Phone Quality Standards",
     comparison: "Karşılaştırma",
     qaReport: "QA Raporu",
+    knownIssues: "Bilinen Sorunlar",
   },
   en: {
     home: "Home", evaluations: "Evaluations", scores: "My Scores",
@@ -68,6 +71,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     phoneStandards: "Phone Quality Standards",
     comparison: "Comparison",
     qaReport: "QA Report",
+    knownIssues: "Known Issues",
   },
 };
 
@@ -653,6 +657,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     mainNavItems.push({ key: "peer", icon: "compare" });
   }
   mainNavItems.push({ key: "leaderboard", icon: "trophy" });
+  mainNavItems.push({ key: "knownIssues", icon: "bell" });
   mainNavItems.push({ key: "search", icon: "search" });
   mainNavItems.push({ key: "phoneStandards", icon: "phone" });
   if (isManagerLike || user.role === "TEAM_LEADER") {
@@ -2238,6 +2243,25 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
             {activeTab === "leaderboard" && (
               <div className={styles.page}>
                 <LeaderboardView lang={lang} userRole={user.role as "AGENT" | "TEAM_LEADER" | "MANAGER" | "ADMIN"} />
+              </div>
+            )}
+
+            {/* ── KNOWN ISSUES ── */}
+            {activeTab === "knownIssues" && (
+              <div className={styles.page}>
+                <div className={styles.pageHd}>
+                  <h1 className={styles.pageH1}>{navLabels.knownIssues}</h1>
+                  <p className={styles.pageSub}>
+                    {translations[lang].kiSubtitle}
+                  </p>
+                </div>
+                <div className={styles.card}>
+                  <KnownIssuesView
+                    lang={lang}
+                    canEdit={canEditQa(user.email)}
+                    onReportProblem={() => handleTab("feedback")}
+                  />
+                </div>
               </div>
             )}
 
