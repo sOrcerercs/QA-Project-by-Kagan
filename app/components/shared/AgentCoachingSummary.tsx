@@ -20,7 +20,7 @@ const L = {
     retry: "Tekrar dene",
     generating: "Özet hazırlanıyor…",
     noData: "Yeterli değerlendirme verisi yok.",
-    stale: "· güncelleniyor",
+    stale: "· önceki özet",
   },
   en: {
     title: "Development Summary",
@@ -31,7 +31,7 @@ const L = {
     retry: "Try again",
     generating: "Generating summary…",
     noData: "Not enough evaluation data.",
-    stale: "· updating",
+    stale: "· previous",
   },
 };
 

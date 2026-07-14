@@ -50,6 +50,9 @@ export async function GET(req: NextRequest) {
       recentEvals.length >= 10
         ? recentEvals
         : await prisma.evaluation.findMany({ where: { agentId }, orderBy: { callDate: "desc" }, take: 10 });
+    // Tazelik sinyali olarak pencere içi değerlendirme SAYISI kullanılır (içerik hash'i değil).
+    // Zaman penceresi kaydıkça sayı aynı kalıp içerik değişebilir → nadir bir "bayat kaçırma";
+    // SWR olduğu için kabul edilebilir (üretim başarısızsa yine son iyi özet gösterilir).
     const currentCount = evals.length;
 
     // Taze cache → anında döndür
@@ -212,30 +215,40 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Özet şu anda hazırlanamadı, birazdan tekrar deneyin." }, { status: 503 });
     }
 
-    const record = await prisma.coachingSummary.upsert({
-      where: { agentId },
-      create: {
-        agentId,
+    try {
+      const record = await prisma.coachingSummary.upsert({
+        where: { agentId },
+        create: {
+          agentId,
+          summary: generated.summary,
+          actionItems: generated.actionItems,
+          generatedAt: new Date(),
+          evalCount: currentCount,
+        },
+        update: {
+          summary: generated.summary,
+          actionItems: generated.actionItems,
+          generatedAt: new Date(),
+          evalCount: currentCount,
+        },
+      });
+      return NextResponse.json({
+        summary: record.summary,
+        actionItems: Array.isArray(record.actionItems) ? (record.actionItems as string[]) : [],
+        generatedAt: record.generatedAt,
+        evalCount: record.evalCount,
+        stale: false,
+      });
+    } catch (persistErr) {
+      console.error("[coaching-summary] persist failed, returning uncached result:", persistErr);
+      return NextResponse.json({
         summary: generated.summary,
         actionItems: generated.actionItems,
         generatedAt: new Date(),
         evalCount: currentCount,
-      },
-      update: {
-        summary: generated.summary,
-        actionItems: generated.actionItems,
-        generatedAt: new Date(),
-        evalCount: currentCount,
-      },
-    });
-
-    return NextResponse.json({
-      summary: record.summary,
-      actionItems: Array.isArray(record.actionItems) ? (record.actionItems as string[]) : [],
-      generatedAt: record.generatedAt,
-      evalCount: record.evalCount,
-      stale: false,
-    });
+        stale: false,
+      });
+    }
   } catch (err) {
     console.error("[coaching-summary]", err);
     // Beklenmedik hatada da elde özet varsa onu göster
