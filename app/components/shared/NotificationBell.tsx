@@ -92,7 +92,7 @@ export default function NotificationBell({ lang, onNavigateTab }: Props) {
     setOpen(false);
     if (n.type === "FEEDBACK") {
       onNavigateTab("feedbacks");
-    } else if (n.type === "EVALUATION" && n.referenceId) {
+    } else if ((n.type === "EVALUATION" || n.type === "OBJECTION" || n.type === "AGENT_FEEDBACK") && n.referenceId) {
       router.push(`/evaluation/${n.referenceId}`);
     } else if (n.type === "UNASSIGNED_CALL") {
       onNavigateTab("sync");
@@ -102,11 +102,15 @@ export default function NotificationBell({ lang, onNavigateTab }: Props) {
   const typeIcon = (type: string) => {
     if (type === "FEEDBACK") return "feedback";
     if (type === "UNASSIGNED_CALL") return "person_add";
+    if (type === "OBJECTION") return "gavel";
+    if (type === "AGENT_FEEDBACK") return "rate_review";
     return "assessment";
   };
   const typeLabel = (type: string) => {
     if (type === "FEEDBACK") return t.feedback;
     if (type === "UNASSIGNED_CALL") return lang === "tr" ? "Atanmamış Çağrı" : "Unassigned Call";
+    if (type === "OBJECTION") return lang === "tr" ? "İtiraz" : "Objection";
+    if (type === "AGENT_FEEDBACK") return lang === "tr" ? "Danışman Geri Bildirimi" : "Consultant Feedback";
     return t.evaluation;
   };
 
