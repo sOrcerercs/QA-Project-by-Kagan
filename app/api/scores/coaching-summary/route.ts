@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
 import { callGemini } from "@/app/lib/gemini";
+import { extractSummaryJson, isCoachingSummaryFresh } from "@/app/lib/coachingSummary";
+
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   const user = await getUserFromToken(req);
@@ -32,19 +35,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  let cached: Awaited<ReturnType<typeof prisma.coachingSummary.findUnique>> = null;
   try {
-    // 1. Cache check
-    const cached = await prisma.coachingSummary.findUnique({ where: { agentId } });
-    if (cached && cached.summary != null && cached.summary !== "") {
-      return NextResponse.json({
-        summary: cached.summary,
-        actionItems: Array.isArray(cached.actionItems) ? (cached.actionItems as string[]) : [],
-        generatedAt: cached.generatedAt,
-        evalCount: cached.evalCount,
-      });
-    }
+    cached = await prisma.coachingSummary.findUnique({ where: { agentId } });
 
-    // 2. Data window: last 10 days if >=10 evals, else last 10 evals
+    // Veri penceresi: >=10 ise son 10 gün, değilse son 10 değerlendirme
     const tenDaysAgo = new Date();
     tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
     const recentEvals = await prisma.evaluation.findMany({
@@ -54,13 +49,31 @@ export async function GET(req: NextRequest) {
     const evals =
       recentEvals.length >= 10
         ? recentEvals
-        : await prisma.evaluation.findMany({
-            where: { agentId },
-            orderBy: { callDate: "desc" },
-            take: 10,
-          });
+        : await prisma.evaluation.findMany({ where: { agentId }, orderBy: { callDate: "desc" }, take: 10 });
+    const currentCount = evals.length;
 
-    if (evals.length === 0) {
+    // Taze cache → anında döndür
+    if (isCoachingSummaryFresh(cached, currentCount)) {
+      return NextResponse.json({
+        summary: cached!.summary,
+        actionItems: Array.isArray(cached!.actionItems) ? (cached!.actionItems as string[]) : [],
+        generatedAt: cached!.generatedAt,
+        evalCount: cached!.evalCount,
+        stale: false,
+      });
+    }
+
+    // Üretim için veri yok
+    if (currentCount === 0) {
+      if (cached?.summary) {
+        return NextResponse.json({
+          summary: cached.summary,
+          actionItems: Array.isArray(cached.actionItems) ? (cached.actionItems as string[]) : [],
+          generatedAt: cached.generatedAt,
+          evalCount: cached.evalCount,
+          stale: true,
+        });
+      }
       return NextResponse.json({ error: "Yeterli değerlendirme yok." }, { status: 404 });
     }
 
@@ -173,40 +186,46 @@ export async function GET(req: NextRequest) {
           : "Based on the above data, generate a 3-4 sentence constructive development summary and 2-3 concrete, actionable items for this week. Use motivating, not blaming language. Return only this JSON format: {\"summary\": \"...\", \"actionItems\": [\"...\", \"...\"]}",
     });
 
-    const raw = await callGemini(systemPrompt, userMessage, {
-      maxTokens: 1024,
-      temperature: 0.4,
-    });
-
-    // Strip markdown code fences if present
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/, "")
-      .trim();
-    const parsed = JSON.parse(cleaned) as { summary?: unknown; actionItems?: unknown };
-    if (typeof parsed.summary !== "string" || parsed.summary.trim() === "") {
-      throw new Error("Gemini yanıtı geçersiz: summary eksik veya boş.");
+    // Sağlamlaştırılmış, bütçeli üretim
+    let generated: { summary: string; actionItems: string[] };
+    try {
+      const raw = await callGemini(systemPrompt, userMessage, {
+        maxTokens: 1536,
+        temperature: 0.4,
+        timeoutMs: 15000,
+        maxAttempts: 2,
+        maxSleepMs: 5000,
+      });
+      generated = extractSummaryJson(raw);
+    } catch (genErr) {
+      console.error("[coaching-summary] üretim başarısız:", genErr);
+      // Stale-while-revalidate: elde son iyi özet varsa onu döndür (hata değil)
+      if (cached?.summary) {
+        return NextResponse.json({
+          summary: cached.summary,
+          actionItems: Array.isArray(cached.actionItems) ? (cached.actionItems as string[]) : [],
+          generatedAt: cached.generatedAt,
+          evalCount: cached.evalCount,
+          stale: true,
+        });
+      }
+      return NextResponse.json({ error: "Özet şu anda hazırlanamadı, birazdan tekrar deneyin." }, { status: 503 });
     }
-    if (!Array.isArray(parsed.actionItems)) {
-      throw new Error("Gemini yanıtı geçersiz: actionItems dizi değil.");
-    }
-    const validParsed = { summary: parsed.summary, actionItems: parsed.actionItems as string[] };
 
-    // 7. Upsert to DB
     const record = await prisma.coachingSummary.upsert({
       where: { agentId },
       create: {
         agentId,
-        summary: validParsed.summary,
-        actionItems: validParsed.actionItems,
+        summary: generated.summary,
+        actionItems: generated.actionItems,
         generatedAt: new Date(),
-        evalCount: evals.length,
+        evalCount: currentCount,
       },
       update: {
-        summary: validParsed.summary,
-        actionItems: validParsed.actionItems,
+        summary: generated.summary,
+        actionItems: generated.actionItems,
         generatedAt: new Date(),
-        evalCount: evals.length,
+        evalCount: currentCount,
       },
     });
 
@@ -215,9 +234,20 @@ export async function GET(req: NextRequest) {
       actionItems: Array.isArray(record.actionItems) ? (record.actionItems as string[]) : [],
       generatedAt: record.generatedAt,
       evalCount: record.evalCount,
+      stale: false,
     });
   } catch (err) {
     console.error("[coaching-summary]", err);
+    // Beklenmedik hatada da elde özet varsa onu göster
+    if (cached?.summary) {
+      return NextResponse.json({
+        summary: cached.summary,
+        actionItems: Array.isArray(cached.actionItems) ? (cached.actionItems as string[]) : [],
+        generatedAt: cached.generatedAt,
+        evalCount: cached.evalCount,
+        stale: true,
+      });
+    }
     return NextResponse.json({ error: "Özet oluşturulamadı." }, { status: 500 });
   }
 }
