@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     await prisma.coachingSummary.upsert({
       where: { agentId },
       create: { agentId, summary: null, evalCount: 0 },
-      update: { summary: null },
+      update: { evalCount: -1 },
     });
     return NextResponse.json({ ok: true });
   } catch (err) {

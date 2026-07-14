@@ -70,17 +70,6 @@ export async function POST(req: NextRequest) {
     skipDuplicates: true,
   });
 
-  // Coaching summary cache invalidation — non-blocking
-  try {
-    await prisma.coachingSummary.upsert({
-      where: { agentId },
-      create: { agentId, summary: null, evalCount: 0 },
-      update: { summary: null },
-    });
-  } catch (e) {
-    console.warn("[evaluations] coaching summary invalidation failed:", e);
-  }
-
   return NextResponse.json({ evaluation });
 }
 
