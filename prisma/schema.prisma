@@ -21,6 +21,12 @@ enum CallType {
   GENERAL
 }
 
+enum IssueStatus {
+  INVESTIGATING
+  IN_PROGRESS
+  RESOLVED
+}
+
 model Team {
   id       String  @id @default(cuid())
   name     String
@@ -210,4 +216,14 @@ model QaReportRow {
   qaNotes             String?
 
   @@index([qaReportId])
+}
+
+model KnownIssue {
+  id          String      @id @default(cuid())
+  title       String
+  description String
+  status      IssueStatus @default(INVESTIGATING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  createdById String?
 }
