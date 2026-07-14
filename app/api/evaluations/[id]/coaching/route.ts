@@ -15,7 +15,10 @@ export async function POST(
 
   const { id } = await params;
 
-  const evaluation = await prisma.evaluation.findUnique({ where: { id }, select: { id: true } });
+  const evaluation = await prisma.evaluation.findUnique({
+    where: { id },
+    select: { id: true, agentId: true, customerName: true },
+  });
   if (!evaluation) return NextResponse.json({ error: "Bulunamadı." }, { status: 404 });
 
   const body = await req.json();
@@ -38,6 +41,22 @@ export async function POST(
       coachingByName: true,
     },
   });
+
+  // Coaching kaydedildiğinde danışmana bildirim (kendine bildirim gönderme).
+  if (done && evaluation.agentId !== user.id) {
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: evaluation.agentId,
+          type: "COACHING",
+          message: `${user.name}, ${evaluation.customerName} görüşmen için coaching notu ekledi.`,
+          referenceId: id,
+        },
+      });
+    } catch (e) {
+      console.warn("[coaching] bildirim oluşturulamadı:", e);
+    }
+  }
 
   return NextResponse.json(updated);
 }
