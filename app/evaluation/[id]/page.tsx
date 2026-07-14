@@ -63,6 +63,26 @@ const L = {
     reassigning: "Atanıyor...",
     reassignDone: "Danışman güncellendi.",
     reassignError: "Yeniden atama başarısız.",
+    afTitle: "Danışman Geri Bildirimi",
+    afWrite: "Feedback Yaz",
+    afEdit: "Düzenle",
+    afPending: "Henüz geri bildirim yazmadınız",
+    afModalTitle: "Danışman Geri Bildirimi",
+    afPlaceholder: "Değerlendirme hakkındaki geri bildiriminizi yazın...",
+    afReadHint: "Danışmanın bu değerlendirme için yazdığı geri bildirim",
+    afEmpty: "Henüz geri bildirim yok.",
+    afSave: "Kaydet",
+    afSaving: "Kaydediliyor...",
+    objTitle: "İtiraz",
+    objBtn: "İtiraz Et",
+    objEdit: "İtirazı Düzenle",
+    objPending: "İtiraz yok",
+    objDone: "İtiraz edildi",
+    objModalTitle: "Değerlendirmeye İtiraz",
+    objPlaceholder: "Neye itiraz ediyorsunuz, nelerin değişmesi gerektiğini yazın...",
+    objReadHint: "Danışmanın bu değerlendirmeye itirazı (admin ve takım liderine bildirildi)",
+    objSend: "Gönder",
+    objSending: "Gönderiliyor...",
   },
   en: {
     title: "Evaluation Detail",
@@ -116,6 +136,26 @@ const L = {
     reassigning: "Assigning...",
     reassignDone: "Agent updated.",
     reassignError: "Reassignment failed.",
+    afTitle: "Consultant Feedback",
+    afWrite: "Write Feedback",
+    afEdit: "Edit",
+    afPending: "You haven't written feedback yet",
+    afModalTitle: "Consultant Feedback",
+    afPlaceholder: "Write your feedback about the evaluation...",
+    afReadHint: "The consultant's feedback for this evaluation",
+    afEmpty: "No feedback yet.",
+    afSave: "Save",
+    afSaving: "Saving...",
+    objTitle: "Objection",
+    objBtn: "Object",
+    objEdit: "Edit Objection",
+    objPending: "No objection",
+    objDone: "Objection filed",
+    objModalTitle: "Object to Evaluation",
+    objPlaceholder: "What do you object to, what should change...",
+    objReadHint: "The consultant's objection (notified to admin and team leader)",
+    objSend: "Send",
+    objSending: "Sending...",
   },
 };
 
@@ -287,6 +327,14 @@ export default function EvaluationDetailPage({
   const [coachingModalMode, setCoachingModalMode] = useState<"edit" | "read">("read");
   const [coachingNotes, setCoachingNotes] = useState("");
   const [coachingSaving, setCoachingSaving] = useState(false);
+  const [afModalOpen, setAfModalOpen] = useState(false);
+  const [afModalMode, setAfModalMode] = useState<"edit" | "read">("read");
+  const [afText, setAfText] = useState("");
+  const [afSaving, setAfSaving] = useState(false);
+  const [objModalOpen, setObjModalOpen] = useState(false);
+  const [objModalMode, setObjModalMode] = useState<"edit" | "read">("read");
+  const [objText, setObjText] = useState("");
+  const [objSaving, setObjSaving] = useState(false);
 
   const handleAcknowledge = async () => {
     if (!evaluation || isAcknowledging) return;
@@ -320,6 +368,46 @@ export default function EvaluationDetailPage({
       // silent fail
     } finally {
       setCoachingSaving(false);
+    }
+  };
+
+  const handleAgentFeedbackSave = async () => {
+    if (!evaluation || afSaving || !afText.trim()) return;
+    setAfSaving(true);
+    try {
+      const res = await fetch(`/api/evaluations/${id}/agent-feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback: afText }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setEvaluation((prev: any) => ({ ...prev, ...data }));
+      setAfModalOpen(false);
+    } catch {
+      // silent fail
+    } finally {
+      setAfSaving(false);
+    }
+  };
+
+  const handleObjectionSave = async () => {
+    if (!evaluation || objSaving || !objText.trim()) return;
+    setObjSaving(true);
+    try {
+      const res = await fetch(`/api/evaluations/${id}/objection`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: objText }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setEvaluation((prev: any) => ({ ...prev, ...data }));
+      setObjModalOpen(false);
+    } catch {
+      // silent fail
+    } finally {
+      setObjSaving(false);
     }
   };
 
@@ -885,6 +973,86 @@ export default function EvaluationDetailPage({
         })()}
       </div>
 
+      {/* Danışman Yanıtı — yalnızca TL feedback'inden (coachingDone) sonra */}
+      {evaluation.coachingDone && (() => {
+        const isAgent = currentUser?.id === evaluation.agentId;
+        const openAfEdit = () => { setAfText(evaluation.agentFeedback || ""); setAfModalMode("edit"); setAfModalOpen(true); };
+        const openAfRead = () => { setAfModalMode("read"); setAfModalOpen(true); };
+        const openObjEdit = () => { setObjText(evaluation.objectionText || ""); setObjModalMode("edit"); setObjModalOpen(true); };
+        const openObjRead = () => { setObjModalMode("read"); setObjModalOpen(true); };
+        const hasAf = !!evaluation.agentFeedback;
+        const hasObj = !!evaluation.objectionText;
+        return (
+          <div className="px-6 pb-4 grid grid-cols-2 gap-4 flex-shrink-0 items-start">
+            {/* Danışman Feedback kartı */}
+            <div
+              onClick={hasAf ? openAfRead : undefined}
+              className={`bg-surface-container border border-outline-variant rounded-2xl px-5 py-4 flex items-center justify-between gap-4 ${hasAf ? "cursor-pointer hover:bg-surface-container-high transition-colors" : ""}`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <MIcon name="rate_review" className={`text-xl flex-shrink-0 ${hasAf ? "text-emerald-400" : "text-slate-500"}`} />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.afTitle}</p>
+                  {hasAf ? (
+                    <p className="text-xs text-emerald-400 font-semibold mt-0.5">
+                      ✓
+                      {evaluation.agentFeedbackAt && (
+                        <span className="text-slate-500 font-normal ml-1.5">
+                          {new Date(evaluation.agentFeedbackAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500 mt-0.5">{t.afPending}</p>
+                  )}
+                </div>
+              </div>
+              {isAgent && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); openAfEdit(); }}
+                  className="flex-shrink-0 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+                >
+                  {hasAf ? t.afEdit : t.afWrite}
+                </button>
+              )}
+            </div>
+
+            {/* İtiraz kartı */}
+            <div
+              onClick={hasObj ? openObjRead : undefined}
+              className={`bg-surface-container border border-outline-variant rounded-2xl px-5 py-4 flex items-center justify-between gap-4 ${hasObj ? "cursor-pointer hover:bg-surface-container-high transition-colors" : ""}`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <MIcon name="gavel" className={`text-xl flex-shrink-0 ${hasObj ? "text-amber-400" : "text-slate-500"}`} />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.objTitle}</p>
+                  {hasObj ? (
+                    <p className="text-xs text-amber-400 font-semibold mt-0.5">
+                      ✓ {t.objDone}
+                      {evaluation.objectionAt && (
+                        <span className="text-slate-500 font-normal ml-1.5">
+                          {new Date(evaluation.objectionAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}
+                        </span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500 mt-0.5">{t.objPending}</p>
+                  )}
+                </div>
+              </div>
+              {isAgent && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); openObjEdit(); }}
+                  className="flex-shrink-0 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+                >
+                  {hasObj ? t.objEdit : t.objBtn}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Feedback Panel */}
       <AnimatePresence>
         {feedbackOpen && (
@@ -1017,6 +1185,94 @@ export default function EvaluationDetailPage({
                   <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">
                     {evaluation.coachingNotes || t.coachingEmpty}
                   </p>
+                </div>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Danışman Feedback Modalı */}
+      <AnimatePresence>
+        {afModalOpen && (
+          <>
+            <motion.div className="fixed inset-0 bg-black/60 z-40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !afSaving && setAfModalOpen(false)} />
+            <motion.div className="fixed bottom-0 left-0 right-0 bg-surface-container-low border-t border-outline-variant px-6 py-5 z-50" initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 300 }}>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="text-sm font-bold text-on-surface">{t.afModalTitle}</div>
+                  <div className="text-xs text-on-surface-variant mt-0.5">{afModalMode === "edit" ? t.afPlaceholder : t.afReadHint}</div>
+                </div>
+                {!afSaving && (
+                  <button onClick={() => setAfModalOpen(false)} className="text-on-surface-variant hover:text-on-surface transition-colors text-lg leading-none">✕</button>
+                )}
+              </div>
+              {afModalMode === "edit" ? (
+                <div className="flex gap-3 items-end">
+                  <textarea
+                    className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[160px] transition-colors"
+                    placeholder={t.afPlaceholder}
+                    value={afText}
+                    onChange={(e) => setAfText(e.target.value)}
+                    rows={3}
+                    disabled={afSaving}
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleAgentFeedbackSave}
+                    disabled={afSaving || !afText.trim()}
+                    className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-[52px] flex items-center gap-2 whitespace-nowrap transition-all"
+                  >
+                    {afSaving ? t.afSaving : t.afSave}
+                  </button>
+                </div>
+              ) : (
+                <div className="max-h-[40vh] overflow-y-auto">
+                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">{evaluation.agentFeedback || t.afEmpty}</p>
+                </div>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* İtiraz Modalı */}
+      <AnimatePresence>
+        {objModalOpen && (
+          <>
+            <motion.div className="fixed inset-0 bg-black/60 z-40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !objSaving && setObjModalOpen(false)} />
+            <motion.div className="fixed bottom-0 left-0 right-0 bg-surface-container-low border-t border-outline-variant px-6 py-5 z-50" initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 300 }}>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="text-sm font-bold text-on-surface">{t.objModalTitle}</div>
+                  <div className="text-xs text-on-surface-variant mt-0.5">{objModalMode === "edit" ? t.objPlaceholder : t.objReadHint}</div>
+                </div>
+                {!objSaving && (
+                  <button onClick={() => setObjModalOpen(false)} className="text-on-surface-variant hover:text-on-surface transition-colors text-lg leading-none">✕</button>
+                )}
+              </div>
+              {objModalMode === "edit" ? (
+                <div className="flex gap-3 items-end">
+                  <textarea
+                    className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[160px] transition-colors"
+                    placeholder={t.objPlaceholder}
+                    value={objText}
+                    onChange={(e) => setObjText(e.target.value)}
+                    rows={3}
+                    disabled={objSaving}
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleObjectionSave}
+                    disabled={objSaving || !objText.trim()}
+                    className="bg-amber-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-black px-5 py-3 rounded-xl font-semibold text-sm h-[52px] flex items-center gap-2 whitespace-nowrap transition-all"
+                  >
+                    {objSaving ? t.objSending : t.objSend}
+                  </button>
+                </div>
+              ) : (
+                <div className="max-h-[40vh] overflow-y-auto">
+                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">{evaluation.objectionText}</p>
                 </div>
               )}
             </motion.div>
