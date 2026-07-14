@@ -135,7 +135,7 @@ export default function KnownIssuesView({ lang = "tr", canEdit = false, onReport
         <IssueForm form={form} setForm={setForm} onSave={submitCreate} onCancel={resetForm} t={t} statusLabel={statusLabel} />
       )}
 
-      {issues.length === 0 && !adding && (
+      {issues.length === 0 && !adding && !msg && (
         <div style={{ opacity: 0.7, padding: 24, textAlign: "center" }}>{t.kiEmpty}</div>
       )}
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import AdminPanel from "@/app/components/shared/AdminPanel";
 import styles from "./LandingPage.module.css";
+import { translations } from "@/app/lib/i18n";
 import EvaluationList from "@/app/components/shared/EvaluationList";
 import EvaluationsView from "@/app/components/shared/EvaluationsView";
 import ScoreView from "@/app/components/shared/ScoreView";
@@ -2251,9 +2252,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                 <div className={styles.pageHd}>
                   <h1 className={styles.pageH1}>{navLabels.knownIssues}</h1>
                   <p className={styles.pageSub}>
-                    {lang === "tr"
-                      ? "Bildirdiğiniz sorunların farkındayız ve üzerinde çalışıyoruz."
-                      : "We are aware of the issues you reported and are working on them."}
+                    {translations[lang].kiSubtitle}
                   </p>
                 </div>
                 <div className={styles.card}>
