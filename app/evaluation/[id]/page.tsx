@@ -19,6 +19,7 @@ const L = {
     duration: "Süre",
     date: "Tarih",
     evaluationDate: "Değerlendirme Tarihi",
+    callDateLabel: "Görüşme Tarihi",
     copyReport: "Raporu Kopyala",
     copied: "Kopyalandı!",
     edit: "Düzenle",
@@ -93,6 +94,7 @@ const L = {
     duration: "Duration",
     date: "Date",
     evaluationDate: "Evaluation Date",
+    callDateLabel: "Call Date",
     copyReport: "Copy Report",
     copied: "Copied!",
     edit: "Edit",
@@ -684,8 +686,8 @@ export default function EvaluationDetailPage({
             { label: t.team, icon: <User className="w-3 h-3" />, value: evaluation.agent?.team?.name || "—" },
             { label: t.customer, icon: <User className="w-3 h-3" />, value: evaluation.customerName },
             { label: t.duration, icon: <Clock className="w-3 h-3" />, value: evaluation.callDuration },
-            { label: t.date, icon: <Calendar className="w-3 h-3" />, value: new Date(evaluation.createdAt).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR") },
-            { label: t.evaluationDate, icon: <Calendar className="w-3 h-3" />, value: new Date(evaluation.callDate).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR") },
+            { label: t.callDateLabel, icon: <Calendar className="w-3 h-3" />, value: new Date(evaluation.callDate).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR") },
+            { label: t.evaluationDate, icon: <Calendar className="w-3 h-3" />, value: new Date(evaluation.createdAt).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR") },
           ].map(({ label, icon, value }) => (
             <div key={label} className="bg-surface-container border border-outline-variant rounded-2xl p-4">
               <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-2">
