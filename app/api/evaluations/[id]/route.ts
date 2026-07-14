@@ -15,13 +15,29 @@ export async function GET(
     where: { id },
     include: {
       agent: {
-        select: { id: true, name: true, email: true, team: { select: { name: true } } },
+        select: { id: true, name: true, email: true, teamId: true, team: { select: { name: true } } },
       },
     },
   });
 
   if (!evaluation) {
     return NextResponse.json({ error: "Değerlendirme bulunamadı." }, { status: 404 });
+  }
+
+  // Rol/sahiplik yetkisi (bkz. GET /api/evaluations liste route'u ile aynı mantık)
+  const isPrivileged = user.role === "ADMIN" || user.role === "MANAGER";
+  const isOwner = evaluation.agentId === user.id;
+  let isTeamLeaderOfAgent = false;
+  if (!isPrivileged && !isOwner && user.role === "TEAM_LEADER") {
+    const led = await prisma.team.findUnique({
+      where: { leaderId: user.id },
+      select: { id: true },
+    });
+    isTeamLeaderOfAgent = !!led && evaluation.agent?.teamId === led.id;
+  }
+
+  if (!isPrivileged && !isOwner && !isTeamLeaderOfAgent) {
+    return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
   return NextResponse.json({ evaluation });
