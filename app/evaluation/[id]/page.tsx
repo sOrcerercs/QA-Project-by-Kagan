@@ -83,6 +83,7 @@ const L = {
     objReadHint: "Danışmanın bu değerlendirmeye itirazı (admin ve takım liderine bildirildi)",
     objSend: "Gönder",
     objSending: "Gönderiliyor...",
+    objEmpty: "İtiraz metni yok.",
   },
   en: {
     title: "Evaluation Detail",
@@ -156,6 +157,7 @@ const L = {
     objReadHint: "The consultant's objection (notified to admin and team leader)",
     objSend: "Send",
     objSending: "Sending...",
+    objEmpty: "No objection.",
   },
 };
 
@@ -1272,7 +1274,7 @@ export default function EvaluationDetailPage({
                 </div>
               ) : (
                 <div className="max-h-[40vh] overflow-y-auto">
-                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">{evaluation.objectionText}</p>
+                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">{evaluation.objectionText || t.objEmpty}</p>
                 </div>
               )}
             </motion.div>
