@@ -5,7 +5,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function callGemini(
   systemPrompt: string,
   userMessage: string,
-  opts: { maxTokens?: number; temperature?: number } = {}
+  opts: {
+    maxTokens?: number;
+    temperature?: number;
+    timeoutMs?: number;   // set → her denemeye AbortController timeout'u + ağ hatası retry'ı
+    maxAttempts?: number; // default 5 (mevcut davranış)
+    maxSleepMs?: number;  // default 15000 (mevcut davranış)
+  } = {}
 ): Promise<string> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_AI_API_KEY tanımlı değil.");
@@ -21,23 +27,44 @@ export async function callGemini(
     },
   });
 
-  let response!: Response;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
+  const maxAttempts = opts.maxAttempts ?? 5;
+  const maxSleepMs = opts.maxSleepMs ?? Infinity;
+
+  let response: Response | undefined;
+  let lastNetErr: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const ac = opts.timeoutMs != null ? new AbortController() : undefined;
+    const timer = ac ? setTimeout(() => ac.abort(), opts.timeoutMs) : undefined;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        signal: ac?.signal,
+      });
+    } catch (e) {
+      if (timer) clearTimeout(timer);
+      // Mevcut davranışı koru: timeoutMs verilmediyse ağ hatası propagate olsun.
+      if (opts.timeoutMs == null) throw e;
+      lastNetErr = e;
+      response = undefined;
+      if (attempt < maxAttempts - 1) { await sleep(Math.min(3000, maxSleepMs)); continue; }
+      break;
+    }
+    if (timer) clearTimeout(timer);
     if (response.ok) break;
-    if (response.status === 429 && attempt < 4) {
+    if (response.status === 429 && attempt < maxAttempts - 1) {
       const retryAfter = response.headers.get("retry-after");
       const wait = retryAfter ? (parseInt(retryAfter, 10) + 3) * 1000 : 15000;
-      await sleep(wait);
+      await sleep(Math.min(wait, maxSleepMs));
       continue;
     }
     break;
   }
 
+  if (!response) {
+    throw new Error(`Google AI API isteği başarısız: ${lastNetErr instanceof Error ? lastNetErr.message : "ağ/timeout hatası"}`);
+  }
   if (!response.ok) {
     const errText = await response.text().catch(() => "");
     throw new Error(`Google AI API hatası: ${response.status} — ${errText.slice(0, 200)}`);

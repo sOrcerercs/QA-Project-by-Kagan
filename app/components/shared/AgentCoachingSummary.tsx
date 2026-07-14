@@ -7,6 +7,7 @@ interface CoachingData {
   actionItems: string[];
   generatedAt: string;
   evalCount: number;
+  stale?: boolean;
 }
 
 const L = {
@@ -19,6 +20,7 @@ const L = {
     retry: "Tekrar dene",
     generating: "Özet hazırlanıyor…",
     noData: "Yeterli değerlendirme verisi yok.",
+    stale: "· önceki özet",
   },
   en: {
     title: "Development Summary",
@@ -29,6 +31,7 @@ const L = {
     retry: "Try again",
     generating: "Generating summary…",
     noData: "Not enough evaluation data.",
+    stale: "· previous",
   },
 };
 
@@ -149,7 +152,10 @@ export default function AgentCoachingSummary({
   return (
     <div style={card}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", margin: 0 }}>{t.title}</h3>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", margin: 0 }}>
+          {t.title}
+          {data.stale && <span style={{ fontSize: 10, color: "var(--fg-faint)", fontWeight: 400, marginLeft: 8 }}>{t.stale}</span>}
+        </h3>
         {canRefresh && (
           <button
             onClick={handleRefresh}
