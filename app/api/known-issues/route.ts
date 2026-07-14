@@ -21,9 +21,8 @@ export async function GET(req: NextRequest) {
 // Yeni sorun ekle (sadece admin@estenove.com)
 export async function POST(req: NextRequest) {
   const user = await getUserFromToken(req);
-  if (!user || !canEditQa(user.email)) {
-    return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
-  }
+  if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
+  if (!canEditQa(user.email)) return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
   const result = validateIssueInput(body);

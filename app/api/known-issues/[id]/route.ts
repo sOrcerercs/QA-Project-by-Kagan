@@ -6,9 +6,8 @@ import { validateIssueInput } from "@/app/lib/knownIssues";
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await getUserFromToken(req);
-  if (!user || !canEditQa(user.email)) {
-    return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
-  }
+  if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
+  if (!canEditQa(user.email)) return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   const { id } = await ctx.params;
   const body = await req.json().catch(() => ({}));
   const result = validateIssueInput(body);
@@ -26,9 +25,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await getUserFromToken(req);
-  if (!user || !canEditQa(user.email)) {
-    return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
-  }
+  if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
+  if (!canEditQa(user.email)) return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   const { id } = await ctx.params;
   try {
     await prisma.knownIssue.delete({ where: { id } });
