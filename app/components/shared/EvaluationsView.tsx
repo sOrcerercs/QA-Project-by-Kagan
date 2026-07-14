@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import EvaluationList from "@/app/components/shared/EvaluationList";
 import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect";
 import { selfLabel } from "@/app/lib/teamMembers";
@@ -102,8 +102,15 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   const [callTypeFilter, setCallTypeFilter] = useState<CallTypeFilterValue>("");
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+  const abortRef = useRef<AbortController | null>(null);
 
   const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string, agentIds?: string[], callType?: string, teamId?: string) => {
+    // Yarış koruması: yeni her istek öncekini iptal eder; yalnızca en son
+    // başlatılan istek sonucu ekrana yazar. (Endpoint yavaş olduğu için, eski
+    // geniş bir isteğin geç dönüp dar/doğru sonucu ezmesini engeller.)
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setCurrentRange({ startDate, endDate });
     const params = new URLSearchParams();
@@ -114,12 +121,13 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     if (teamId) params.set("teamId", teamId);
     const qs = params.toString();
     try {
-      const res = await fetch(`/api/evaluations${qs ? `?${qs}` : ""}`);
+      const res = await fetch(`/api/evaluations${qs ? `?${qs}` : ""}`, { signal: controller.signal });
       if (res.ok) setEvaluations((await res.json()).evaluations || []);
     } catch {
-      // network error — leave existing list in place
+      // iptal (superseded) veya ağ hatası — mevcut listeyi olduğu gibi bırak
     } finally {
-      setLoading(false);
+      // loading'i yalnızca en güncel istek kapatsın (superseded istek spinner'ı erken kapatmasın)
+      if (abortRef.current === controller) setLoading(false);
     }
   }, []);
 
