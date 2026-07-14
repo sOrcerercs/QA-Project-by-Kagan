@@ -71,6 +71,20 @@ const PRESETS_EN: { key: Preset; label: string }[] = [
   { key: "custom", label: "Custom" },
 ];
 
+type CallTypeFilterValue = "" | "FIRST_CALL" | "SECOND_CALL";
+
+const CALL_TYPES_TR: { key: CallTypeFilterValue; label: string }[] = [
+  { key: "", label: "Tümü" },
+  { key: "FIRST_CALL", label: "1. Çağrı" },
+  { key: "SECOND_CALL", label: "2. Çağrı" },
+];
+
+const CALL_TYPES_EN: { key: CallTypeFilterValue; label: string }[] = [
+  { key: "", label: "All" },
+  { key: "FIRST_CALL", label: "1st Call" },
+  { key: "SECOND_CALL", label: "2nd Call" },
+];
+
 export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin = false, canFilter = false, userRole }: EvaluationsViewProps) {
   // ADMIN/MANAGER (canFilter) see all consultants; TEAM_LEADER sees their team only.
   const showFilter = canFilter || userRole === "TEAM_LEADER";
@@ -85,14 +99,16 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
   const [currentRange, setCurrentRange] = useState<{ startDate?: string; endDate?: string }>({});
   const [downloading, setDownloading] = useState(false);
+  const [callTypeFilter, setCallTypeFilter] = useState<CallTypeFilterValue>("");
 
-  const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string, agentIds?: string[]) => {
+  const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string, agentIds?: string[], callType?: string) => {
     setLoading(true);
     setCurrentRange({ startDate, endDate });
     const params = new URLSearchParams();
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
     if (agentIds && agentIds.length) params.set("agentIds", agentIds.join(","));
+    if (callType) params.set("callType", callType);
     const qs = params.toString();
     try {
       const res = await fetch(`/api/evaluations${qs ? `?${qs}` : ""}`);
@@ -130,17 +146,22 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     setPreset(p);
     if (p === "custom") return;
     const dates = presetToDates(p);
-    fetchEvaluations(dates?.startDate, dates?.endDate, selectedAgentIds);
+    fetchEvaluations(dates?.startDate, dates?.endDate, selectedAgentIds, callTypeFilter);
   };
 
   const handleApplyCustom = () => {
     if (!customStart || !customEnd || customStart > customEnd) return;
-    fetchEvaluations(customStart, customEnd, selectedAgentIds);
+    fetchEvaluations(customStart, customEnd, selectedAgentIds, callTypeFilter);
   };
 
   const handleAgentsChange = (ids: string[]) => {
     setSelectedAgentIds(ids);
-    fetchEvaluations(currentRange.startDate, currentRange.endDate, ids);
+    fetchEvaluations(currentRange.startDate, currentRange.endDate, ids, callTypeFilter);
+  };
+
+  const handleCallType = (v: CallTypeFilterValue) => {
+    setCallTypeFilter(v);
+    fetchEvaluations(currentRange.startDate, currentRange.endDate, selectedAgentIds, v);
   };
 
   const handleToggleSelect = (id: string) => {
@@ -249,6 +270,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   };
 
   const presets = lang === "tr" ? PRESETS_TR : PRESETS_EN;
+  const callTypes = lang === "tr" ? CALL_TYPES_TR : CALL_TYPES_EN;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -349,6 +371,33 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
               border: preset === key ? "1px solid var(--accent)" : "1px solid var(--rule)",
               background: preset === key ? "rgba(var(--accent-rgb, 59,130,246),.15)" : "transparent",
               color: preset === key ? "var(--accent)" : "var(--fg-dim)",
+              fontSize: 11.5,
+              fontFamily: "'JetBrains Mono', monospace",
+              letterSpacing: "0.06em",
+              cursor: "pointer",
+              transition: "border-color 0.15s, color 0.15s, background 0.15s",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Call type segment */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, color: "var(--fg-faint)", letterSpacing: "0.08em", textTransform: "uppercase", marginRight: 2 }}>
+          {lang === "tr" ? "Çağrı Tipi" : "Call Type"}
+        </span>
+        {callTypes.map(({ key, label }) => (
+          <button
+            key={key || "all"}
+            onClick={() => handleCallType(key)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 8,
+              border: callTypeFilter === key ? "1px solid var(--accent)" : "1px solid var(--rule)",
+              background: callTypeFilter === key ? "rgba(var(--accent-rgb, 59,130,246),.15)" : "transparent",
+              color: callTypeFilter === key ? "var(--accent)" : "var(--fg-dim)",
               fontSize: 11.5,
               fontFamily: "'JetBrains Mono', monospace",
               letterSpacing: "0.06em",
