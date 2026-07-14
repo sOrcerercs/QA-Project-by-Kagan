@@ -95,13 +95,15 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   const [customEnd, setCustomEnd] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
-  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [agents, setAgents] = useState<{ id: string; name: string; teamId?: string | null }[]>([]);
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
   const [currentRange, setCurrentRange] = useState<{ startDate?: string; endDate?: string }>({});
   const [downloading, setDownloading] = useState(false);
   const [callTypeFilter, setCallTypeFilter] = useState<CallTypeFilterValue>("");
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
 
-  const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string, agentIds?: string[], callType?: string) => {
+  const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string, agentIds?: string[], callType?: string, teamId?: string) => {
     setLoading(true);
     setCurrentRange({ startDate, endDate });
     const params = new URLSearchParams();
@@ -109,6 +111,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     if (endDate) params.set("endDate", endDate);
     if (agentIds && agentIds.length) params.set("agentIds", agentIds.join(","));
     if (callType) params.set("callType", callType);
+    if (teamId) params.set("teamId", teamId);
     const qs = params.toString();
     try {
       const res = await fetch(`/api/evaluations${qs ? `?${qs}` : ""}`);
@@ -130,38 +133,58 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
       .then(r => (r.ok ? r.json() : null))
       .then(d => {
         if (!d) return;
-        type AgentRow = { id: string; name: string; role: string; isSelf?: boolean };
+        type AgentRow = { id: string; name: string; role: string; isSelf?: boolean; teamId?: string | null };
         const list = ((d.users || d.members || []) as AgentRow[])
           // For ADMIN/MANAGER keep evaluatable roles; /api/team/members is already team-scoped.
           .filter((u) => (canFilter ? ["AGENT", "TEAM_LEADER", "MANAGER"].includes(u.role) : true))
-          .map((u) => ({ id: u.id, name: selfLabel(u.name, u.isSelf, lang) }));
+          .map((u) => ({ id: u.id, name: selfLabel(u.name, u.isSelf, lang), teamId: u.teamId ?? null }));
         setAgents(list);
       })
       .catch(() => {
         // agents list unavailable — consultant selector simply won't render
       });
+
+    // Team filter is ADMIN/MANAGER-only (a leader sees a single team).
+    if (canFilter) {
+      fetch("/api/teams")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!d) return;
+          setTeams(((d.teams || []) as { id: string; name: string }[]).map((tm) => ({ id: tm.id, name: tm.name })));
+        })
+        .catch(() => {
+          // teams list unavailable — team selector simply won't render
+        });
+    }
   }, [fetchEvaluations, showFilter, canFilter, lang]);
 
   const handlePreset = (p: Preset) => {
     setPreset(p);
     if (p === "custom") return;
     const dates = presetToDates(p);
-    fetchEvaluations(dates?.startDate, dates?.endDate, selectedAgentIds, callTypeFilter);
+    fetchEvaluations(dates?.startDate, dates?.endDate, selectedAgentIds, callTypeFilter, selectedTeamId);
   };
 
   const handleApplyCustom = () => {
     if (!customStart || !customEnd || customStart > customEnd) return;
-    fetchEvaluations(customStart, customEnd, selectedAgentIds, callTypeFilter);
+    fetchEvaluations(customStart, customEnd, selectedAgentIds, callTypeFilter, selectedTeamId);
   };
 
   const handleAgentsChange = (ids: string[]) => {
     setSelectedAgentIds(ids);
-    fetchEvaluations(currentRange.startDate, currentRange.endDate, ids, callTypeFilter);
+    fetchEvaluations(currentRange.startDate, currentRange.endDate, ids, callTypeFilter, selectedTeamId);
   };
 
   const handleCallType = (v: CallTypeFilterValue) => {
     setCallTypeFilter(v);
-    fetchEvaluations(currentRange.startDate, currentRange.endDate, selectedAgentIds, v);
+    fetchEvaluations(currentRange.startDate, currentRange.endDate, selectedAgentIds, v, selectedTeamId);
+  };
+
+  const handleTeamChange = (teamId: string) => {
+    setSelectedTeamId(teamId);
+    // Takım değişince danışman seçimi sıfırlanır (farklı takımın üyesi olabilir).
+    setSelectedAgentIds([]);
+    fetchEvaluations(currentRange.startDate, currentRange.endDate, [], callTypeFilter, teamId);
   };
 
   const handleToggleSelect = (id: string) => {
@@ -317,14 +340,29 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
 
       {showFilter && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {agents.length > 0 && (
-            <ConsultantMultiSelect
-              agents={agents}
-              selectedIds={selectedAgentIds}
-              onChange={handleAgentsChange}
-              lang={lang}
-            />
+          {canFilter && teams.length > 0 && (
+            <select
+              value={selectedTeamId}
+              onChange={(e) => handleTeamChange(e.target.value)}
+              style={{ background: "var(--glass-bg)", border: "1px solid var(--rule)", borderRadius: 8, padding: "7px 12px", color: "var(--fg)", fontSize: 12, colorScheme: "dark", cursor: "pointer" }}
+            >
+              <option value="">{lang === "tr" ? "Tüm Takımlar" : "All Teams"}</option>
+              {teams.map((tm) => (
+                <option key={tm.id} value={tm.id}>{tm.name}</option>
+              ))}
+            </select>
           )}
+          {(() => {
+            const consultantOptions = selectedTeamId ? agents.filter((a) => a.teamId === selectedTeamId) : agents;
+            return consultantOptions.length > 0 ? (
+              <ConsultantMultiSelect
+                agents={consultantOptions}
+                selectedIds={selectedAgentIds}
+                onChange={handleAgentsChange}
+                lang={lang}
+              />
+            ) : null;
+          })()}
           {selectedAgentIds.length === 1 && (
             <>
               <button

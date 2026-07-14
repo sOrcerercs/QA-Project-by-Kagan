@@ -83,6 +83,7 @@ export async function GET(req: NextRequest) {
   const endDate = params.get("endDate");
   const agentIdsParam = params.get("agentIds");
   const callType = parseCallTypeFilter(params.get("callType"));
+  const teamId = params.get("teamId");
 
   // For TEAM_LEADER, resolve teamId from the team they lead (not user.teamId which may be null)
   let leaderTeamId: string | null = null;
@@ -128,6 +129,9 @@ export async function GET(req: NextRequest) {
 
   const whereBase: Prisma.EvaluationWhereInput = { ...dateFilter };
   if (callType) whereBase.callType = callType;
+  // Takım filtresi: değerlendirilen danışmanın takımına göre daralt (ADMIN/MANAGER).
+  // Rol scoping'iyle (agentId) AND'lenir; TEAM_LEADER'a UI'da gösterilmez.
+  if (teamId) whereBase.agent = { teamId };
 
   if (user.role === "AGENT") {
     whereBase.agentId = user.id;
