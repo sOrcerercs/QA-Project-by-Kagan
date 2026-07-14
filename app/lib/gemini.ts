@@ -28,7 +28,7 @@ export async function callGemini(
   });
 
   const maxAttempts = opts.maxAttempts ?? 5;
-  const maxSleepMs = opts.maxSleepMs ?? 15000;
+  const maxSleepMs = opts.maxSleepMs ?? Infinity;
 
   let response: Response | undefined;
   let lastNetErr: unknown;
