@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/app/generated/prisma";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { parseCallTypeFilter } from "@/app/lib/callTypeFilter";
 
 // Değerlendirme kaydet
 export async function POST(req: NextRequest) {
@@ -92,6 +93,7 @@ export async function GET(req: NextRequest) {
   const startDate = params.get("startDate");
   const endDate = params.get("endDate");
   const agentIdsParam = params.get("agentIds");
+  const callType = parseCallTypeFilter(params.get("callType"));
 
   // For TEAM_LEADER, resolve teamId from the team they lead (not user.teamId which may be null)
   let leaderTeamId: string | null = null;
@@ -136,6 +138,7 @@ export async function GET(req: NextRequest) {
   }
 
   const whereBase: Prisma.EvaluationWhereInput = { ...dateFilter };
+  if (callType) whereBase.callType = callType;
 
   if (user.role === "AGENT") {
     whereBase.agentId = user.id;
