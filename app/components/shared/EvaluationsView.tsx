@@ -24,7 +24,6 @@ interface Evaluation {
   callDate: string;
   createdAt: string;
   callType?: string;
-  report: string;
   agent?: { name: string };
   agentRead?: boolean;
   agentReadAt?: string | null;
@@ -262,11 +261,27 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     return `${slugifyFilename(name)}_degerlendirmeler${r}`;
   };
 
+  // Export ağır `report` alanını gerektirir; liste artık onu çekmiyor, bu yüzden
+  // indirme anında geçerli filtrelerle report dahil ayrı bir istek yapılır.
+  const fetchEvaluationsForExport = async (): Promise<ExportEvaluation[]> => {
+    const params = new URLSearchParams();
+    if (currentRange.startDate) params.set("startDate", currentRange.startDate);
+    if (currentRange.endDate) params.set("endDate", currentRange.endDate);
+    if (selectedAgentIds.length) params.set("agentIds", selectedAgentIds.join(","));
+    if (callTypeFilter) params.set("callType", callTypeFilter);
+    if (selectedTeamId) params.set("teamId", selectedTeamId);
+    params.set("withReport", "1");
+    const res = await fetch(`/api/evaluations?${params.toString()}`);
+    if (!res.ok) return [];
+    return (((await res.json()).evaluations || []) as ExportEvaluation[]);
+  };
+
   const handleDownloadPdf = async () => {
-    if (!evaluations.length) return;
     setDownloading(true);
     try {
-      await downloadPdf(selectedAgentName, evaluations as ExportEvaluation[], currentRange, lang, buildFilename(selectedAgentName));
+      const evs = await fetchEvaluationsForExport();
+      if (!evs.length) { alert(lang === "tr" ? "İndirilecek değerlendirme yok." : "No evaluations to download."); return; }
+      await downloadPdf(selectedAgentName, evs, currentRange, lang, buildFilename(selectedAgentName));
     } catch {
       alert(lang === "tr" ? "İndirme başarısız." : "Download failed.");
     } finally {
@@ -274,20 +289,29 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
     }
   };
 
-  const handleDownloadDoc = () => {
-    if (!evaluations.length) return;
-    const html = buildEvaluationHtml(selectedAgentName, evaluations as ExportEvaluation[], currentRange, lang);
-    downloadDoc(html, buildFilename(selectedAgentName));
+  const handleDownloadDoc = async () => {
+    setDownloading(true);
+    try {
+      const evs = await fetchEvaluationsForExport();
+      if (!evs.length) { alert(lang === "tr" ? "İndirilecek değerlendirme yok." : "No evaluations to download."); return; }
+      const html = buildEvaluationHtml(selectedAgentName, evs, currentRange, lang);
+      downloadDoc(html, buildFilename(selectedAgentName));
+    } catch {
+      alert(lang === "tr" ? "İndirme başarısız." : "Download failed.");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const handleDownloadZip = async () => {
-    if (!evaluations.length) {
-      alert(lang === "tr" ? "İndirilecek değerlendirme yok." : "No evaluations to download.");
-      return;
-    }
     setDownloading(true);
     try {
-      const groups = groupByAgent(evaluations as ExportEvaluation[]);
+      const evs = await fetchEvaluationsForExport();
+      if (!evs.length) {
+        alert(lang === "tr" ? "İndirilecek değerlendirme yok." : "No evaluations to download.");
+        return;
+      }
+      const groups = groupByAgent(evs);
       const zipDate = new Date().toISOString().split("T")[0];
       const { skipped } = await downloadAllZip(groups, currentRange, lang, zipDate);
       if (skipped.length) {
