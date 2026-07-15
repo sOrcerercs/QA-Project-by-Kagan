@@ -27,7 +27,7 @@ async function getOrCreateUnassignedUser() {
 
 async function matchAgent(agentName: string | null) {
   if (!agentName) return null;
-  const norm = agentName.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const norm = agentName.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[ıİI]/g, "i").toLowerCase().replace(/x/g, "ks").trim();
   if (!norm) return null;
 
   const candidates = await prisma.user.findMany({
@@ -35,12 +35,12 @@ async function matchAgent(agentName: string | null) {
     select: { id: true, name: true },
   });
   for (const u of candidates) {
-    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[ıİI]/g, "i").toLowerCase().replace(/x/g, "ks").trim();
     if (uNorm === norm) return u;
   }
   const parts = norm.split(/\s+/).filter(Boolean);
   for (const u of candidates) {
-    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[ıİI]/g, "i").toLowerCase().replace(/x/g, "ks").trim();
     if (parts.length >= 2 && uNorm.includes(parts[0]) && uNorm.includes(parts[1])) return u;
   }
   return null;

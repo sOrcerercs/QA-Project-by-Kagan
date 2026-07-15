@@ -45,7 +45,7 @@ async function matchAgentFromSpeakers(speakerNames: string[]) {
   });
 
   const normalize = (s: string) =>
-    s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[ıİI]/g, "i").toLowerCase().replace(/x/g, "ks").trim();
 
   for (const speakerName of speakerNames) {
     const norm = normalize(speakerName);
