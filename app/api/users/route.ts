@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { canEditQa } from "@/app/lib/qaPermissions";
 import bcrypt from "bcryptjs";
 
 // Kullanıcıları getir
@@ -11,8 +12,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const includeInactive = req.nextUrl.searchParams.get("includeInactive") === "1" && canEditQa(user.email);
     const users = await prisma.user.findMany({
-      where: { isActive: true },
+      where: includeInactive ? {} : { isActive: true },
       include: {
         team: true,
         manager: { select: { id: true, name: true } },
