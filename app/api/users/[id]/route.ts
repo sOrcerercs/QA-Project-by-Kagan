@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { canEditQa } from "@/app/lib/qaPermissions";
 import bcrypt from "bcryptjs";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -29,13 +30,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = await req.json();
-  const { name, email, role, teamId, newPassword, managerId } = body as {
+  const { name, email, role, teamId, newPassword, managerId, isActive } = body as {
     name?: string;
     email?: string;
     role?: string;
     teamId?: string | null;
     newPassword?: string;
     managerId?: string | null;
+    isActive?: boolean;
   };
 
   // MANAGER can only assign themselves as manager (null also blocked)
@@ -49,6 +51,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const updates: Record<string, unknown> = {};
+  if (isActive !== undefined) {
+    // Aktif/Pasif yönetimi yalnızca admin@estenove.com.
+    if (!canEditQa(admin.email)) {
+      return NextResponse.json({ error: "Bu işlem için yetkiniz yok." }, { status: 403 });
+    }
+    if (isActive === false) {
+      const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+      if (target?.role === "ADMIN") {
+        const activeAdminCount = await prisma.user.count({ where: { role: "ADMIN", isActive: true } });
+        if (activeAdminCount <= 1) {
+          return NextResponse.json({ error: "Son aktif admin pasifleştirilemez." }, { status: 400 });
+        }
+      }
+    }
+    updates.isActive = isActive;
+  }
   if (name?.trim()) updates.name = name.trim();
   if (email?.trim()) updates.email = email.trim();
   if (role) updates.role = role;

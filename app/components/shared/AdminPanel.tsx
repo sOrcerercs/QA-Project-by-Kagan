@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import styles from "@/app/components/LandingPage.module.css";
+import { canEditQa } from "@/app/lib/qaPermissions";
 
 function Icon({ name, size = 16 }: { name: string; size?: number }) {
   const p = {
@@ -242,6 +243,7 @@ interface Props {
 
 export default function AdminPanel({ user, lang, initialTab = "users" }: Props) {
   const t = PANEL_T[lang];
+  const canManageActive = canEditQa(user.email);
   const roleLabel = (role: string) => t.roles[role] || role;
   const fmtDate = (iso: string) => formatDateTime(iso, t.locale);
 
@@ -340,7 +342,17 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
 
   /* ── fetchers ── */
   const fetchUsers = () =>
-    fetch("/api/users").then(r => r.json()).then(d => setUsers(d.users || []));
+    fetch(canManageActive ? "/api/users?includeInactive=1" : "/api/users").then(r => r.json()).then(d => setUsers(d.users || []));
+
+  const toggleActive = async (u: any) => {
+    const res = await fetch(`/api/users/${u.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: !u.isActive }),
+    });
+    if (res.ok) { fetchUsers(); }
+    else { const d = await res.json().catch(() => ({})); alert(d.error || (lang === "tr" ? "İşlem başarısız." : "Action failed.")); }
+  };
   const fetchTeams = () =>
     fetch("/api/teams").then(r => r.json()).then(d => setTeams(d.teams || []));
   const fetchPrompts = () =>
@@ -825,7 +837,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
               const isExpanded = editingUserId === u.id;
               return (
                 <div key={u.id}>
-                  <div onClick={() => handleUserRowClick(u)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", cursor: "pointer", transition: "background 120ms", background: isExpanded ? "rgba(255,255,255,.04)" : "transparent" }}
+                  <div onClick={() => handleUserRowClick(u)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", cursor: "pointer", transition: "background 120ms", background: isExpanded ? "rgba(255,255,255,.04)" : "transparent", opacity: u.isActive === false ? 0.55 : 1 }}
                     onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,.03)"; }}
                     onMouseLeave={e => { if (!isExpanded) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}>
                     <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(59,130,246,.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--accent)", fontWeight: 700, flexShrink: 0 }}>{u.name.charAt(0).toUpperCase()}</div>
@@ -834,6 +846,9 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                       <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>{u.email}{u.team ? ` · ${u.team.name}` : ""}{u.role === "TEAM_LEADER" && u.manager ? ` · ${u.manager.name}` : ""}</div>
                     </div>
                     <span style={{ fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 5, fontFamily: "'JetBrains Mono', monospace", background: roleBg[u.role] || "rgba(255,255,255,.06)", color: roleFg[u.role] || "var(--fg-faint)" }}>{roleLabel(u.role)}</span>
+                    {canManageActive && u.isActive === false && (
+                      <span style={{ fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 5, fontFamily: "'JetBrains Mono', monospace", background: "rgba(255,255,255,.06)", color: "var(--fg-faint)" }}>{t.inactive}</span>
+                    )}
                     <span style={{ color: "var(--fg-faint)", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 200ms" }}><Icon name="chevron" size={14} /></span>
                   </div>
                   {isExpanded && (
@@ -879,7 +894,15 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                           {editUserStatus === "saving" ? t.saving : t.save}
                         </button>
                         <button onClick={() => { setEditingUserId(null); setEditUserMsg(""); setEditUserStatus("idle"); setEditManagerId(""); }} style={{ fontSize: 12.5, color: "var(--fg-faint)", background: "none", border: "none", cursor: "pointer" }}>{t.cancel}</button>
-                        {u.id !== user.id && (
+                        {canManageActive && u.id !== user.id && (
+                          <button
+                            onClick={() => toggleActive(u)}
+                            style={{ fontSize: 12, color: u.isActive === false ? "#34d399" : "#f87171", background: "none", border: `0.5px solid ${u.isActive === false ? "rgba(52,211,153,.3)" : "rgba(248,113,113,.3)"}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", marginLeft: "auto" }}
+                          >
+                            {u.isActive === false ? (lang === "tr" ? "Aktif Yap" : "Activate") : (lang === "tr" ? "Pasife Al" : "Deactivate")}
+                          </button>
+                        )}
+                        {!canManageActive && u.id !== user.id && (
                           <button
                             onClick={() => { setDeleteConfirmId(u.id); setDeleteConfirmName(u.name); }}
                             style={{ fontSize: 12, color: "#f87171", background: "none", border: "0.5px solid rgba(248,113,113,.3)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", marginLeft: "auto" }}

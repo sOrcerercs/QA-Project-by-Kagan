@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       if (!team) {
         return NextResponse.json({ summary: { totalEvaluations: 0, agentReadCount: 0, coachingDoneCount: 0 }, agents: [] });
       }
-      const members = await prisma.user.findMany({ where: { teamId: team.id }, select: { id: true } });
+      const members = await prisma.user.findMany({ where: { teamId: team.id, isActive: true }, select: { id: true } });
       agentScope = { agentId: { in: [leaderId, ...members.map((m) => m.id)] } };
     }
 
