@@ -781,10 +781,7 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
           <button
             style={pill(false)}
             onClick={() => {
-              // reportExport's CmpResult type is "delta" | "trend" only; the "custom"
-              // branch there is a separate task. Cast is safe at runtime — an unhandled
-              // mode falls through to the existing trend-style N-column render.
-              downloadComparisonPdf(result as any, lang);
+              downloadComparisonPdf(result, lang);
             }}
           >
             {t.cmpDownloadPdf}
