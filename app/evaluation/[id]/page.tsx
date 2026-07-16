@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Check, User, Clock, Calendar } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { POSITIVE_COACHING, composePositiveFeedback } from "@/app/lib/positiveCoaching";
 
 const MIcon = ({ name, className = "" }: { name: string; className?: string }) => (
   <span className={`material-symbols-outlined ${className}`}>{name}</span>
@@ -54,6 +55,7 @@ const L = {
     coachingReadHint: "Takım liderinin bu çağrı için bıraktığı notlar",
     coachingEmpty: "Henüz coaching notu girilmemiş.",
     coachingCards: "Bu Çağrıda Yapılabilecek 3 Şey",
+    positiveCoachingTitle: "Öne çıkanları seç (Positive Coaching)",
     reclassify: "Yeniden Değerlendir",
     reclassifying: "Değerlendiriliyor...",
     firstCallPrompt: "🔵 First Call Promptu",
@@ -129,6 +131,7 @@ const L = {
     coachingReadHint: "Notes your team leader left for this call",
     coachingEmpty: "No coaching notes yet.",
     coachingCards: "3 Things to Improve This Call",
+    positiveCoachingTitle: "Select highlights (Positive Coaching)",
     reclassify: "Re-evaluate",
     reclassifying: "Evaluating...",
     firstCallPrompt: "🔵 First Call Prompt",
@@ -331,6 +334,7 @@ export default function EvaluationDetailPage({
   const [coachingModalMode, setCoachingModalMode] = useState<"edit" | "read">("read");
   const [coachingNotes, setCoachingNotes] = useState("");
   const [coachingSaving, setCoachingSaving] = useState(false);
+  const [positiveKeys, setPositiveKeys] = useState<Set<string>>(new Set());
   const [afModalOpen, setAfModalOpen] = useState(false);
   const [afModalMode, setAfModalMode] = useState<"edit" | "read">("read");
   const [afText, setAfText] = useState("");
@@ -373,6 +377,13 @@ export default function EvaluationDetailPage({
     } finally {
       setCoachingSaving(false);
     }
+  };
+
+  const togglePositive = (k: string) => {
+    const next = new Set(positiveKeys);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    setPositiveKeys(next);
+    setCoachingNotes(composePositiveFeedback([...next], lang));
   };
 
   const handleAgentFeedbackSave = async () => {
@@ -921,6 +932,7 @@ export default function EvaluationDetailPage({
           const canRead = !!(evaluation.coachingDone && evaluation.coachingNotes);
           const openEdit = () => {
             setCoachingNotes(evaluation.coachingNotes || "");
+            setPositiveKeys(new Set());
             setCoachingModalMode("edit");
             setCoachingModalOpen(true);
           };
@@ -1154,30 +1166,59 @@ export default function EvaluationDetailPage({
                 )}
               </div>
               {coachingModalMode === "edit" ? (
-                <div className="flex gap-3 items-end">
-                  <textarea
-                    className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[160px] transition-colors"
-                    placeholder={t.coachingNotesPlaceholder}
-                    value={coachingNotes}
-                    onChange={(e) => setCoachingNotes(e.target.value)}
-                    rows={3}
-                    disabled={coachingSaving}
-                    autoFocus
-                  />
-                  <button
-                    onClick={() => handleCoachingSave(true)}
-                    disabled={coachingSaving || !coachingNotes.trim()}
-                    className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-[52px] flex items-center gap-2 whitespace-nowrap transition-all"
-                  >
-                    {coachingSaving ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />
-                        {t.coachingSaving}
-                      </>
-                    ) : (
-                      t.coachingSave
-                    )}
-                  </button>
+                <div className="flex flex-col gap-3">
+                  {evaluation.score >= 90 && (
+                    <div className="max-h-[32vh] overflow-y-auto flex flex-col gap-3 pr-1">
+                      <div className="text-xs font-bold text-on-surface">{t.positiveCoachingTitle}</div>
+                      {POSITIVE_COACHING.map((cat) => (
+                        <div key={cat.key}>
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant mb-1">{cat.label[lang]}</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {cat.items.map((item) => {
+                              const k = `${cat.key}.${item.key}`;
+                              const on = positiveKeys.has(k);
+                              return (
+                                <button
+                                  key={k}
+                                  type="button"
+                                  title={item.text[lang]}
+                                  onClick={() => togglePositive(k)}
+                                  className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${on ? "bg-primary/15 border-primary text-primary" : "bg-surface-container border-outline-variant text-on-surface-variant hover:text-on-surface"}`}
+                                >
+                                  {item.label[lang]}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-3 items-end">
+                    <textarea
+                      className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[160px] transition-colors"
+                      placeholder={t.coachingNotesPlaceholder}
+                      value={coachingNotes}
+                      onChange={(e) => setCoachingNotes(e.target.value)}
+                      rows={3}
+                      disabled={coachingSaving}
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => handleCoachingSave(true)}
+                      disabled={coachingSaving || !coachingNotes.trim()}
+                      className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-[52px] flex items-center gap-2 whitespace-nowrap transition-all"
+                    >
+                      {coachingSaving ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />
+                          {t.coachingSaving}
+                        </>
+                      ) : (
+                        t.coachingSave
+                      )}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="max-h-[40vh] overflow-y-auto">
