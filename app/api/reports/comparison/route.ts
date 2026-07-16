@@ -3,6 +3,7 @@ import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
 import { resolveScopedAgentIds, REPORTABLE_ROLES } from "@/app/lib/reportScope";
 import { aggregateReport, type ReportData } from "@/app/lib/reportAggregation";
+import { parseCustomRanges } from "@/app/lib/customPeriods";
 
 interface PeriodBucket { label: string; start: string; end: string; data: ReportData }
 
@@ -46,7 +47,8 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
 
   const sp = req.nextUrl.searchParams;
-  const mode = sp.get("mode") === "trend" ? "trend" : "delta";
+  const rawMode = sp.get("mode");
+  const mode = rawMode === "trend" ? "trend" : rawMode === "custom" ? "custom" : "delta";
   const lang = sp.get("lang") === "en" ? "en" : "tr";
 
   const requestedIds = (sp.get("agentIds") ?? "").split(",").map(s => s.trim()).filter(Boolean);
@@ -68,6 +70,17 @@ export async function GET(req: NextRequest) {
     for (let i = n - 1; i >= 0; i--) {
       const { start, end, label } = monthBucket(now, i, lang);
       periods.push(await buildBucket(start, end, label, scopedAgentIds, allAgents, promptNameById));
+    }
+  } else if (mode === "custom") {
+    const ranges = parseCustomRanges(sp.get("ranges"));
+    if (ranges.length < 2) {
+      return NextResponse.json({ error: lang === "en" ? "At least 2 periods required." : "En az 2 dönem gerekli." }, { status: 400 });
+    }
+    for (const r of ranges) {
+      const start = new Date(r.start + "T00:00:00");
+      const end = new Date(r.end + "T23:59:59");
+      const fmt = (d: Date) => d.toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR", { day: "2-digit", month: "short", year: "numeric" });
+      periods.push(await buildBucket(start, end, `${fmt(start)} – ${fmt(end)}`, scopedAgentIds, allAgents, promptNameById));
     }
   } else {
     let curStart: Date, curEnd: Date, curLabel: string;
