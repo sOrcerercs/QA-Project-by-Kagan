@@ -89,7 +89,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   const showFilter = canFilter || userRole === "TEAM_LEADER";
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [preset, setPreset] = useState<Preset>("all");
+  const [preset, setPreset] = useState<Preset>("week");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -131,7 +131,9 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   }, []);
 
   useEffect(() => {
-    fetchEvaluations();
+    // Varsayılan görünüm son 1 hafta (daha az satır → daha hızlı ilk yük).
+    const initial = presetToDates("week");
+    fetchEvaluations(initial?.startDate, initial?.endDate);
     if (!showFilter) return;
     // ADMIN/MANAGER pull every consultant; TEAM_LEADER pulls only their team
     // plus themselves (includeSelf), since a leader can also filter their own calls.
