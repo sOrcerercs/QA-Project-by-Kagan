@@ -101,6 +101,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   const [callTypeFilter, setCallTypeFilter] = useState<CallTypeFilterValue>("");
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+  const [sortMode, setSortMode] = useState<"date" | "scoreDesc" | "scoreAsc">("date");
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchEvaluations = useCallback(async (startDate?: string, endDate?: string, agentIds?: string[], callType?: string, teamId?: string) => {
@@ -329,6 +330,16 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
   const presets = lang === "tr" ? PRESETS_TR : PRESETS_EN;
   const callTypes = lang === "tr" ? CALL_TYPES_TR : CALL_TYPES_EN;
 
+  // Puana göre sıralama (client-side). "date" → API sırası (tarih azalan).
+  const sortedEvaluations =
+    sortMode === "date"
+      ? evaluations
+      : [...evaluations].sort((a, b) => (sortMode === "scoreDesc" ? b.score - a.score : a.score - b.score));
+  const puanLabel =
+    sortMode === "scoreDesc" ? (lang === "tr" ? "Puan ↓" : "Score ↓")
+    : sortMode === "scoreAsc" ? (lang === "tr" ? "Puan ↑" : "Score ↑")
+    : (lang === "tr" ? "Puan" : "Score");
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {isAdmin && (
@@ -453,6 +464,43 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
             {label}
           </button>
         ))}
+        <button
+          onClick={() => setSortMode("date")}
+          title={lang === "tr" ? "Tarihe göre sırala" : "Sort by date"}
+          style={{
+            marginLeft: "auto",
+            padding: "6px 14px",
+            borderRadius: 8,
+            border: sortMode === "date" ? "1px solid var(--accent)" : "1px solid var(--rule)",
+            background: sortMode === "date" ? "rgba(var(--accent-rgb, 59,130,246),.15)" : "transparent",
+            color: sortMode === "date" ? "var(--accent)" : "var(--fg-dim)",
+            fontSize: 11.5,
+            fontFamily: "'JetBrains Mono', monospace",
+            letterSpacing: "0.06em",
+            cursor: "pointer",
+            transition: "border-color 0.15s, color 0.15s, background 0.15s",
+          }}
+        >
+          {lang === "tr" ? "Tarih" : "Date"}
+        </button>
+        <button
+          onClick={() => setSortMode((m) => (m === "scoreDesc" ? "scoreAsc" : "scoreDesc"))}
+          title={lang === "tr" ? "Puana göre sırala" : "Sort by score"}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 8,
+            border: sortMode !== "date" ? "1px solid var(--accent)" : "1px solid var(--rule)",
+            background: sortMode !== "date" ? "rgba(var(--accent-rgb, 59,130,246),.15)" : "transparent",
+            color: sortMode !== "date" ? "var(--accent)" : "var(--fg-dim)",
+            fontSize: 11.5,
+            fontFamily: "'JetBrains Mono', monospace",
+            letterSpacing: "0.06em",
+            cursor: "pointer",
+            transition: "border-color 0.15s, color 0.15s, background 0.15s",
+          }}
+        >
+          {puanLabel}
+        </button>
       </div>
 
       {/* Call type segment */}
@@ -559,7 +607,7 @@ export default function EvaluationsView({ showAgent = true, lang = "tr", isAdmin
         </div>
       ) : (
         <EvaluationList
-          evaluations={evaluations}
+          evaluations={sortedEvaluations}
           showAgent={showAgent}
           lang={lang}
           isAdmin={isAdmin}
