@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { pickCallRecording } from "@/app/lib/callRecording";
 
 export async function GET(
   req: NextRequest,
@@ -13,7 +14,7 @@ export async function GET(
 
   const evaluation = await prisma.evaluation.findUnique({
     where: { id },
-    select: { recordingUrl: true, source: true },
+    select: { recordingUrl: true, source: true, externalCallId: true },
   });
 
   if (!evaluation || evaluation.source !== "KRIKO" || !evaluation.recordingUrl) {
@@ -39,14 +40,16 @@ export async function GET(
     return NextResponse.json({ error: "Ses dosyası alınamadı." }, { status: manifest.status });
   }
 
-  let data: { recordings?: Array<{ download_url: string }> };
+  let data: { recordings?: Array<{ call_id?: string; download_url: string }> };
   try {
     data = await manifest.json();
   } catch {
     return NextResponse.json({ error: "Ses dosyası alınamadı." }, { status: 502 });
   }
 
-  const downloadUrl = data.recordings?.[0]?.download_url;
+  // Deal manifest'i deal'deki tüm çağrıları döndürür; bu değerlendirmenin çağrısına
+  // (externalCallId === call_id) ait kaydı seç, bulunamazsa ilk kayda düş.
+  const downloadUrl = pickCallRecording(data.recordings, evaluation.externalCallId)?.download_url;
   if (!downloadUrl) {
     return NextResponse.json({ error: "Ses kaydı bulunamadı." }, { status: 404 });
   }
