@@ -805,7 +805,7 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
             }}
           />
         </div>
-      ) : result ? (
+      ) : result && result.mode === mode ? (
         result.mode === "delta" ? (
           <DeltaView result={result} t={t} />
         ) : result.mode === "custom" ? (
