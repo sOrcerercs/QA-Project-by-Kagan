@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
   const agents = await prisma.user.findMany({
     where: {
       role: "AGENT",
+      isActive: true,
       teamId: { in: targetTeamIds },
       ...(agentIdFilter ? { id: { in: agentIdFilter } } : {}),
     },

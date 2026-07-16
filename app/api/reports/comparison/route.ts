@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: error.status });
 
   const allAgents = await prisma.user.findMany({
-    where: { role: { in: [...REPORTABLE_ROLES] } },
+    where: { role: { in: [...REPORTABLE_ROLES] }, isActive: true },
     select: { id: true, name: true, teamId: true, team: { select: { name: true } } },
   });
   const promptRows = await prisma.prompt.findMany({ select: { id: true, name: true } });

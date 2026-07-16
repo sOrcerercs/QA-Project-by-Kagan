@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   });
 
   const allAgents = await prisma.user.findMany({
-    where: { role: { in: [...REPORTABLE_ROLES] } },
+    where: { role: { in: [...REPORTABLE_ROLES] }, isActive: true },
     select: { id: true, name: true, teamId: true, team: { select: { name: true } } },
   });
   const visibleAgents = scopedAgentIds ? allAgents.filter(a => scopedAgentIds.includes(a.id)) : allAgents;

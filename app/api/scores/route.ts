@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
   // Tüm agentlar (ranking için)
   const allAgents = await prisma.user.findMany({
-    where: { role: "AGENT" },
+    where: { role: "AGENT", isActive: true },
     select: { id: true, name: true },
   });
 

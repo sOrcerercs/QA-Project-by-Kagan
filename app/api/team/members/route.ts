@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   }
 
   const members = await prisma.user.findMany({
-    where: { teamId },
+    where: { teamId, isActive: true },
     select: { id: true, name: true, role: true, email: true },
     orderBy: { name: "asc" },
   });

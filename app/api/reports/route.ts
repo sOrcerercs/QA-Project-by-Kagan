@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   // Tüm aktif kullanıcıları çek (dinlenmeyen danışmanlar için)
   const allAgents = await prisma.user.findMany({
-    where: { role: "AGENT" },
+    where: { role: "AGENT", isActive: true },
     select: { id: true, name: true, teamId: true, team: { select: { name: true } } },
   });
 
