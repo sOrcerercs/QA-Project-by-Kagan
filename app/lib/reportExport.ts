@@ -288,7 +288,7 @@ export async function downloadReportPdf(
 
 // ---- Comparison report PDF ----
 interface CmpBucket { label: string; start: string; end: string; data: any }
-interface CmpResult { mode: "delta" | "trend"; periods: CmpBucket[] }
+interface CmpResult { mode: "delta" | "trend" | "custom"; periods: CmpBucket[] }
 
 export async function downloadComparisonPdf(result: CmpResult, lang: Lang, filename?: string): Promise<void> {
   const { jsPDF } = await import("jspdf");
@@ -435,6 +435,78 @@ export async function downloadComparisonPdf(result: CmpResult, lang: Lang, filen
     if (ccdRows.length) {
       heading(lang === "tr" ? "Çağrı Dağılımı" : "Call Distribution");
       table(cols4(t.consultant ?? "Danışman"), ccdRows);
+    }
+  } else if (result.mode === "custom") {
+    // Custom: N period columns (mirrors the trend branch's periodCols/union
+    // pattern below), plus for periods[1..N-1] a "vs period[0]" % annotation
+    // — parity with the client's CustomView, which stacks value + colored %
+    // in the same cell. jsPDF table cells here are plain strings (wrapped by
+    // width, not by explicit line breaks), so instead of a second visual line
+    // we inline the delta as "value (+X%)" in the same cell — same
+    // information, single-line-safe rendering.
+    const base = periods[0];
+    // Wider than trend's 24mm period columns since cells carry an extra
+    // "(+NN%)" parenthetical.
+    const periodColsC = (c1: string) => [{ header: c1, width: maxW - periods.length * 30 }, ...periods.map(p => ({ header: p.label, width: 30, align: "right" as const }))];
+    const cellFor = (i: number, val: number, baseVal: number | undefined, fmt: (n: number) => string): string =>
+      (i === 0 || baseVal === undefined) ? fmt(val) : `${fmt(val)} (${d(val, baseVal)})`;
+
+    // Summary (avgScore + totalEvaluations)
+    heading(t.cmpModeCustom ?? (lang === "tr" ? "Özel Dönemler" : "Custom Periods"));
+    const baseAvg = base.data.summary?.avgScore;
+    const baseTotal = base.data.summary?.totalEvaluations;
+    table(
+      periodColsC(lang === "tr" ? "Metrik" : "Metric"),
+      [
+        [t.avgScoreLbl ?? "Ort. Skor", ...periods.map((p, i) => cellFor(i, p.data.summary?.avgScore ?? 0, baseAvg, (n) => `%${n}`))],
+        [t.totalEval ?? "Toplam", ...periods.map((p, i) => cellFor(i, p.data.summary?.totalEvaluations ?? 0, baseTotal, (n) => String(n)))],
+      ]
+    );
+    if (state.y + 6 > bottom) { doc.addPage(); state.y = margin; }
+    doc.setFont(font, "normal"); doc.setFontSize(8); doc.setTextColor(107, 114, 128);
+    doc.text(t.cmpVsFirst ?? (lang === "tr" ? "1. döneme göre" : "vs first period"), margin, state.y);
+    state.y += lh(8) + 2;
+
+    // Consultant Performance
+    const names = Array.from(new Set(periods.flatMap(p => (p.data.consultantPerformance ?? []).map((c: any) => c.name))));
+    if (names.length) {
+      heading(lang === "tr" ? "Danışman Performansı" : "Consultant Performance");
+      table(periodColsC(t.consultant ?? "Danışman"), names.map(name => {
+        const baseEntry = (base.data.consultantPerformance ?? []).find((x: any) => x.name === name);
+        const baseVal = baseEntry ? baseEntry.healthScore : undefined;
+        return [name, ...periods.map((p, i) => {
+          const c = (p.data.consultantPerformance ?? []).find((x: any) => x.name === name);
+          return c ? cellFor(i, c.healthScore, baseVal, (n) => `%${n}`) : "—";
+        })];
+      }));
+    }
+
+    // Team Distribution
+    const allTeams = Array.from(new Set(periods.flatMap(p => (p.data.teamDistribution ?? []).map((c: any) => c.team))));
+    if (allTeams.length) {
+      heading(t.teamCol ?? (lang === "tr" ? "Takım" : "Team"));
+      table(periodColsC(t.teamCol ?? (lang === "tr" ? "Takım" : "Team")), allTeams.map(team => {
+        const baseEntry = (base.data.teamDistribution ?? []).find((x: any) => x.team === team);
+        const baseVal = baseEntry ? baseEntry.totalCalls : undefined;
+        return [team, ...periods.map((p, i) => {
+          const c = (p.data.teamDistribution ?? []).find((x: any) => x.team === team);
+          return c ? cellFor(i, c.totalCalls, baseVal, (n) => String(n)) : "—";
+        })];
+      }));
+    }
+
+    // Consultant Call Distribution
+    const allCcdNames = Array.from(new Set(periods.flatMap(p => (p.data.consultantCallDistribution ?? []).map((c: any) => c.name))));
+    if (allCcdNames.length) {
+      heading(lang === "tr" ? "Çağrı Dağılımı" : "Call Distribution");
+      table(periodColsC(t.consultant ?? "Danışman"), allCcdNames.map(name => {
+        const baseEntry = (base.data.consultantCallDistribution ?? []).find((x: any) => x.name === name);
+        const baseVal = baseEntry ? baseEntry.totalCalls : undefined;
+        return [name, ...periods.map((p, i) => {
+          const c = (p.data.consultantCallDistribution ?? []).find((x: any) => x.name === name);
+          return c ? cellFor(i, c.totalCalls, baseVal, (n) => String(n)) : "—";
+        })];
+      }));
     }
   } else {
     const periodCols = (c1: string) => [{ header: c1, width: maxW - periods.length * 24 }, ...periods.map(p => ({ header: p.label, width: 24, align: "right" as const }))];

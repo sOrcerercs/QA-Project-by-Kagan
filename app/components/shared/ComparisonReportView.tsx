@@ -8,7 +8,7 @@ import { downloadComparisonPdf } from "@/app/lib/reportExport";
 import SortableTable, { type SortableColumn } from "@/app/components/shared/SortableTable";
 
 interface Props { userRole?: string; lang?: "tr" | "en" }
-type Mode = "delta" | "trend";
+type Mode = "delta" | "trend" | "custom";
 interface Bucket { label: string; start: string; end: string; data: any }
 interface Result { mode: Mode; periods: Bucket[] }
 
@@ -43,6 +43,16 @@ const td: React.CSSProperties = {
   borderTop: "1px solid var(--rule)",
 };
 const tdR: React.CSSProperties = { ...td, textAlign: "right" };
+
+const dateInputSm: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid var(--rule)",
+  background: "var(--glass-bg)",
+  color: "var(--fg)",
+  fontSize: 12,
+  fontFamily: "'JetBrains Mono', monospace",
+};
 
 const sectionHeading: React.CSSProperties = {
   fontSize: 11,
@@ -388,6 +398,162 @@ function TrendView({ result, t }: { result: Result; t: any }) {
   );
 }
 
+// ─── Custom View ───────────────────────────────────────────────────────────
+// Like TrendView (N-column union pattern), but period 0 is the baseline and
+// every numeric cell in periods[1..N-1] also shows % change vs period[0]
+// (via the shared pct/deltaColor helpers above).
+
+function CustomView({ result, t }: { result: Result; t: any }) {
+  const periods = result.periods;
+  const lang = (t === translations["tr"] ? "tr" : "en") as "tr" | "en";
+
+  const heading = (tr: string, en: string) => (
+    <p style={sectionHeading}>{lang === "tr" ? tr : en}</p>
+  );
+  const vsFirst = t.cmpVsFirst ?? (lang === "tr" ? "1. döneme göre" : "vs first period");
+
+  const periodHeaders = periods.map((p) => (
+    <th key={p.label} style={thR}>{p.label}</th>
+  ));
+
+  // Value + (for i>0) % vs periods[0], stacked in one <td>.
+  const numCell = (i: number, val: number, base: number, fmt: (n: number) => string) => (
+    <td key={i} style={tdR}>
+      <div>{fmt(val)}</div>
+      {i > 0 && (
+        <div style={{ fontSize: 10, color: deltaColor(val, base), fontFamily: "'JetBrains Mono', monospace" }}>
+          {pct(val, base)}
+        </div>
+      )}
+    </td>
+  );
+
+  // ── 1. Summary (avgScore + totalEvaluations) ────────────────────────────
+  const avgScores = periods.map((p) => p.data.summary?.avgScore ?? 0);
+  const totalEvals = periods.map((p) => p.data.summary?.totalEvaluations ?? 0);
+
+  // ── 2. Consultant Performance ───────────────────────────────────────────
+  const cpNameSet = new Set<string>();
+  periods.forEach((p) =>
+    (p.data.consultantPerformance ?? []).forEach((r: any) => cpNameSet.add(r.name))
+  );
+  const cpNames = Array.from(cpNameSet);
+  const cpRowsData = cpNames.map((name) => {
+    const nums = periods.map((p) => {
+      const f = (p.data.consultantPerformance ?? []).find((r: any) => r.name === name);
+      return f ? f.healthScore : -Infinity;
+    });
+    return { name, nums };
+  });
+
+  // ── 3. Team Distribution ────────────────────────────────────────────────
+  const teamNameSet = new Set<string>();
+  periods.forEach((p) =>
+    (p.data.teamDistribution ?? []).forEach((r: any) => teamNameSet.add(r.team))
+  );
+  const teamNames = Array.from(teamNameSet);
+  const teamRowsData = teamNames.map((team) => {
+    const nums = periods.map((p) => {
+      const f = (p.data.teamDistribution ?? []).find((r: any) => r.team === team);
+      return f ? f.totalCalls : -Infinity;
+    });
+    return { name: team, nums };
+  });
+
+  // ── 4. Consultant Call Distribution ────────────────────────────────────
+  const ccdNameSet = new Set<string>();
+  periods.forEach((p) =>
+    (p.data.consultantCallDistribution ?? []).forEach((r: any) => ccdNameSet.add(r.name))
+  );
+  const ccdNames = Array.from(ccdNameSet);
+  const ccdRowsData = ccdNames.map((name) => {
+    const nums = periods.map((p) => {
+      const f = (p.data.consultantCallDistribution ?? []).find((r: any) => r.name === name);
+      return f ? f.totalCalls : -Infinity;
+    });
+    return { name, nums };
+  });
+
+  // Shared column builder: name col + one column per period (value + % vs period[0] for i>0).
+  type CustomRow = { name: string; nums: number[] };
+  const customColumns = (firstHeader: string, fmt: (n: number) => string, na: string): SortableColumn<CustomRow>[] => [
+    { header: firstHeader, cell: (r) => r.name, sortValue: (r) => r.name },
+    ...periods.map((p, i) => ({
+      header: p.label,
+      align: "right" as const,
+      cell: (r: CustomRow) => {
+        const v = r.nums[i];
+        if (v === -Infinity) return na;
+        const base = r.nums[0];
+        return (
+          <>
+            <div>{fmt(v)}</div>
+            {i > 0 && base !== -Infinity && (
+              <div style={{ fontSize: 10, color: deltaColor(v, base), fontFamily: "'JetBrains Mono', monospace" }}>
+                {pct(v, base)}
+              </div>
+            )}
+          </>
+        );
+      },
+      sortValue: (r: CustomRow) => r.nums[i],
+    })),
+  ];
+  const customDefaultSort = { col: periods.length, dir: "desc" as const };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* 1. Summary */}
+      <div style={card}>
+        {heading("Özet", "Summary")}
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={th}>{lang === "tr" ? "Metrik" : "Metric"}</th>
+              {periodHeaders}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={td}>{t.avgScoreLbl}</td>
+              {avgScores.map((v, i) => numCell(i, v, avgScores[0], (n) => `%${n}`))}
+            </tr>
+            <tr>
+              <td style={td}>{t.totalEval}</td>
+              {totalEvals.map((v, i) => numCell(i, v, totalEvals[0], (n) => String(n)))}
+            </tr>
+          </tbody>
+        </table>
+        <p style={{ fontSize: 10, color: "var(--fg-faint)", margin: "8px 2px 0" }}>{vsFirst}</p>
+      </div>
+
+      {/* 2. Consultant Performance */}
+      {cpRowsData.length > 0 && (
+        <div style={card}>
+          {heading("Danışman Performansı", "Consultant Performance")}
+          <SortableTable rows={cpRowsData} rowKey={(r) => r.name} defaultSort={customDefaultSort} columns={customColumns(t.consultant, (n) => `%${n}`, "—")} />
+        </div>
+      )}
+
+      {/* 3. Team Distribution */}
+      {teamRowsData.length > 0 && (
+        <div style={card}>
+          {heading("Takım Dağılımı", "Team Distribution")}
+          <SortableTable rows={teamRowsData} rowKey={(r) => r.name} defaultSort={customDefaultSort} columns={customColumns(t.teamCol, (n) => String(n), "—")} />
+        </div>
+      )}
+
+      {/* 4. Consultant Call Distribution */}
+      {ccdRowsData.length > 0 && (
+        <div style={card}>
+          {heading("Çağrı Dağılımı", "Call Distribution")}
+          <SortableTable rows={ccdRowsData} rowKey={(r) => r.name} defaultSort={customDefaultSort} columns={customColumns(t.consultant, (n) => String(n), "—")} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Export ───────────────────────────────────────────────────────────
 
 export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
@@ -397,6 +563,12 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
   const [monthParam, setMonthParam] = useState<string>("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [customRanges, setCustomRanges] = useState<{ start: string; end: string }[]>([
+    { start: "", end: "" },
+    { start: "", end: "" },
+    { start: "", end: "" },
+    { start: "", end: "" },
+  ]);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
   const [result, setResult] = useState<Result | null>(null);
@@ -428,12 +600,16 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
   }, [userRole, showFilter]);
 
   const fetchData = useCallback(async () => {
+    const filledCustomRanges = customRanges.filter((r) => r.start && r.end);
+    if (mode === "custom" && filledCustomRanges.length < 2) return;
     setLoading(true);
     try {
       const p = new URLSearchParams({ mode, lang });
       if (selectedAgentIds.length) p.set("agentIds", selectedAgentIds.join(","));
       if (mode === "trend") p.set("months", String(months));
-      else {
+      else if (mode === "custom") {
+        p.set("ranges", filledCustomRanges.map((r) => `${r.start}:${r.end}`).join(","));
+      } else {
         if (monthParam) p.set("month", monthParam);
         else {
           if (startDate) p.set("start", startDate);
@@ -449,11 +625,19 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [mode, months, monthParam, startDate, endDate, selectedAgentIds, lang]);
+  }, [mode, months, monthParam, startDate, endDate, selectedAgentIds, lang, customRanges]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const updateCustomRange = (i: number, field: "start" | "end", value: string) => {
+    setCustomRanges((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
+  };
+  const filledCustomRangeCount = customRanges.filter((r) => r.start && r.end).length;
+  const cmpModeCustomLabel = t.cmpModeCustom ?? (lang === "tr" ? "Özel Dönemler" : "Custom Periods");
+  const cmpPeriodLabel = t.cmpPeriod ?? (lang === "tr" ? "Dönem" : "Period");
+  const cmpOptionalLabel = t.cmpOptional ?? (lang === "tr" ? "opsiyonel" : "optional");
 
   const pill = (active: boolean): React.CSSProperties => ({
     padding: "6px 14px",
@@ -478,7 +662,44 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
         <button style={pill(mode === "trend")} onClick={() => setMode("trend")}>
           {t.cmpModeTrend}
         </button>
+        <button style={pill(mode === "custom")} onClick={() => setMode("custom")}>
+          {cmpModeCustomLabel}
+        </button>
       </div>
+
+      {/* Custom mode: 4 date-range rows (period 1&2 required, 3&4 optional) */}
+      {mode === "custom" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {customRanges.map((r, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "var(--fg-dim)",
+                  minWidth: 110,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
+              >
+                {cmpPeriodLabel} {i + 1}
+                {i >= 2 ? ` (${cmpOptionalLabel})` : ""}
+              </span>
+              <input
+                type="date"
+                value={r.start}
+                onChange={(e) => updateCustomRange(i, "start", e.target.value)}
+                style={dateInputSm}
+              />
+              <span style={{ color: "var(--fg-faint)", fontSize: 11 }}>–</span>
+              <input
+                type="date"
+                value={r.end}
+                onChange={(e) => updateCustomRange(i, "end", e.target.value)}
+                style={dateInputSm}
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Period / Range Selector */}
       <div
@@ -498,6 +719,18 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
               {t.cmpLast6}
             </button>
           </>
+        ) : mode === "custom" ? (
+          <button
+            style={{
+              ...pill(false),
+              opacity: filledCustomRangeCount < 2 ? 0.5 : 1,
+              cursor: filledCustomRangeCount < 2 ? "not-allowed" : "pointer",
+            }}
+            disabled={filledCustomRangeCount < 2}
+            onClick={fetchData}
+          >
+            {t.apply}
+          </button>
         ) : (
           <>
             <button
@@ -547,7 +780,9 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
         {result && (
           <button
             style={pill(false)}
-            onClick={() => { downloadComparisonPdf(result, lang); }}
+            onClick={() => {
+              downloadComparisonPdf(result, lang);
+            }}
           >
             {t.cmpDownloadPdf}
           </button>
@@ -570,9 +805,11 @@ export default function ComparisonReportView({ userRole, lang = "tr" }: Props) {
             }}
           />
         </div>
-      ) : result ? (
+      ) : result && result.mode === mode ? (
         result.mode === "delta" ? (
           <DeltaView result={result} t={t} />
+        ) : result.mode === "custom" ? (
+          <CustomView result={result} t={t} />
         ) : (
           <TrendView result={result} t={t} />
         )
