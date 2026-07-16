@@ -146,9 +146,27 @@ export async function GET(req: NextRequest) {
   }
   // ADMIN/MANAGER with no agentIdFilter intentionally get full access (no agentId restriction)
 
+  // Liste yalnızca hafif alanları çeker (transcript ~20MB / report ~40MB gibi ağır
+  // alanları DEĞİL). report yalnızca export için, ?withReport=1 ile opt-in gelir.
+  const withReport = params.get("withReport") === "1";
   const evaluations = await prisma.evaluation.findMany({
     where: whereBase,
-    include: { agent: { select: { name: true, email: true } } },
+    select: {
+      id: true,
+      score: true,
+      customerName: true,
+      callDuration: true,
+      callDate: true,
+      createdAt: true,
+      callType: true,
+      agentRead: true,
+      agentReadAt: true,
+      coachingDone: true,
+      coachingDoneAt: true,
+      coachingByName: true,
+      agent: { select: { name: true } },
+      ...(withReport ? { report: true } : {}),
+    },
     orderBy: { callDate: "desc" },
   });
 
