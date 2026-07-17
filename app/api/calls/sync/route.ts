@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { matchAgentName } from "@/app/lib/agentMatch";
 
 export const maxDuration = 300;
 import {
@@ -32,36 +33,14 @@ async function getOrCreateUnassignedUser() {
   return user;
 }
 
-/** Kriko agent_name → DB'deki User. Diakritik/case duyarsız. */
+/** Kriko agent_name → DB'deki User. Diakritik/case + Türkçe I / x-ks duyarsız. */
 async function matchAgent(agentName: string | null) {
   if (!agentName) return null;
-  const norm = agentName.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-  if (!norm) return null;
-
-  // Tüm agent rolündeki kullanıcılarla karşılaştır
   const candidates = await prisma.user.findMany({
     where: { role: { in: ["AGENT", "TEAM_LEADER", "MANAGER"] } },
     select: { id: true, name: true },
   });
-
-  for (const u of candidates) {
-    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-    if (uNorm === norm) return u;
-  }
-  // Kısmi eşleşme: ad + soyad içeriyorsa
-  const parts = norm.split(/\s+/).filter(Boolean);
-  for (const u of candidates) {
-    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-    if (parts.length >= 2 && uNorm.includes(parts[0]) && uNorm.includes(parts[1])) return u;
-  }
-  // Tek kelimelik isim eşleşmesi: DB'deki ismin ilk kelimesiyle karşılaştır
-  if (parts.length === 1) {
-    for (const u of candidates) {
-      const uFirst = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/\s+/)[0];
-      if (uFirst === parts[0]) return u;
-    }
-  }
-  return null;
+  return matchAgentName(agentName, candidates)?.candidate ?? null;
 }
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
