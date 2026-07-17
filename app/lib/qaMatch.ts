@@ -1,12 +1,14 @@
+import { normalizeAgentName } from "./agentMatch";
+
 export interface MatchCandidate { id: string; customerName: string | null; agentName: string | null }
 export interface MatchRow { customerName: string | null; salesOwner: string | null }
 
-// Normalize for fuzzy comparison: strip diacritics, lowercase, drop punctuation/
-// quotes (CRM exports pad names like "Sofonias' 'Biramo"), collapse whitespace.
+// Normalize for fuzzy comparison: apply the shared agent-name folding (diacritics,
+// Türkçe I → i, x → ks) so CRM spelling variants match the stored names, then drop
+// punctuation/quotes (CRM exports pad names like "Sofonias' 'Biramo") and collapse
+// whitespace.
 function norm(s: string | null | undefined): string {
-  return (s ?? "")
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
+  return normalizeAgentName(s ?? "")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
