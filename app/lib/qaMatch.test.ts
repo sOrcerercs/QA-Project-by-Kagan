@@ -17,6 +17,16 @@ describe("matchEvaluationForRow", () => {
     expect(matchEvaluationForRow({ customerName: "Sofonias' 'Biramo", salesOwner: "Emir Özdemir" }, cands)).toBe("e1");
   });
 
+  it("matches across Türkçe I and x/ks spelling variants (shared agent-name folding)", () => {
+    const trCands: MatchCandidate[] = [
+      { id: "e3", customerName: "Müşteri Bir", agentName: "Faızan Ishaque" },   // stored: dotless ı
+      { id: "e4", customerName: "Müşteri İki", agentName: "Alexandra Boyko" },  // stored: x
+    ];
+    // CRM sends the other spelling variant; auto-match must still bind.
+    expect(matchEvaluationForRow({ customerName: "Müşteri Bir", salesOwner: "faızan ıshaque" }, trCands)).toBe("e3");
+    expect(matchEvaluationForRow({ customerName: "Müşteri İki", salesOwner: "Aleksandra Boyko" }, trCands)).toBe("e4");
+  });
+
   it("returns null when the customer matches but the agent does not (no wrong auto-match)", () => {
     expect(matchEvaluationForRow({ customerName: "Sofonias Biramo", salesOwner: "Someone Else" }, cands)).toBeNull();
   });
