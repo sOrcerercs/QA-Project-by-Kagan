@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 300;
 import prisma from "@/app/lib/prisma";
+import { isUniqueConstraintError } from "@/app/lib/prismaErrors";
 import {
   fetchCallsByDate,
   filterAnalyzableCalls,
@@ -100,31 +101,84 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
     }
   }
 
-  await prisma.evaluation.create({
-    data: {
-      agentId,
-      customerName: call.customer_name || "Bilinmiyor",
-      callDuration: formatDuration(call.duration_seconds),
-      transcript, report, score,
-      callType: callType as any,
-      promptId,
-      callDate: new Date(call.call_date),
-      externalCallId: call.id,
-      externalAgentName: call.agent_name,
-      recordingUrl: call.deal_id
-        ? `${process.env.KRIKO_API_BASE}/api/deals/${call.deal_id}/audio`
-        : (call.recording_url || null),
-      unassigned: isUnassigned,
-      source: "KRIKO",
-    },
-  });
+  try {
+    await prisma.evaluation.create({
+      data: {
+        agentId,
+        customerName: call.customer_name || "Bilinmiyor",
+        callDuration: formatDuration(call.duration_seconds),
+        transcript, report, score,
+        callType: callType as any,
+        promptId,
+        callDate: new Date(call.call_date),
+        externalCallId: call.id,
+        externalAgentName: call.agent_name,
+        recordingUrl: call.deal_id
+          ? `${process.env.KRIKO_API_BASE}/api/deals/${call.deal_id}/audio`
+          : (call.recording_url || null),
+        unassigned: isUnassigned,
+        source: "KRIKO",
+      },
+    });
+  } catch (e) {
+    // Eşzamanlı bir sync aynı çağrıyı bizden önce ekledi (findUnique → create
+    // atomik değil). Unique index yarışı engelledi; mükerrer atlanır.
+    if (isUniqueConstraintError(e, "externalCallId")) {
+      return { status: "skipped" as const };
+    }
+    throw e;
+  }
 
   return { status: isUnassigned ? "unassigned" as const : "imported" as const };
 }
 
 /**
+ * Geç-eklenen deal_id'leri geriye doldurur. Import yolu yalnızca "dün"ü çeker; Kriko
+ * deal_id'yi (ses kaydını) gün(ler) sonra ekleyebildiğinden o pencere kapanınca ses
+ * URL'i kalıcı NULL kalırdı. Bu geçiş son 7 günün NULL kayıtlarını alıp Kriko'da
+ * **UTC günü ±1** penceresinde arar (Kriko UTC gününe göre gruplar; gece-yarısı-UTC
+ * çağrıları TR'ye çevirince yanlış güne kayar) ve deal_id gelmişse günceller.
+ * Ucuz: /api/analyze çağırmaz, throttle yok — yalnızca birkaç fetch + hedefli update.
+ */
+async function backfillRecentAudio(): Promise<number> {
+  const BASE = process.env.KRIKO_API_BASE!;
+  const dealUrl = (id: string) => `${BASE}/api/deals/${id}/audio`;
+  const ymd = (d: Date) => d.toISOString().slice(0, 10);
+
+  const since = new Date(Date.now() - 7 * 86400000);
+  const nulls = await prisma.evaluation.findMany({
+    where: { source: "KRIKO", recordingUrl: null, externalCallId: { not: null }, callDate: { gte: since } },
+    select: { id: true, externalCallId: true, callDate: true },
+  });
+  if (!nulls.length) return 0;
+
+  const dates = new Set<string>();
+  for (const e of nulls) {
+    const t = e.callDate.getTime();
+    for (const off of [-1, 0, 1]) dates.add(ymd(new Date(t + off * 86400000)));
+  }
+  const byId = new Map<string, KrikoCall>();
+  for (const date of dates) {
+    try {
+      for (const c of (await fetchCallsByDate(date)).calls) byId.set(c.id, c);
+    } catch { /* tek tarih çekilemezse atla */ }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  let updated = 0;
+  for (const e of nulls) {
+    const call = byId.get(e.externalCallId!);
+    if (call?.deal_id) {
+      await prisma.evaluation.update({ where: { id: e.id }, data: { recordingUrl: dealUrl(call.deal_id) } });
+      updated++;
+    }
+  }
+  return updated;
+}
+
+/**
  * Vercel Cron tarafından çağrılır. CRON_SECRET ile korunur.
- * vercel.json'daki schedule: "*​/30 * * * *" (her 30 dakikada bir)
+ * vercel.json'daki schedule: "0 *​/6 * * *" (her 6 saatte bir)
  */
 export async function GET(req: NextRequest) {
   // CRON_SECRET kontrolü — Vercel cron header'ında "Authorization: Bearer <CRON_SECRET>" gönderir
@@ -161,7 +215,11 @@ export async function GET(req: NextRequest) {
       else if (r.status === "unassigned") { imported++; unassigned++; }
       else if (r.status === "skipped") skipped++;
       else failed++;
-      if (i < analyzable.length - 1) await new Promise(rs => setTimeout(rs, 12000));
+      // Analiz çağrıları arası throttle. Eski 12sn Groq rate-limit'i içindi; sistem artık
+      // Gemini kullanıyor (callGemini 429'ları kendi retry/backoff'uyla yönetir), 3sn yeterli.
+      // "skipped" (zaten içe aktarılmış / kısa transkript) çağrı analiz çağırmaz → orada
+      // beklemek boşaydı ve fonksiyon zaman limitinde backlog'un telafisini engelliyordu.
+      if (r.status !== "skipped" && i < analyzable.length - 1) await new Promise(rs => setTimeout(rs, 3000));
     }
 
     if (unassigned > 0) {
@@ -175,6 +233,14 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Geç-eklenen deal_id'ler için son 7 günün NULL ses URL'lerini geriye doldur.
+    let backfilled = 0;
+    try {
+      backfilled = await backfillRecentAudio();
+    } catch (e) {
+      console.error("[cron/sync-calls] backfillRecentAudio failed:", e);
+    }
+
     await prisma.syncLog.update({
       where: { id: log.id },
       data: {
@@ -184,7 +250,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ ok: true, date, imported, unassigned, skipped, failed });
+    return NextResponse.json({ ok: true, date, imported, unassigned, skipped, failed, backfilled });
   } catch (e: any) {
     await prisma.syncLog.update({ where: { id: log.id }, data: { finishedAt: new Date(), error: e.message } });
     return NextResponse.json({ error: e.message }, { status: 500 });

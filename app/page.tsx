@@ -21,11 +21,23 @@ export default function RootPage() {
 
   useEffect(() => {
     fetch("/api/auth/me")
-      .then((r) => r.json())
+      .then(async (r) => {
+        // /api/auth/me always returns JSON (incl. 401). A non-OK or non-JSON
+        // body means the request never reached the handler (e.g. a 500 HTML
+        // error page) — treat as "not authenticated" instead of crashing on
+        // an unguarded r.json().
+        if (!r.ok) return null;
+        try {
+          return await r.json();
+        } catch {
+          return null;
+        }
+      })
       .then((data) => {
-        if (!data.user) { router.replace("/login"); return; }
+        if (!data?.user) { router.replace("/login"); return; }
         setUser(data.user);
       })
+      .catch(() => router.replace("/login"))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -47,3 +59,4 @@ export default function RootPage() {
 
   return <LandingPage user={user} lang={lang} onLogout={handleLogout} />;
 }
+
