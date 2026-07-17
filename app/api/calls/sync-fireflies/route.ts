@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 300;
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { matchAgentName } from "@/app/lib/agentMatch";
 import {
   fetchTranscriptsByDate,
   filterAnalyzableTranscripts,
@@ -38,42 +39,14 @@ async function getOrCreateUnassignedUser() {
 /** Transcript'teki konuşmacı adlarını DB kullanıcılarıyla eşleştir */
 async function matchAgentFromSpeakers(speakerNames: string[]) {
   if (speakerNames.length === 0) return null;
-
   const candidates = await prisma.user.findMany({
     where: { role: { in: ["AGENT", "TEAM_LEADER", "MANAGER"] } },
     select: { id: true, name: true },
   });
-
-  const normalize = (s: string) =>
-    s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-
   for (const speakerName of speakerNames) {
-    const norm = normalize(speakerName);
-    if (!norm) continue;
-
-    // Tam eşleşme
-    for (const u of candidates) {
-      if (normalize(u.name) === norm) return u;
-    }
-
-    // Kısmi eşleşme (ad + soyad)
-    const parts = norm.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      for (const u of candidates) {
-        const uNorm = normalize(u.name);
-        if (uNorm.includes(parts[0]) && uNorm.includes(parts[1])) return u;
-      }
-    }
-
-    // Tek kelimelik isim — DB'deki ismin ilk kelimesiyle karşılaştır
-    if (parts.length === 1) {
-      for (const u of candidates) {
-        const uFirst = normalize(u.name).split(/\s+/)[0];
-        if (uFirst === parts[0]) return u;
-      }
-    }
+    const m = matchAgentName(speakerName, candidates);
+    if (m) return m.candidate;
   }
-
   return null;
 }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 300;
 import prisma from "@/app/lib/prisma";
+import { matchAgentName } from "@/app/lib/agentMatch";
 import {
   fetchCallsByDate,
   filterAnalyzableCalls,
@@ -27,23 +28,11 @@ async function getOrCreateUnassignedUser() {
 
 async function matchAgent(agentName: string | null) {
   if (!agentName) return null;
-  const norm = agentName.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-  if (!norm) return null;
-
   const candidates = await prisma.user.findMany({
     where: { role: { in: ["AGENT", "TEAM_LEADER", "MANAGER"] } },
     select: { id: true, name: true },
   });
-  for (const u of candidates) {
-    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-    if (uNorm === norm) return u;
-  }
-  const parts = norm.split(/\s+/).filter(Boolean);
-  for (const u of candidates) {
-    const uNorm = u.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-    if (parts.length >= 2 && uNorm.includes(parts[0]) && uNorm.includes(parts[1])) return u;
-  }
-  return null;
+  return matchAgentName(agentName, candidates, { allowSingleWord: false })?.candidate ?? null;
 }
 
 async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: string) {
