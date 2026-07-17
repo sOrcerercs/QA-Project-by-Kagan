@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import CriterionEvaluations from "@/app/components/shared/CriterionEvaluations";
 
 interface CriterionBreakdown {
   id: string;
@@ -137,14 +138,18 @@ function RefBar({ mine, teamAvg, color, avgLabel }: { mine: number; teamAvg: num
   );
 }
 
-function SectionCard({ section, mine, team, criteria, lang }: {
+function SectionCard({ section, mine, team, criteria, lang, agentId, startDate, endDate }: {
   section: "A" | "B" | "C";
   mine: number;
   team: number | null;
   criteria: CriterionBreakdown[];
   lang: Lang;
+  agentId: string;
+  startDate?: string;
+  endDate?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [openCrit, setOpenCrit] = useState<string | null>(null);
   const color = SECTION_COLORS[section];
   const label = SECTION_LABELS[lang][section];
   const delta = team !== null ? mine - team : null;
@@ -181,22 +186,38 @@ function SectionCard({ section, mine, team, criteria, lang }: {
             <p style={{ fontSize: 11, color: "#475569" }}>{t.noCriteriaData}</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {criteria.map(c => (
-                <div key={c.id}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-                    <span style={{ fontSize: 11, color: "#64748b" }}>{c.label}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>%{c.mine}</span>
-                      <span style={{ fontSize: 10, color: "#475569" }}>/ %{c.teamAvg} {t.avg}</span>
-                      <DeltaBadge delta={c.delta} lang={lang} />
+              {criteria.map(c => {
+                const critOpen = openCrit === c.id;
+                return (
+                  <div key={c.id}>
+                    <div
+                      onClick={(e) => { e.stopPropagation(); setOpenCrit(critOpen ? null : c.id); }}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                        <span style={{ fontSize: 11, color: "#64748b", display: "flex", alignItems: "center", gap: 4 }}>
+                          {c.label}
+                          <span style={{ fontSize: 9, color: "#334155", display: "inline-block", transform: critOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>%{c.mine}</span>
+                          <span style={{ fontSize: 10, color: "#475569" }}>/ %{c.teamAvg} {t.avg}</span>
+                          <DeltaBadge delta={c.delta} lang={lang} />
+                        </div>
+                      </div>
+                      <div style={{ position: "relative", height: 5, background: "#1e2535", borderRadius: 99 }}>
+                        <div style={{ width: `${Math.min(c.mine, 100)}%`, height: "100%", background: color + "88", borderRadius: 99 }} />
+                        <div style={{ position: "absolute", top: -2, left: `${Math.min(c.teamAvg, 100)}%`, width: 2, height: 9, background: "#475569", borderRadius: 2, transform: "translateX(-50%)" }} />
+                      </div>
                     </div>
+                    {critOpen && (
+                      <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 6 }}>
+                        <CriterionEvaluations agentId={agentId} criterionId={c.id} startDate={startDate} endDate={endDate} lang={lang} />
+                      </div>
+                    )}
                   </div>
-                  <div style={{ position: "relative", height: 5, background: "#1e2535", borderRadius: 99 }}>
-                    <div style={{ width: `${Math.min(c.mine, 100)}%`, height: "100%", background: color + "88", borderRadius: 99 }} />
-                    <div style={{ position: "absolute", top: -2, left: `${Math.min(c.teamAvg, 100)}%`, width: 2, height: 9, background: "#475569", borderRadius: 2, transform: "translateX(-50%)" }} />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -294,6 +315,7 @@ export default function PeerComparisonView({ agentId, lang = "tr" }: { agentId: 
   }
 
   const { mine, team, hasTeam } = data;
+  const { startDate: activeStart, endDate: activeEnd } = getDateRange(preset, customStart, customEnd);
   const overallDelta = team ? mine.overallAvg - team.overallAvg : null;
   const criteriaForSection = (s: "A" | "B" | "C") => mine.criteriaBreakdown.filter(c => c.section === s);
   const callCountDelta = team ? mine.callCount - team.callCountAvg : null;
@@ -339,7 +361,17 @@ export default function PeerComparisonView({ agentId, lang = "tr" }: { agentId: 
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {(["A", "B", "C"] as const).map(s => (
-              <SectionCard key={s} section={s} mine={mine.sectionAvg![s]} team={team?.sectionAvg?.[s] ?? null} criteria={criteriaForSection(s)} lang={lang} />
+              <SectionCard
+                key={s}
+                section={s}
+                mine={mine.sectionAvg![s]}
+                team={team?.sectionAvg?.[s] ?? null}
+                criteria={criteriaForSection(s)}
+                lang={lang}
+                agentId={agentId}
+                startDate={activeStart ?? undefined}
+                endDate={activeEnd ?? undefined}
+              />
             ))}
           </div>
         </div>
