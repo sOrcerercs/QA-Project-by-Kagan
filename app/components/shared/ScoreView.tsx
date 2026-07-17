@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
 import MIcon from "@/app/components/shared/MIcon";
 import { translations } from "@/app/lib/i18n";
 import TrendChart from "@/app/components/shared/TrendChart";
 import AgentCoachingSummary from "@/app/components/shared/AgentCoachingSummary";
+import CriterionEvaluations from "@/app/components/shared/CriterionEvaluations";
 
 const scoreColor = (s: number) =>
   s >= 85 ? "text-emerald-400" : s >= 70 ? "text-primary" : s >= 55 ? "text-amber-400" : "text-error";
@@ -36,6 +38,7 @@ export default function ScoreView({
 }) {
   const t = translations[lang];
   const { agent, rank, totalAgents, stats, weeklyProgress, recentCalls, isDemo, avgSectionScores, topWeakCriteria } = data;
+  const [openCrit, setOpenCrit] = useState<string | null>(null);
 
   return (
     <div className="space-y-6">
@@ -121,10 +124,27 @@ export default function ScoreView({
                     ? "bg-amber-500/10 border-amber-500/30"
                     : "bg-yellow-500/10 border-yellow-500/30";
                   const textClass = isRed ? "text-red-400" : isOrange ? "text-amber-400" : "text-yellow-400";
+                  const isOpen = openCrit === c.id;
                   return (
-                    <div key={c.id} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${cardClass}`}>
-                      <span className={`text-xs font-medium ${textClass}`}>{c.id} — {c.label}</span>
-                      <span className={`text-xs font-bold ${textClass}`}>%{c.avgScore}</span>
+                    <div key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenCrit(isOpen ? null : c.id)}
+                        className={`w-full flex justify-between items-center px-3 py-2 rounded-lg border ${cardClass} cursor-pointer`}
+                      >
+                        <span className={`text-xs font-medium ${textClass}`}>
+                          {c.id} — {c.label}
+                        </span>
+                        <span className={`text-xs font-bold ${textClass} flex items-center gap-1`}>
+                          %{c.avgScore}
+                          <span className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>▾</span>
+                        </span>
+                      </button>
+                      {isOpen && (
+                        <div className="px-2 pb-1">
+                          <CriterionEvaluations agentId={agent.id} criterionId={c.id} lang={lang} />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
