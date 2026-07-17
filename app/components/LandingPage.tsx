@@ -1554,7 +1554,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                           <>
                             {/* Single agent → full ScoreView */}
                             {teamReportSelectedIds.length === 1 && teamReportScores[teamReportSelectedIds[0]] && (
-                              <ScoreView data={teamReportScores[teamReportSelectedIds[0]]} lang={lang} canRefresh={true} />
+                              <ScoreView data={teamReportScores[teamReportSelectedIds[0]]} lang={lang} canRefresh={true} startDate={teamReportStartDate || undefined} endDate={teamReportEndDate || undefined} />
                             )}
 
                             {/* Multiple agents → comparison cards */}
@@ -1908,7 +1908,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
 
                 {/* Single agent — full-width ScoreView, same as My Scores */}
                 {!teamScoresLoading && selectedIds.length === 1 && teamMemberScores[selectedIds[0]] && (
-                  <ScoreView data={teamMemberScores[selectedIds[0]]} lang={lang} canRefresh={user.role !== "AGENT"} />
+                  <ScoreView data={teamMemberScores[selectedIds[0]]} lang={lang} canRefresh={user.role !== "AGENT"} startDate={startDate || undefined} endDate={endDate || undefined} />
                 )}
 
                 {/* Multiple agents — full-width comparison grid */}

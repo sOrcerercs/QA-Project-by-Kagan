@@ -31,10 +31,14 @@ export default function ScoreView({
   data,
   lang = "tr",
   canRefresh = false,
+  startDate,
+  endDate,
 }: {
   data: ScoreData;
   lang?: "tr" | "en";
   canRefresh?: boolean;
+  startDate?: string;
+  endDate?: string;
 }) {
   const t = translations[lang];
   const { agent, rank, totalAgents, stats, weeklyProgress, recentCalls, isDemo, avgSectionScores, topWeakCriteria } = data;
@@ -142,7 +146,7 @@ export default function ScoreView({
                       </button>
                       {isOpen && (
                         <div className="px-2 pb-1">
-                          <CriterionEvaluations agentId={agent.id} criterionId={c.id} lang={lang} />
+                          <CriterionEvaluations agentId={agent.id} criterionId={c.id} startDate={startDate} endDate={endDate} lang={lang} />
                         </div>
                       )}
                     </div>
