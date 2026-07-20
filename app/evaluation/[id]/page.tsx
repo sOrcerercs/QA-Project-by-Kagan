@@ -683,7 +683,7 @@ export default function EvaluationDetailPage({
 
       {/* Meta + Score */}
       <div className="px-6 pt-5 flex-shrink-0">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-5">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-5">
           {/* Danışman kartı — admin/manager için yeniden atama içerir */}
           <div className="bg-surface-container border border-outline-variant rounded-2xl p-4">
             <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-2">
