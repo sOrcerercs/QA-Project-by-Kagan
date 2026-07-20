@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, use } from "react";
+import React, { useState, useEffect, useRef, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Check, User, Clock, Calendar } from "lucide-react";
@@ -10,6 +10,48 @@ import { POSITIVE_COACHING, composePositiveFeedback } from "@/app/lib/positiveCo
 const MIcon = ({ name, className = "" }: { name: string; className?: string }) => (
   <span className={`material-symbols-outlined ${className}`}>{name}</span>
 );
+
+function ClampedPanel({
+  maxHeight,
+  onReadMore,
+  readMoreLabel,
+  children,
+}: {
+  maxHeight: number;
+  onReadMore: () => void;
+  readMoreLabel: string;
+  children: React.ReactNode;
+}) {
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const check = () => setOverflow(el.offsetHeight > maxHeight + 4);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [maxHeight]);
+  return (
+    <div className="relative">
+      <div style={{ maxHeight }} className="overflow-hidden">
+        <div ref={innerRef}>{children}</div>
+      </div>
+      {overflow && (
+        <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center">
+          <div className="pointer-events-none w-full h-16 bg-gradient-to-t from-surface-container to-transparent" />
+          <button
+            onClick={onReadMore}
+            className="mb-1 -mt-3 bg-surface-container-high hover:bg-surface-container border border-outline-variant text-primary text-xs font-semibold px-4 py-1.5 rounded-full transition-all shadow-sm"
+          >
+            {readMoreLabel} ↓
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const L = {
   tr: {
@@ -25,6 +67,8 @@ const L = {
     copied: "Kopyalandı!",
     edit: "Düzenle",
     transcript: "💬 Konuşma Transkripti",
+    readMore: "Devamını Oku",
+    reportTitle: "📋 Değerlendirme Raporu",
     listenOnFireflies: "🎧 Fireflies'ta Dinle",
     noTranscript: "Transkript bulunamadı.",
     editTitle: "✏️ Değerlendirmeyi Yeniden Düzenle",
@@ -101,6 +145,8 @@ const L = {
     copied: "Copied!",
     edit: "Edit",
     transcript: "💬 Conversation Transcript",
+    readMore: "Read More",
+    reportTitle: "📋 Evaluation Report",
     listenOnFireflies: "🎧 Listen on Fireflies",
     noTranscript: "Transcript not found.",
     editTitle: "✏️ Re-evaluate",
@@ -202,8 +248,16 @@ export default function EvaluationDetailPage({
   const [isReassigning, setIsReassigning] = useState(false);
   const [reassignMsg, setReassignMsg] = useState("");
   const [reassignAgents, setReassignAgents] = useState<{ id: string; name: string }[]>([]);
+  const [readMore, setReadMore] = useState<null | "report" | "transcript">(null);
 
   const t = L[lang];
+
+  useEffect(() => {
+    if (!readMore) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setReadMore(null); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [readMore]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("estenove-theme");
@@ -577,6 +631,26 @@ export default function EvaluationDetailPage({
     );
   }
 
+  const reportBody = isTranslating ? (
+    <div className="flex flex-col items-center justify-center py-10 gap-3 text-on-surface-variant">
+      <div className="w-5 h-5 border-2 border-outline border-t-primary rounded-full animate-spin" />
+      <span className="text-sm">{t.translating}</span>
+    </div>
+  ) : translateError ? (
+    <>
+      <p className="text-error text-xs mb-4">{t.translateError}</p>
+      {formatReport(evaluation.report)}
+    </>
+  ) : (
+    formatReport(lang === "en" && translatedReport ? translatedReport : evaluation.report)
+  );
+
+  const transcriptBody = evaluation.transcript ? (
+    <div className="leading-relaxed">{formatTranscript(evaluation.transcript)}</div>
+  ) : (
+    <p className="text-outline italic text-sm">{t.noTranscript}</p>
+  );
+
   return (
     <div className="bg-surface text-on-surface min-h-screen flex flex-col font-sans">
       {/* Header */}
@@ -609,7 +683,7 @@ export default function EvaluationDetailPage({
 
       {/* Meta + Score */}
       <div className="px-6 pt-5 flex-shrink-0">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-5">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-5">
           {/* Danışman kartı — admin/manager için yeniden atama içerir */}
           <div className="bg-surface-container border border-outline-variant rounded-2xl p-4">
             <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-2">
@@ -808,9 +882,9 @@ export default function EvaluationDetailPage({
       </div>
 
       {/* Split Content */}
-      <div className="flex-1 min-h-[420px] px-6 pb-2 grid grid-cols-2 gap-4">
+      <div className="px-6 pb-2 grid grid-cols-2 gap-4 items-start">
         {/* Left: Report */}
-        <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6 leading-relaxed">
+        <div className="bg-surface-container border border-outline-variant rounded-2xl p-6 leading-relaxed">
           {evaluation.weakCriteria && Array.isArray(evaluation.weakCriteria) && (evaluation.weakCriteria as any[]).length > 0 && (
             <div className="mb-6 bg-surface-container-high border border-primary/20 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-4">
@@ -847,23 +921,13 @@ export default function EvaluationDetailPage({
               </div>
             </div>
           )}
-          {isTranslating ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-on-surface-variant">
-              <div className="w-5 h-5 border-2 border-outline border-t-primary rounded-full animate-spin" />
-              <span className="text-sm">{t.translating}</span>
-            </div>
-          ) : translateError ? (
-            <>
-              <p className="text-error text-xs mb-4">{t.translateError}</p>
-              {formatReport(evaluation.report)}
-            </>
-          ) : (
-            formatReport(lang === "en" && translatedReport ? translatedReport : evaluation.report)
-          )}
+          <ClampedPanel maxHeight={260} onReadMore={() => setReadMore("report")} readMoreLabel={t.readMore}>
+            {reportBody}
+          </ClampedPanel>
         </div>
 
         {/* Right: Transcript */}
-        <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-y-auto p-6">
+        <div className="bg-surface-container border border-outline-variant rounded-2xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
               {t.transcript}
@@ -885,11 +949,9 @@ export default function EvaluationDetailPage({
               ) : null;
             })()}
           </div>
-          {evaluation.transcript ? (
-            <div className="leading-relaxed">{formatTranscript(evaluation.transcript)}</div>
-          ) : (
-            <p className="text-outline italic text-sm">{t.noTranscript}</p>
-          )}
+          <ClampedPanel maxHeight={360} onReadMore={() => setReadMore("transcript")} readMoreLabel={t.readMore}>
+            {transcriptBody}
+          </ClampedPanel>
         </div>
       </div>
 
@@ -1321,6 +1383,45 @@ export default function EvaluationDetailPage({
                 </div>
               )}
             </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Read More Popup (Report / Transcript) */}
+      <AnimatePresence>
+        {readMore && (
+          <>
+            <motion.div
+              className="fixed inset-0 bg-black/60 z-40"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setReadMore(null)}
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+              <motion.div
+                className="pointer-events-auto w-full max-w-3xl max-h-[85vh] flex flex-col bg-surface-container-low border border-outline-variant rounded-2xl shadow-2xl overflow-hidden"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              >
+                <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant flex-shrink-0">
+                  <div className="text-sm font-bold text-on-surface">
+                    {readMore === "report" ? t.reportTitle : t.transcript}
+                  </div>
+                  <button
+                    onClick={() => setReadMore(null)}
+                    className="text-on-surface-variant hover:text-on-surface transition-colors text-lg leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="overflow-y-auto px-6 py-5 leading-relaxed">
+                  {readMore === "report" ? reportBody : transcriptBody}
+                </div>
+              </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>
