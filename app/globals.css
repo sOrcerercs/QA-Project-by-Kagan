@@ -28,6 +28,13 @@
 }
 
 @layer base {
+  /* Akışkan kök font: Windows ekran ölçeklemesi (%150) tarayıcıya dar bir CSS
+     viewport'u bırakıyor (ör. 1920 panel → ~1280px); Tailwind rem-tabanlı olduğu
+     için kök fontu genişliğe göre küçültünce tüm metin/boşluk orantılı küçülür ve
+     içerik sıkışmadan sığar. 1280px→12px, 1920px→16px; aralarda orantılı, uçlarda sabit. */
+  html {
+    font-size: clamp(12px, calc(4px + 0.625vw), 16px);
+  }
   body {
     @apply bg-surface text-on-surface font-sans antialiased;
   }
