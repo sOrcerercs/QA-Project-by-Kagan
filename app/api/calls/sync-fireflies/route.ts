@@ -292,7 +292,8 @@ export async function runSync(req: NextRequest, trigger: "MANUAL" | "CRON") {
       else if (result.status === "unassigned") { imported++; unassigned++; }
       else if (result.status === "skipped") skipped++;
       else { failed++; errors.push(`${analyzable[i].id}: ${result.reason}`); }
-      if (i < analyzable.length - 1) await sleep(12000);
+      // Rate limit reaktif katmanlarda (callGemini 429 retry + analyzeWithRetry) yönetiliyor;
+      // eski Groq için konulan 12sn proaktif uyku kaldırıldı (manuel sync timeout'a takılıyordu).
     }
 
     skipped += transcripts.length - analyzable.length;
