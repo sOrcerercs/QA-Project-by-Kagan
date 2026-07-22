@@ -150,7 +150,7 @@ export async function GET(req: NextRequest) {
       else if (r.status === "unassigned") { imported++; unassigned++; }
       else if (r.status === "skipped") skipped++;
       else failed++;
-      if (i < analyzable.length - 1) await new Promise(rs => setTimeout(rs, 12000));
+      // Rate limit reaktif olarak yönetiliyor (callGemini 429 retry); eski Groq 12sn uykusu kaldırıldı.
     }
 
     if (unassigned > 0) {

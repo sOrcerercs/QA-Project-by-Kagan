@@ -285,8 +285,8 @@ export async function runSync(req: NextRequest, trigger: "MANUAL" | "CRON") {
       else if (result.status === "unassigned") { imported++; unassigned++; }
       else if (result.status === "skipped") skipped++;
       else { failed++; errors.push(`${call.id}: ${result.reason}`); }
-      // Groq 70b rate limit koruması: dakikada 6000 token, büyük transkriptler için 12sn bekle
-      if (i < analyzable.length - 1) await sleep(12000);
+      // Rate limit reaktif olarak callGemini (429 retry) + analyzeWithRetry katmanlarında yönetiliyor;
+      // eski Groq için konulan 12sn proaktif uyku kaldırıldı (websitesinden manuel sync timeout'a takılıyordu).
     }
 
     // Filtreden geçemeyenler skip sayısına eklensin
