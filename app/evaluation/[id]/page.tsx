@@ -323,6 +323,11 @@ export default function EvaluationDetailPage({
   const fetchCurrentUser = async () => {
     try {
       const res = await fetch("/api/auth/me");
+      if (res.status === 401) {
+        // Giriş yok → login'e yönlendir, giriş sonrası bu değerlendirmeye dön
+        router.push("/login?next=" + encodeURIComponent("/evaluation/" + id));
+        return;
+      }
       const data = await res.json();
       if (res.ok) {
         setCurrentUser(data.user);
