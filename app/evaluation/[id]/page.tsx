@@ -40,7 +40,7 @@ function ClampedPanel({
       </div>
       {overflow && (
         <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center">
-          <div className="pointer-events-none w-full h-16 bg-gradient-to-t from-surface-container to-transparent" />
+          <div className="pointer-events-none w-full h-16 bg-linear-to-t from-surface-container to-transparent" />
           <button
             onClick={onReadMore}
             className="mb-1 -mt-3 bg-surface-container-high hover:bg-surface-container border border-outline-variant text-primary text-xs font-semibold px-4 py-1.5 rounded-full transition-all shadow-sm"
@@ -323,6 +323,11 @@ export default function EvaluationDetailPage({
   const fetchCurrentUser = async () => {
     try {
       const res = await fetch("/api/auth/me");
+      if (res.status === 401) {
+        // Giriş yok → login'e yönlendir, giriş sonrası bu değerlendirmeye dön
+        router.push("/login?next=" + encodeURIComponent("/evaluation/" + id));
+        return;
+      }
       const data = await res.json();
       if (res.ok) {
         setCurrentUser(data.user);
@@ -654,7 +659,7 @@ export default function EvaluationDetailPage({
   return (
     <div className="bg-surface text-on-surface min-h-screen flex flex-col font-sans">
       {/* Header */}
-      <header className="bg-surface-container-low border-b border-outline-variant px-6 py-4 flex-shrink-0 z-10">
+      <header className="bg-surface-container-low border-b border-outline-variant px-6 py-4 shrink-0 z-10">
         <div className="flex justify-between items-center">
           <button
             onClick={goBack}
@@ -682,7 +687,7 @@ export default function EvaluationDetailPage({
       </header>
 
       {/* Meta + Score */}
-      <div className="px-6 pt-5 flex-shrink-0">
+      <div className="px-6 pt-5 shrink-0">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-5">
           {/* Danışman kartı — admin/manager için yeniden atama içerir */}
           <div className="bg-surface-container border border-outline-variant rounded-2xl p-4">
@@ -907,7 +912,7 @@ export default function EvaluationDetailPage({
                     const p = palette[idx % palette.length];
                     return (
                       <div key={c.id} className={`flex gap-3 p-3 rounded-xl border ${p.card}`}>
-                        <span className={`flex-shrink-0 w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center ${p.num}`}>
+                        <span className={`shrink-0 w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center ${p.num}`}>
                           {idx + 1}
                         </span>
                         <div>
@@ -956,11 +961,11 @@ export default function EvaluationDetailPage({
       </div>
 
       {/* Agent Read + Coaching Row */}
-      <div className="px-6 pb-4 grid grid-cols-2 gap-4 flex-shrink-0 items-start">
+      <div className="px-6 pb-4 grid grid-cols-2 gap-4 shrink-0 items-start">
         {/* Agent Read Section */}
         <div className="bg-surface-container border border-outline-variant rounded-2xl px-5 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <MIcon name="menu_book" className={`text-xl flex-shrink-0 ${evaluation.agentRead ? "text-emerald-400" : "text-slate-500"}`} />
+            <MIcon name="menu_book" className={`text-xl shrink-0 ${evaluation.agentRead ? "text-emerald-400" : "text-slate-500"}`} />
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.readTitle}</p>
               {evaluation.agentRead ? (
@@ -981,7 +986,7 @@ export default function EvaluationDetailPage({
             <button
               onClick={handleAcknowledge}
               disabled={isAcknowledging}
-              className="flex-shrink-0 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
+              className="shrink-0 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
             >
               {isAcknowledging ? "..." : t.readBtn}
             </button>
@@ -1008,7 +1013,7 @@ export default function EvaluationDetailPage({
               className={`bg-surface-container border border-outline-variant rounded-2xl px-5 py-4 flex items-center justify-between gap-4 ${canRead ? "cursor-pointer hover:bg-surface-container-high transition-colors" : ""}`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <MIcon name="psychology" className={`text-xl flex-shrink-0 ${evaluation.coachingDone ? "text-primary" : "text-slate-500"}`} />
+                <MIcon name="psychology" className={`text-xl shrink-0 ${evaluation.coachingDone ? "text-primary" : "text-slate-500"}`} />
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.coachingTitle}</p>
                   {evaluation.coachingDone ? (
@@ -1028,7 +1033,7 @@ export default function EvaluationDetailPage({
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 shrink-0">
                 {evaluation.coachingDone && isCoach && (
                   <button
                     onClick={(e) => { e.stopPropagation(); openEdit(); }}
@@ -1040,7 +1045,7 @@ export default function EvaluationDetailPage({
                 {!evaluation.coachingDone && isCoach && (
                   <button
                     onClick={(e) => { e.stopPropagation(); openEdit(); }}
-                    className="flex-shrink-0 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+                    className="shrink-0 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
                   >
                     {t.coachingBtn}
                   </button>
@@ -1061,14 +1066,14 @@ export default function EvaluationDetailPage({
         const hasAf = !!evaluation.agentFeedback;
         const hasObj = !!evaluation.objectionText;
         return (
-          <div className="px-6 pb-4 grid grid-cols-2 gap-4 flex-shrink-0 items-start">
+          <div className="px-6 pb-4 grid grid-cols-2 gap-4 shrink-0 items-start">
             {/* Danışman Feedback kartı */}
             <div
               onClick={hasAf ? openAfRead : undefined}
               className={`bg-surface-container border border-outline-variant rounded-2xl px-5 py-4 flex items-center justify-between gap-4 ${hasAf ? "cursor-pointer hover:bg-surface-container-high transition-colors" : ""}`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <MIcon name="rate_review" className={`text-xl flex-shrink-0 ${hasAf ? "text-emerald-400" : "text-slate-500"}`} />
+                <MIcon name="rate_review" className={`text-xl shrink-0 ${hasAf ? "text-emerald-400" : "text-slate-500"}`} />
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.afTitle}</p>
                   {hasAf ? (
@@ -1088,7 +1093,7 @@ export default function EvaluationDetailPage({
               {isAgent && (
                 <button
                   onClick={(e) => { e.stopPropagation(); openAfEdit(); }}
-                  className="flex-shrink-0 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+                  className="shrink-0 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
                 >
                   {hasAf ? t.afEdit : t.afWrite}
                 </button>
@@ -1101,7 +1106,7 @@ export default function EvaluationDetailPage({
               className={`bg-surface-container border border-outline-variant rounded-2xl px-5 py-4 flex items-center justify-between gap-4 ${hasObj ? "cursor-pointer hover:bg-surface-container-high transition-colors" : ""}`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <MIcon name="gavel" className={`text-xl flex-shrink-0 ${hasObj ? "text-amber-400" : "text-slate-500"}`} />
+                <MIcon name="gavel" className={`text-xl shrink-0 ${hasObj ? "text-amber-400" : "text-slate-500"}`} />
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{t.objTitle}</p>
                   {hasObj ? (
@@ -1121,7 +1126,7 @@ export default function EvaluationDetailPage({
               {isAgent && (
                 <button
                   onClick={(e) => { e.stopPropagation(); openObjEdit(); }}
-                  className="flex-shrink-0 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+                  className="shrink-0 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
                 >
                   {hasObj ? t.objEdit : t.objBtn}
                 </button>
@@ -1166,7 +1171,7 @@ export default function EvaluationDetailPage({
               {refineError && <p className="text-error text-xs mb-3">{refineError}</p>}
               <div className="flex gap-3 items-end">
                 <textarea
-                  className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[120px] transition-colors"
+                  className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-13 max-h-30 transition-colors"
                   placeholder={t.editPlaceholder}
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
@@ -1176,7 +1181,7 @@ export default function EvaluationDetailPage({
                 <button
                   onClick={handleRefine}
                   disabled={isRefining || !feedback.trim()}
-                  className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-[52px] flex items-center gap-2 whitespace-nowrap transition-all"
+                  className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-13 flex items-center gap-2 whitespace-nowrap transition-all"
                 >
                   {isRefining ? (
                     <>
@@ -1258,7 +1263,7 @@ export default function EvaluationDetailPage({
                   )}
                   <div className="flex gap-3 items-end">
                     <textarea
-                      className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[160px] transition-colors"
+                      className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-13 max-h-40 transition-colors"
                       placeholder={t.coachingNotesPlaceholder}
                       value={coachingNotes}
                       onChange={(e) => setCoachingNotes(e.target.value)}
@@ -1269,7 +1274,7 @@ export default function EvaluationDetailPage({
                     <button
                       onClick={() => handleCoachingSave(true)}
                       disabled={coachingSaving || !coachingNotes.trim()}
-                      className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-[52px] flex items-center gap-2 whitespace-nowrap transition-all"
+                      className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-13 flex items-center gap-2 whitespace-nowrap transition-all"
                     >
                       {coachingSaving ? (
                         <>
@@ -1317,7 +1322,7 @@ export default function EvaluationDetailPage({
               {afModalMode === "edit" ? (
                 <div className="flex gap-3 items-end">
                   <textarea
-                    className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[160px] transition-colors"
+                    className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-13 max-h-40 transition-colors"
                     placeholder={t.afPlaceholder}
                     value={afText}
                     onChange={(e) => setAfText(e.target.value)}
@@ -1328,7 +1333,7 @@ export default function EvaluationDetailPage({
                   <button
                     onClick={handleAgentFeedbackSave}
                     disabled={afSaving || !afText.trim()}
-                    className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-[52px] flex items-center gap-2 whitespace-nowrap transition-all"
+                    className="bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-3 rounded-xl font-semibold text-sm h-13 flex items-center gap-2 whitespace-nowrap transition-all"
                   >
                     {afSaving ? t.afSaving : t.afSave}
                   </button>
@@ -1361,7 +1366,7 @@ export default function EvaluationDetailPage({
               {objModalMode === "edit" ? (
                 <div className="flex gap-3 items-end">
                   <textarea
-                    className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[160px] transition-colors"
+                    className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-13 max-h-40 transition-colors"
                     placeholder={t.objPlaceholder}
                     value={objText}
                     onChange={(e) => setObjText(e.target.value)}
@@ -1372,7 +1377,7 @@ export default function EvaluationDetailPage({
                   <button
                     onClick={handleObjectionSave}
                     disabled={objSaving || !objText.trim()}
-                    className="bg-amber-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-black px-5 py-3 rounded-xl font-semibold text-sm h-[52px] flex items-center gap-2 whitespace-nowrap transition-all"
+                    className="bg-amber-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-black px-5 py-3 rounded-xl font-semibold text-sm h-13 flex items-center gap-2 whitespace-nowrap transition-all"
                   >
                     {objSaving ? t.objSending : t.objSend}
                   </button>
@@ -1406,7 +1411,7 @@ export default function EvaluationDetailPage({
                 exit={{ opacity: 0, scale: 0.96 }}
                 transition={{ type: "spring", damping: 28, stiffness: 320 }}
               >
-                <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant flex-shrink-0">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant shrink-0">
                   <div className="text-sm font-bold text-on-surface">
                     {readMore === "report" ? t.reportTitle : t.transcript}
                   </div>
