@@ -72,16 +72,21 @@ export async function GET(req: NextRequest) {
 
     const names = new Map(users.map((u) => [u.id, u.name]));
 
-    // Alt-5 seçicisi yalnızca gerçek, aktif danışmanları göstermeli. Fireflies
+    // Alt-5 seçicisi yalnızca gerçek danışmanları göstermeli. Fireflies
     // senkronizasyonu, konuşmacısı eşleşmeyen çağrılar için "Atanmamış" adlı
     // AGENT rolünde kalıcı bir yer tutucu hesap açıyor (bkz.
     // app/api/calls/sync-fireflies/route.ts) — rolü gerçekten AGENT olduğu için
     // rol filtresi tek başına elemiyor, e-posta ile ayrıca dışlanıyor.
-    // isActive filtresi app/api/users/route.ts'in konvansiyonunu izler.
-    const eligibleUsers = users.filter(
-      (u) => u.role === "AGENT" && u.isActive && u.email !== UNASSIGNED_AGENT_EMAIL
+    //
+    // Pasif hesaplar BİLEREK dışlanmıyor: ayrıldığı ay hâlâ ekipteydi ve o ayın
+    // en düşük 5'ine girmesi gerekebilir. Sonraki aylarda listede seçili kalsa
+    // bile o ayda çağrısı olmadığı için bottomSellersValue onu ortalamaya
+    // katmıyor (bkz. app/lib/okr.test.ts "işten ayrılan danışman").
+    const eligible = new Set(
+      users.filter((u) => u.role === "AGENT" && u.email !== UNASSIGNED_AGENT_EMAIL).map((u) => u.id)
     );
-    const eligible = new Set(eligibleUsers.map((u) => u.id));
+    const inactiveIds = users.filter((u) => !u.isActive).map((u) => u.id);
+    const isInactive = new Set(inactiveIds);
 
     // Çağrı tipi alt-5'i de etkiler; danışman filtresi etkilemez.
     const scopedByCallType = filterEvaluations(evaluations, { callType, agentIds: [] });
@@ -119,19 +124,21 @@ export async function GET(req: NextRequest) {
       // Danışman filtresinin listesi seçili aydan/filtreden bağımsız olmalı,
       // yoksa filtrelenen kişi listeden düşüp geri alınamaz hale gelir.
       // Alt-5 seçicisinden (eligible) bilerek ayrı: burada sayılan kümenin
-      // TAMAMI listelenir (TEAM_LEADER'lar, "Atanmamış" ve PASİF hesaplar
+      // TAMAMI listelenir (TEAM_LEADER'lar, "Atanmamış" ve pasif hesaplar
       // dahil), aksi halde listedeki herkesi seçmek "filtre yok" ile aynı
       // sonucu vermezdi. Pasif hesapların değerlendirmeleri toplamlara dahil
       // — çağrılar gerçekten yapıldı ve Raporlarım da onları sayıyor; kişi
       // sonradan pasifleşince geçmiş ayın OKR rakamı değişmesin diye.
       filterAgents: users
         .filter((u) => (REPORTABLE_ROLES as readonly string[]).includes(u.role))
-        .map((u) => ({ id: u.id, name: u.name, isActive: u.isActive }))
-        .sort((a, b) =>
-          a.isActive === b.isActive
-            ? a.name.localeCompare(b.name, "tr")
-            : Number(b.isActive) - Number(a.isActive)
-        ),
+        .map((u) => ({ id: u.id, name: u.name }))
+        .sort((a, b) => {
+          const aOut = isInactive.has(a.id), bOut = isInactive.has(b.id);
+          return aOut === bOut ? a.name.localeCompare(b.name, "tr") : Number(aOut) - Number(bOut);
+        }),
+      // Arayüz pasif kişileri "(pasif)" diye etiketleyebilsin diye tek liste:
+      // hem filtre hem alt-5 seçicisi hem kayıtlı seçim satırları kullanıyor.
+      inactiveIds,
     });
   } catch (e) {
     console.error("[GET /api/okr]", e);

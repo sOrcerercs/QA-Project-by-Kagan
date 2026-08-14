@@ -24,7 +24,8 @@ interface OkrData {
   };
   pendingCount: number;
   agents: AgentAverage[];
-  filterAgents: { id: string; name: string; isActive: boolean }[];
+  filterAgents: { id: string; name: string }[];
+  inactiveIds: string[];
 }
 
 interface Filters { month: string; callType: OkrCallType; agentIds: string[] }
@@ -233,6 +234,12 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
     okrStatus(data.premium.value, OKR_TARGETS.premium),
   ].filter((s) => s === "TAMAMLANDI").length + 1; // +1 = otomasyon (sabit tamamlandı)
 
+  // Pasif hesaplar hem filtrede hem alt-5 seçicisinde duruyor (ayrıldığı ay
+  // hâlâ ekipteydi); etiket olmadan kimin ayrıldığı görünmez.
+  const inactiveSet = new Set(data.inactiveIds);
+  const nameOf = (id: string, name: string) =>
+    inactiveSet.has(id) ? `${name} ${lang === "tr" ? "(pasif)" : "(inactive)"}` : name;
+
   const rateDetail = (r: RateResult) => {
     const parts = [`${r.presented}/${r.presented + r.notPresented} ${lang === "tr" ? "çağrı" : "calls"}`];
     if (r.na > 0) parts.push(`${r.na} N/A`);
@@ -278,12 +285,7 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
             ))}
           </select>
           <ConsultantMultiSelect
-            agents={data.filterAgents.map((a) => ({
-              id: a.id,
-              // Pasif hesaplar listede: değerlendirmeleri toplamlara dahil,
-              // etiket olmadan neden orada olduğu anlaşılmaz.
-              name: a.isActive ? a.name : `${a.name} ${lang === "tr" ? "(pasif)" : "(inactive)"}`,
-            }))}
+            agents={data.filterAgents.map((a) => ({ id: a.id, name: nameOf(a.id, a.name) }))}
             selectedIds={filterIds}
             onChange={(ids) => { setFilterIds(ids); load({ agentIds: ids }); }}
             lang={lang}
@@ -416,7 +418,7 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
 
         {data.bottomSellers.selected.map((s) => (
           <div key={s.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid var(--rule)", fontSize: 13 }}>
-            <span style={{ color: "var(--fg)" }}>{s.name}</span>
+            <span style={{ color: "var(--fg)" }}>{nameOf(s.id, s.name)}</span>
             <span style={{ color: s.avgScore === null ? "var(--fg-faint)" : "var(--fg-dim)" }}>
               {s.avgScore === null
                 ? (lang === "tr" ? "veri yok — ortalamaya katılmadı" : "no data — excluded from average")
@@ -430,7 +432,7 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
           {editing ? (
             <>
               <ConsultantMultiSelect
-                agents={data.agents.map((a) => ({ id: a.id, name: a.name }))}
+                agents={data.agents.map((a) => ({ id: a.id, name: nameOf(a.id, a.name) }))}
                 selectedIds={draftIds}
                 onChange={(ids) => setDraftIds(ids.slice(0, MAX_SELLERS))}
                 lang={lang}

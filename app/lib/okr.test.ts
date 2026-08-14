@@ -333,3 +333,22 @@ describe("averageOfValues", () => {
     expect(averageOfValues([null, null])).toBeNull();
   });
 });
+
+// İş kuralı (2026-08-14): işten ayrılan danışman bir sonraki ayın alt-5
+// listesinde seçili kalsa bile o ayın değerine etki etmemeli. Önceki aydan
+// devralınan seçim bu duruma doğrudan yol açıyor.
+describe("bottomSellersValue — işten ayrılan danışman", () => {
+  it("ayrıldıktan sonraki ayda seçili kalsa bile değere etki etmez", () => {
+    const calisanlar = [
+      { id: "a", name: "A", avgScore: 90, callCount: 10 },
+      { id: "b", name: "B", avgScore: 80, callCount: 8 },
+      { id: "c", name: "C", avgScore: 70, callCount: 5 },
+      { id: "d", name: "D", avgScore: 60, callCount: 3 },
+    ];
+    // Ayrılan kişi: o ay hiç çağrısı yok, düşük skoru ortalamayı çekmemeli.
+    const ayrilan = { id: "e", name: "Ayrılan", avgScore: null, callCount: 0 };
+
+    expect(bottomSellersValue([...calisanlar, ayrilan])).toBe(bottomSellersValue(calisanlar));
+    expect(bottomSellersValue([...calisanlar, ayrilan])).toBe(75); // 4 kişiye bölünür, 5'e değil
+  });
+});
