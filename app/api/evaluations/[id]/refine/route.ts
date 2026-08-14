@@ -129,6 +129,10 @@ ${evaluation.transcript}`;
       },
     });
 
+    // Rapor değişti → upsell sınıflandırması bayatladı. Satırı sil; kayıt
+    // "bekleyen" havuzuna döner ve güncel raporla yeniden sınıflandırılır.
+    await prisma.evaluationUpsell.deleteMany({ where: { evaluationId: id } });
+
     return NextResponse.json({ report: updated.report, score: updated.score });
   } catch (error: any) {
     console.error("Refine route error:", error.message);

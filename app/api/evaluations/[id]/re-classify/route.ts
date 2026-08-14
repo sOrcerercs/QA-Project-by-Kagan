@@ -129,6 +129,11 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
       },
     });
 
+    // Rapor ve/veya çağrı tipi değişti → upsell sınıflandırması geçersiz.
+    // Tip FIRST_CALL olduysa satır bir daha oluşturulmaz (sadece SECOND_CALL
+    // sınıflandırılır); SECOND_CALL kaldıysa yeniden sınıflandırılır.
+    await prisma.evaluationUpsell.deleteMany({ where: { evaluationId: id } });
+
     return NextResponse.json({
       report: updated.report,
       score: updated.score,
