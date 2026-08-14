@@ -21,6 +21,8 @@ import CoachingTrackingView from "@/app/components/shared/CoachingTrackingView";
 import SearchView from "@/app/components/shared/SearchView";
 import PromptsView from "@/app/components/shared/PromptsView";
 import KnownIssuesView from "./shared/KnownIssuesView";
+import OkrView from "@/app/components/shared/OkrView";
+import { canViewOkr } from "@/app/lib/okrPermissions";
 
 /* ── Theme tokens ── */
 const DARK_THEME = {
@@ -55,6 +57,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     comparison: "Karşılaştırma",
     qaReport: "QA Raporu",
     knownIssues: "Bilinen Sorunlar",
+    okr: "OKR Hedeflerim",
   },
   en: {
     home: "Home", evaluations: "Evaluations", scores: "My Scores",
@@ -72,6 +75,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     comparison: "Comparison",
     qaReport: "QA Report",
     knownIssues: "Known Issues",
+    okr: "My OKRs",
   },
 };
 
@@ -107,6 +111,7 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
     case "compare": return <svg {...p}><path d="M7 16V4M7 4L3 8M7 4l4 4M17 8v12M17 20l4-4M17 20l-4-4"/></svg>;
     case "inbox": return <svg {...p}><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>;
     case "sync": return <svg {...p}><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>;
+    case "target": return <svg {...p}><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>;
     case "trophy": return <svg {...p}><path d="M6 9H4a2 2 0 01-2-2V5a2 2 0 012-2h2M18 9h2a2 2 0 002-2V5a2 2 0 00-2-2h-2M6 2h12v7a6 6 0 11-12 0V2zM12 15v7M8 22h8"/></svg>;
     default: return null;
   }
@@ -639,6 +644,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   const mainNavItems: { key: string; icon: string }[] = [
     { key: "home", icon: "home" },
   ];
+  if (canViewOkr(user.email)) mainNavItems.push({ key: "okr", icon: "target" });
   mainNavItems.push({ key: "evaluations", icon: "list" });
   mainNavItems.push({ key: "reports", icon: "doc" });
   mainNavItems.push({ key: "comparison", icon: "compare" });
@@ -1328,6 +1334,21 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                 <div className={styles.card}>
                   <ComparisonReportView userRole={user.role} lang={lang} />
                 </div>
+              </div>
+            )}
+
+            {/* ── OKR ── */}
+            {activeTab === "okr" && canViewOkr(user.email) && (
+              <div className={styles.page}>
+                <div className={styles.pageHd}>
+                  <h1 className={styles.pageH1}>{navLabels.okr}</h1>
+                  <p className={styles.pageSub}>
+                    {lang === "tr"
+                      ? "Aylık OKR hedeflerinin otomatik hesaplanan ilerlemesi"
+                      : "Automatically computed monthly progress on OKR targets"}
+                  </p>
+                </div>
+                <OkrView lang={lang} />
               </div>
             )}
 
