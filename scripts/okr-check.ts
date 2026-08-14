@@ -6,7 +6,16 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 config({ path: ".env" });
 
-import prisma from "../app/lib/prisma";
+import { PrismaClient } from "../app/generated/prisma";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+// DİKKAT: `import prisma from "../app/lib/prisma"` KULLANILMAZ. Import'lar
+// hoist edildiği için o modülün gövdesi yukarıdaki config() çağrılarından
+// ÖNCE çalışır; DATABASE_URL henüz okunmamış olur ve adapter localhost'a
+// bağlanmaya çalışıp ECONNREFUSED verir. Bunun yerine client script içinde,
+// config()'ten sonra kurulur. Bkz. scripts/seed-prompts.ts
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
   const [upsellCount, sellerCount, secondCall, pending] = await Promise.all([
