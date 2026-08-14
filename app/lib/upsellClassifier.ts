@@ -58,9 +58,19 @@ export async function classifyWithFallback(
   const out = new Map<number, UpsellVerdict>();
 
   const run = async (chunk: UpsellBatchItem[], nextSize: number | null): Promise<void> => {
-    const verdicts = await classifyBatch(chunk);
+    // parseBatchResponse, dönen indekslerin tam olarak {1..chunk.length} olmasını
+    // şart koşuyor. Bu yüzden her parça modele YEREL olarak 1'den yeniden
+    // numaralandırılıp gönderilir, dönen verdict'ler çağıranın orijinal
+    // indeksine geri çevrilir. Aksi halde ilk dilim dışındaki her parça
+    // (ör. i=11..20 ama expected=10) doğrulamayı geçemez ve kademeli düşürme
+    // tam da devreye girmesi gereken anda işlevsiz kalır.
+    const local = chunk.map((it, idx) => ({ i: idx + 1, line: it.line }));
+    const verdicts = await classifyBatch(local);
     if (verdicts) {
-      for (const v of verdicts) out.set(v.i, v);
+      for (const v of verdicts) {
+        const original = chunk[v.i - 1];
+        if (original) out.set(original.i, { ...v, i: original.i });
+      }
       return;
     }
     if (nextSize === null || chunk.length <= 1) {
