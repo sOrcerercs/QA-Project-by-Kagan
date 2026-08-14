@@ -150,6 +150,9 @@ model Evaluation {
   agentFeedbackAt  DateTime?
   objectionText    String?
   objectionAt      DateTime?
+
+  // OKR göstergeleri
+  evaluationUpsell EvaluationUpsell?
 }
 
 model SyncLog {
@@ -226,4 +229,25 @@ model KnownIssue {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   createdById String?
+}
+
+model EvaluationUpsell {
+  id           String     @id @default(cuid())
+  evaluationId String     @unique
+  evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  stemCell     String                        // SUNULDU | SUNULMADI | NA | BILINMIYOR
+  premium      String                        // SUNULDU | SUNULMADI | NA | BILINMIYOR
+  source       String     @default("AI")     // AI | MANUAL
+  model        String?
+  classifiedAt DateTime   @default(now())
+}
+
+model OkrBottomSeller {
+  id        String   @id @default(cuid())
+  month     String                           // "YYYY-MM"
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([month, userId])
+  @@index([month])
 }
