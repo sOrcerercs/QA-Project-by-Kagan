@@ -4,15 +4,14 @@ import { getUserFromToken } from "@/app/lib/auth";
 import { canViewOkr } from "@/app/lib/okrPermissions";
 import { REPORTABLE_ROLES } from "@/app/lib/reportScope";
 import {
+  FIRST_DATA_MONTH,
   resolveRange, currentMonth, previousMonth, monthsBetween,
   averageScore, upsellRate, agentAverages, bottomSellersValue,
-  groupByTrMonth, averageOfValues, parseCallType, parseAgentIds, filterEvaluations,
+  groupByTrMonth, averageOfValues, parseCallType, parseAgentIds, filterEvaluations, upsellGaps,
   ALL_MONTHS,
   type AgentAverage,
 } from "@/app/lib/okr";
 import type { UpsellStatus } from "@/app/lib/upsellClassify";
-
-const FIRST_DATA_MONTH = "2026-05"; // sistemdeki en eski değerlendirme: 2026-05-18
 
 // app/api/calls/sync-fireflies/route.ts içindeki UNASSIGNED_EMAIL ile aynı olmalı.
 const UNASSIGNED_AGENT_EMAIL = "unassigned@estenove.local";
@@ -118,6 +117,10 @@ export async function GET(req: NextRequest) {
       quality: { value: averageScore(qualityRows), count: qualityRows.length },
       stemCell: upsellRate(typedUpsell, "stemCell"),
       premium: upsellRate(typedUpsell, "premium"),
+      // Eksik listesinin başlık sayısı. Satırların kendisi GET /api/okr/gaps'ten
+      // panel açılınca geliyor: rapor metinleri ortalama 10 KB, tüm aylarda
+      // 5,7 MB — kapalı panel için her açılışta taşınmamalı.
+      gapCount: upsellGaps(typedUpsell, "ALL").length,
       bottomSellers,
       pendingCount,
       agents,

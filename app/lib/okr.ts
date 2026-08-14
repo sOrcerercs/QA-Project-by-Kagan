@@ -37,6 +37,9 @@ export function monthRange(month: string): { start: Date; end: Date } {
 /** Ay seçicisinde "tüm aylar" için kullanılan özel değer. */
 export const ALL_MONTHS = "ALL";
 
+/** Sistemdeki en eski değerlendirme: 2026-05-18. Ay listesinin alt sınırı. */
+export const FIRST_DATA_MONTH = "2026-05";
+
 /**
  * Tek ay ya da ALL için tarih aralığı. ALL, ilk veri ayının başından son ayın
  * sonuna kadar tek bir aralığa iner — kümülatif değerler böylece havuzlanmış
@@ -182,6 +185,31 @@ export function upsellRate(
     value: denom === 0 ? null : round2((presented / denom) * 100),
     presented, notPresented, na, unknown, perfectScoreOverrides,
   };
+}
+
+/** Eksiklik listesinde hangi pakete odaklanıldığı. */
+export type UpsellFocus = "ALL" | "stemCell" | "premium";
+
+/**
+ * Tanıtımın yapılmadığı çağrılar: yalnızca SUNULMADI eksiklik sayılır.
+ * NA (görüşme fiyata gelmemiş) ve BILINMIYOR (rapor satırı yok) eksiklik
+ * değil — zaten upsellRate'te de paydadan düşüyorlar.
+ *
+ * Skoru PERFECT_SCORE olanlar listeye girmez: upsellRate onları "sunuldu"
+ * sayıyor, listede "eksik" diye görünmeleri kartla çelişirdi.
+ *
+ * Hem sunucuda (tüm eksikler) hem arayüzde (paket odağı) aynı fonksiyon
+ * kullanılıyor ki iki taraf ayrışmasın.
+ */
+export function upsellGaps<T extends { stemCell: UpsellStatus; premium: UpsellStatus; score: number }>(
+  rows: T[],
+  focus: UpsellFocus
+): T[] {
+  return rows.filter((r) => {
+    if (r.score >= PERFECT_SCORE) return false;
+    if (focus === "ALL") return r.stemCell === "SUNULMADI" || r.premium === "SUNULMADI";
+    return r[focus] === "SUNULMADI";
+  });
 }
 
 export interface AgentAverage {

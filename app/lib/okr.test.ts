@@ -18,7 +18,9 @@ import {
   resolveRange,
   groupByTrMonth,
   averageOfValues,
+  upsellGaps,
 } from "./okr";
+import type { UpsellStatus } from "./upsellClassify";
 
 describe("monthRange", () => {
   it("ayı Türkiye saatiyle (UTC+3) keser", () => {
@@ -350,5 +352,59 @@ describe("bottomSellersValue — işten ayrılan danışman", () => {
 
     expect(bottomSellersValue([...calisanlar, ayrilan])).toBe(bottomSellersValue(calisanlar));
     expect(bottomSellersValue([...calisanlar, ayrilan])).toBe(75); // 4 kişiye bölünür, 5'e değil
+  });
+});
+
+describe("upsellGaps", () => {
+  const row = (over: Partial<{ id: string; stemCell: string; premium: string; score: number }>) => ({
+    id: "x", stemCell: "SUNULDU", premium: "SUNULDU", score: 80, ...over,
+  }) as { id: string; stemCell: UpsellStatus; premium: UpsellStatus; score: number };
+
+  it("yalnızca Stem Cell sunulmayan çağrıyı listeler", () => {
+    const out = upsellGaps([row({ id: "a", stemCell: "SUNULMADI" })], "ALL");
+    expect(out.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("yalnızca Premium sunulmayan çağrıyı listeler", () => {
+    const out = upsellGaps([row({ id: "b", premium: "SUNULMADI" })], "ALL");
+    expect(out.map((r) => r.id)).toEqual(["b"]);
+  });
+
+  it("ikisi de sunulmuşsa listelemez", () => {
+    expect(upsellGaps([row({})], "ALL")).toEqual([]);
+  });
+
+  it("NA ve BILINMIYOR eksiklik sayılmaz", () => {
+    const rows = [row({ id: "na", stemCell: "NA", premium: "NA" }), row({ id: "bil", stemCell: "BILINMIYOR", premium: "BILINMIYOR" })];
+    expect(upsellGaps(rows, "ALL")).toEqual([]);
+  });
+
+  it("skoru 100 olanı listelemez — kusursuz puan kuralı sunuldu sayıyor", () => {
+    const out = upsellGaps([row({ id: "perfect", stemCell: "SUNULMADI", premium: "SUNULMADI", score: PERFECT_SCORE })], "ALL");
+    expect(out).toEqual([]);
+  });
+
+  it("skoru 99 olanı listeler", () => {
+    const out = upsellGaps([row({ id: "c", premium: "SUNULMADI", score: 99 })], "ALL");
+    expect(out.map((r) => r.id)).toEqual(["c"]);
+  });
+
+  it("odak stemCell ise yalnızca Stem Cell eksiklerini döner", () => {
+    const rows = [
+      row({ id: "stem", stemCell: "SUNULMADI" }),
+      row({ id: "prem", premium: "SUNULMADI" }),
+      row({ id: "iki", stemCell: "SUNULMADI", premium: "SUNULMADI" }),
+    ];
+    expect(upsellGaps(rows, "stemCell").map((r) => r.id)).toEqual(["stem", "iki"]);
+    expect(upsellGaps(rows, "premium").map((r) => r.id)).toEqual(["prem", "iki"]);
+  });
+
+  it("giriş sırasını korur", () => {
+    const rows = [row({ id: "1", premium: "SUNULMADI" }), row({ id: "2", premium: "SUNULMADI" })];
+    expect(upsellGaps(rows, "ALL").map((r) => r.id)).toEqual(["1", "2"]);
+  });
+
+  it("boş girdide boş dizi döner", () => {
+    expect(upsellGaps([], "ALL")).toEqual([]);
   });
 });

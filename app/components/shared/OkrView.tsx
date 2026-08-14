@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect";
-import { OKR_TARGETS, okrStatus, ALL_MONTHS, type OkrStatus, type OkrCallType } from "@/app/lib/okr";
+import {
+  OKR_TARGETS, okrStatus, upsellGaps, ALL_MONTHS,
+  type OkrStatus, type OkrCallType, type UpsellFocus,
+} from "@/app/lib/okr";
+import type { UpsellStatus } from "@/app/lib/upsellClassify";
 
 interface AgentAverage { id: string; name: string; avgScore: number | null; callCount: number }
 interface RateResult { value: number | null; presented: number; notPresented: number; na: number; unknown: number; perfectScoreOverrides: number }
@@ -22,13 +26,38 @@ interface OkrData {
     selected: AgentAverage[];
     monthly: { month: string; value: number | null }[];
   };
+  gapCount: number;
   pendingCount: number;
   agents: AgentAverage[];
   filterAgents: { id: string; name: string }[];
   inactiveIds: string[];
 }
 
+interface GapRow {
+  evaluationId: string;
+  callDate: string;
+  agentName: string;
+  customerName: string;
+  score: number;
+  stemCell: UpsellStatus;
+  premium: UpsellStatus;
+  reportLine: string | null;
+}
+
 interface Filters { month: string; callType: OkrCallType; agentIds: string[] }
+
+const FOCUS_OPTIONS: { value: UpsellFocus; tr: string; en: string }[] = [
+  { value: "ALL", tr: "Tümü", en: "All" },
+  { value: "stemCell", tr: "Stem Cell eksik", en: "Stem Cell missing" },
+  { value: "premium", tr: "Premium eksik", en: "Premium missing" },
+];
+
+function dayLabel(iso: string, lang: "tr" | "en"): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString(lang === "tr" ? "tr-TR" : "en-GB", {
+    day: "numeric", month: "short", timeZone: "Europe/Istanbul",
+  });
+}
 
 const MAX_SELLERS = 5;
 
@@ -114,6 +143,11 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
   const [editing, setEditing] = useState(false);
   const [draftIds, setDraftIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [gapsOpen, setGapsOpen] = useState(false);
+  const [gaps, setGaps] = useState<GapRow[] | null>(null);
+  const [gapsLoading, setGapsLoading] = useState(false);
+  const [gapsError, setGapsError] = useState("");
+  const [focus, setFocus] = useState<UpsellFocus>("ALL");
 
   // Yarış koruması: yalnızca en son isteğin yanıtı state'e yazılır.
   const reqIdRef = useRef(0);
@@ -127,6 +161,35 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
   // load'un state'e bağımlı olmaması için seçili filtreler ref'te tutulur;
   // çağıran yalnızca değişen alanı geçer.
   const filtersRef = useRef<Filters>({ month: "", callType: "ALL", agentIds: [] });
+
+  // Eksik listesi: panel açıkken filtre değişirse yenilenmeli, kapalıyken
+  // istek atılmamalı (rapor metinleri ağır).
+  const gapsOpenRef = useRef(false);
+  const gapsReqRef = useRef(0);
+
+  const loadGaps = useCallback(() => {
+    const f = filtersRef.current;
+    const reqId = ++gapsReqRef.current;
+    setGapsLoading(true);
+    setGapsError("");
+    const params = new URLSearchParams();
+    if (f.month) params.set("month", f.month);
+    if (f.agentIds.length > 0) params.set("agentIds", f.agentIds.join(","));
+    const qs = params.toString();
+    fetch(`/api/okr/gaps${qs ? `?${qs}` : ""}`)
+      .then((r) => (r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.error)))))
+      .then((d: { rows: GapRow[] }) => {
+        if (reqId !== gapsReqRef.current) return;
+        setGaps(d.rows);
+      })
+      .catch((e) => {
+        if (reqId !== gapsReqRef.current) return;
+        setGapsError(e.message || (langRef.current === "tr" ? "Liste yüklenemedi." : "Failed to load list."));
+      })
+      .finally(() => {
+        if (reqId === gapsReqRef.current) setGapsLoading(false);
+      });
+  }, []);
 
   const load = useCallback((next: Partial<Filters>) => {
     const f = { ...filtersRef.current, ...next };
@@ -151,6 +214,10 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
         setDraftIds(d.bottomSellers.selected.map((s) => s.id));
         // Tüm Aylar'da alt-5 listesi düzenlenemez (ayın listesi yok).
         if (d.isAll) setEditing(false);
+        // Filtre değişti: eldeki eksik listesi artık geçersiz.
+        setGaps(null);
+        setGapsError("");
+        if (gapsOpenRef.current) loadGaps();
       })
       .catch((e) => {
         if (reqId !== reqIdRef.current) return;
@@ -168,7 +235,7 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
       .finally(() => {
         if (reqId === reqIdRef.current) setLoading(false);
       });
-  }, []);
+  }, [loadGaps]);
 
   useEffect(() => { load({}); }, [load]);
 
@@ -358,6 +425,95 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
             ✅ {lang === "tr" ? "Tamamlandı" : "Complete"}
           </div>
         </div>
+      </div>
+
+      {/* Tanıtım yapılmayan çağrılar — varsayılan kapalı, satırlar açılınca yüklenir */}
+      <div style={card}>
+        <button
+          onClick={() => {
+            const next = !gapsOpen;
+            setGapsOpen(next);
+            gapsOpenRef.current = next;
+            if (next && gaps === null && !gapsLoading) loadGaps();
+          }}
+          style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "transparent", border: "none", padding: 0, color: "var(--fg-dim)", fontSize: 13, fontFamily: "inherit", cursor: "pointer", textAlign: "left" }}
+        >
+          <span style={{ fontSize: 10, color: "var(--fg-faint)" }}>{gapsOpen ? "▼" : "▶"}</span>
+          <span>
+            {lang === "tr" ? "Tanıtım yapılmayan çağrılar" : "Calls without a pitch"}
+            {" "}
+            <span style={{ color: "var(--fg-faint)" }}>({data.gapCount})</span>
+          </span>
+        </button>
+
+        {gapsOpen && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <select value={focus} onChange={(e) => setFocus(e.target.value as UpsellFocus)} style={selectStyle}>
+                {FOCUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{lang === "tr" ? o.tr : o.en}</option>
+                ))}
+              </select>
+              {gaps && (
+                <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>
+                  {upsellGaps(gaps, focus).length} {lang === "tr" ? "çağrı" : "calls"}
+                </span>
+              )}
+            </div>
+
+            {gapsLoading && (
+              <div style={{ fontSize: 13, color: "var(--fg-dim)" }}>
+                {lang === "tr" ? "Yükleniyor..." : "Loading..."}
+              </div>
+            )}
+            {gapsError && <div style={{ fontSize: 13, color: "#ef4444" }}>{gapsError}</div>}
+
+            {gaps && upsellGaps(gaps, focus).length === 0 && !gapsLoading && (
+              <div style={{ fontSize: 13, color: "var(--fg-faint)" }}>
+                {lang === "tr" ? "Bu filtrede eksik tanıtım yok." : "No missing pitches for this filter."}
+              </div>
+            )}
+
+            {gaps && (
+              <div style={{ maxHeight: 440, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+                {upsellGaps(gaps, focus).map((r) => (
+                  <div
+                    key={r.evaluationId}
+                    style={{ padding: "8px 0", borderBottom: "1px solid var(--rule)", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}
+                  >
+                    <div style={{ minWidth: 240, flex: 1 }}>
+                      <div style={{ fontSize: 13, color: "var(--fg)" }}>
+                        {dayLabel(r.callDate, lang)} · {r.agentName} · {r.customerName}
+                        <span style={{ color: "var(--fg-faint)" }}> · {r.score}</span>
+                      </div>
+                      {r.reportLine && (
+                        <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 3, fontStyle: "italic" }}>
+                          “{r.reportLine}”
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, whiteSpace: "nowrap" }}>
+                      <span style={{ color: r.stemCell === "SUNULMADI" ? "#ef4444" : "var(--fg-faint)" }}>
+                        Stem Cell: {r.stemCell}
+                      </span>
+                      <span style={{ color: r.premium === "SUNULMADI" ? "#ef4444" : "var(--fg-faint)" }}>
+                        Premium: {r.premium}
+                      </span>
+                      <a
+                        href={`/evaluation/${r.evaluationId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: "var(--accent)", textDecoration: "none" }}
+                      >
+                        {lang === "tr" ? "Çağrıyı aç ↗" : "Open call ↗"}
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* En düşük 5 satışçı */}
