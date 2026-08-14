@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect";
 import { OKR_TARGETS, okrStatus, type OkrStatus } from "@/app/lib/okr";
 
@@ -84,20 +84,40 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
   const [draftIds, setDraftIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // Yarış koruması: yalnızca en son isteğin yanıtı state'e yazılır.
+  const reqIdRef = useRef(0);
+  // Hata durumunda ay seçicisini ekrandaki veriye geri almak için.
+  const dataRef = useRef<OkrData | null>(null);
+  // load'un lang'a bağımlı olmaması için: bağımlılık olsaydı dil değişimi
+  // mount effect'ini yeniden tetikleyip seçili ayı sıfırlardı.
+  const langRef = useRef(lang);
+  langRef.current = lang;
+
   const load = useCallback((m: string) => {
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     setError("");
     const qs = m ? `?month=${m}` : "";
     fetch(`/api/okr${qs}`)
       .then((r) => (r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.error)))))
       .then((d: OkrData) => {
+        // Eskimiş istek: kullanıcı bu arada başka bir ay seçtiyse yanıtı yok say.
+        if (reqId !== reqIdRef.current) return;
+        dataRef.current = d;
         setData(d);
         setMonth(d.month);
         setDraftIds(d.bottomSellers.selected.map((s) => s.id));
       })
-      .catch((e) => setError(e.message || (lang === "tr" ? "Yüklenemedi." : "Failed to load.")))
-      .finally(() => setLoading(false));
-  }, [lang]);
+      .catch((e) => {
+        if (reqId !== reqIdRef.current) return;
+        setError(e.message || (langRef.current === "tr" ? "Yüklenemedi." : "Failed to load."));
+        // Seçici ile ekrandaki veri ayrışmasın: başarısız ay seçimini geri al.
+        setMonth(dataRef.current?.month ?? "");
+      })
+      .finally(() => {
+        if (reqId === reqIdRef.current) setLoading(false);
+      });
+  }, []);
 
   useEffect(() => { load(""); }, [load]);
 
