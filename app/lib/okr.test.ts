@@ -11,6 +11,13 @@ import {
   okrStatus,
   OKR_TARGETS,
   PERFECT_SCORE,
+  ALL_MONTHS,
+  parseCallType,
+  parseAgentIds,
+  filterEvaluations,
+  resolveRange,
+  groupByTrMonth,
+  averageOfValues,
 } from "./okr";
 
 describe("monthRange", () => {
@@ -206,5 +213,123 @@ describe("okrStatus", () => {
 
   it("değer yoksa VERI_YOK", () => {
     expect(okrStatus(null, 95)).toBe("VERI_YOK");
+  });
+});
+
+describe("parseCallType", () => {
+  it("boş veya null parametreyi ALL sayar", () => {
+    expect(parseCallType(null)).toBe("ALL");
+    expect(parseCallType("")).toBe("ALL");
+    expect(parseCallType(undefined)).toBe("ALL");
+  });
+
+  it("geçerli değerleri aynen döner", () => {
+    expect(parseCallType("ALL")).toBe("ALL");
+    expect(parseCallType("FIRST_CALL")).toBe("FIRST_CALL");
+    expect(parseCallType("SECOND_CALL")).toBe("SECOND_CALL");
+  });
+
+  it("geçersiz değerde hata fırlatır", () => {
+    expect(() => parseCallType("THIRD_CALL")).toThrow();
+    expect(() => parseCallType("first_call")).toThrow();
+  });
+});
+
+describe("parseAgentIds", () => {
+  it("virgülle ayrılmış id'leri ayırır ve boşlukları kırpar", () => {
+    expect(parseAgentIds(" a , b ")).toEqual(["a", "b"]);
+  });
+
+  it("boş parçaları atar", () => {
+    expect(parseAgentIds("a,,b,")).toEqual(["a", "b"]);
+  });
+
+  it("tekrar eden id'yi bir kez döner", () => {
+    expect(parseAgentIds("a,b,a")).toEqual(["a", "b"]);
+  });
+
+  it("boş girdide boş dizi döner", () => {
+    expect(parseAgentIds(null)).toEqual([]);
+    expect(parseAgentIds("")).toEqual([]);
+    expect(parseAgentIds("  ,  ")).toEqual([]);
+  });
+});
+
+describe("filterEvaluations", () => {
+  const rows = [
+    { agentId: "a", score: 80, callType: "FIRST_CALL" },
+    { agentId: "a", score: 90, callType: "SECOND_CALL" },
+    { agentId: "b", score: 70, callType: "FIRST_CALL" },
+  ];
+
+  it("filtre yoksa hepsini döner", () => {
+    expect(filterEvaluations(rows, { callType: "ALL", agentIds: [] })).toHaveLength(3);
+  });
+
+  it("çağrı tipine göre süzer", () => {
+    const out = filterEvaluations(rows, { callType: "FIRST_CALL", agentIds: [] });
+    expect(out.map((r) => r.score)).toEqual([80, 70]);
+  });
+
+  it("danışmana göre süzer", () => {
+    const out = filterEvaluations(rows, { callType: "ALL", agentIds: ["b"] });
+    expect(out.map((r) => r.score)).toEqual([70]);
+  });
+
+  it("iki filtreyi birlikte uygular", () => {
+    const out = filterEvaluations(rows, { callType: "SECOND_CALL", agentIds: ["a"] });
+    expect(out.map((r) => r.score)).toEqual([90]);
+  });
+
+  it("hiçbir satır eşleşmezse boş dizi döner", () => {
+    expect(filterEvaluations(rows, { callType: "SECOND_CALL", agentIds: ["b"] })).toEqual([]);
+  });
+});
+
+describe("resolveRange", () => {
+  it("tek ay için monthRange ile aynı sonucu verir", () => {
+    expect(resolveRange("2026-08", "2026-05", "2026-08")).toEqual(monthRange("2026-08"));
+  });
+
+  it("ALL için ilk ayın başından son ayın sonuna kadar uzanır", () => {
+    const r = resolveRange(ALL_MONTHS, "2026-05", "2026-08");
+    expect(r.start.toISOString()).toBe(monthRange("2026-05").start.toISOString());
+    expect(r.end.toISOString()).toBe(monthRange("2026-08").end.toISOString());
+  });
+
+  it("geçersiz ayda hata fırlatır", () => {
+    expect(() => resolveRange("2026-13", "2026-05", "2026-08")).toThrow();
+  });
+});
+
+describe("groupByTrMonth", () => {
+  it("çağrıları Türkiye saatine göre ayına dağıtır", () => {
+    const groups = groupByTrMonth([
+      { callDate: new Date("2026-08-15T10:00:00.000Z"), score: 90 },
+      { callDate: new Date("2026-08-31T22:00:00.000Z"), score: 80 }, // TR: 1 Eylül
+      { callDate: new Date("2026-07-31T21:30:00.000Z"), score: 70 }, // TR: 1 Ağustos
+    ]);
+    expect([...groups.keys()].sort()).toEqual(["2026-08", "2026-09"]);
+    expect(groups.get("2026-08")!.map((r) => r.score)).toEqual([90, 70]);
+    expect(groups.get("2026-09")!.map((r) => r.score)).toEqual([80]);
+  });
+
+  it("boş girdide boş harita döner", () => {
+    expect(groupByTrMonth([]).size).toBe(0);
+  });
+});
+
+describe("averageOfValues", () => {
+  it("null olmayan değerlerin ortalamasını alır", () => {
+    expect(averageOfValues([90, null, 80])).toBe(85);
+  });
+
+  it("iki basamağa yuvarlar", () => {
+    expect(averageOfValues([80, 85, 91])).toBe(85.33);
+  });
+
+  it("hiç değer yoksa null döner", () => {
+    expect(averageOfValues([])).toBeNull();
+    expect(averageOfValues([null, null])).toBeNull();
   });
 });

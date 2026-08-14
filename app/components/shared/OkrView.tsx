@@ -2,23 +2,50 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import ConsultantMultiSelect from "@/app/components/shared/ConsultantMultiSelect";
-import { OKR_TARGETS, okrStatus, type OkrStatus } from "@/app/lib/okr";
+import { OKR_TARGETS, okrStatus, ALL_MONTHS, type OkrStatus, type OkrCallType } from "@/app/lib/okr";
 
 interface AgentAverage { id: string; name: string; avgScore: number | null; callCount: number }
 interface RateResult { value: number | null; presented: number; notPresented: number; na: number; unknown: number; perfectScoreOverrides: number }
 
 interface OkrData {
   month: string;
+  isAll: boolean;
+  callType: OkrCallType;
+  agentIds: string[];
   availableMonths: string[];
   quality: { value: number | null; count: number };
   stemCell: RateResult;
   premium: RateResult;
-  bottomSellers: { value: number | null; inheritedFrom: string | null; selected: AgentAverage[] };
+  bottomSellers: {
+    value: number | null;
+    inheritedFrom: string | null;
+    selected: AgentAverage[];
+    monthly: { month: string; value: number | null }[];
+  };
   pendingCount: number;
   agents: AgentAverage[];
+  filterAgents: { id: string; name: string }[];
 }
 
+interface Filters { month: string; callType: OkrCallType; agentIds: string[] }
+
 const MAX_SELLERS = 5;
+
+const CALL_TYPES: { value: OkrCallType; tr: string; en: string }[] = [
+  { value: "ALL", tr: "Tüm Çağrılar", en: "All Calls" },
+  { value: "FIRST_CALL", tr: "1. Çağrı", en: "First Call" },
+  { value: "SECOND_CALL", tr: "2. Çağrı", en: "Second Call" },
+];
+
+const selectStyle: React.CSSProperties = {
+  background: "var(--glass-bg)",
+  border: "1px solid var(--rule)",
+  borderRadius: 8,
+  padding: "8px 12px",
+  color: "var(--fg)",
+  fontSize: 13,
+  fontFamily: "inherit",
+};
 
 const card: React.CSSProperties = {
   background: "var(--glass-bg)",
@@ -35,6 +62,7 @@ const STATUS_META: Record<OkrStatus, { icon: string; color: string; tr: string; 
 };
 
 function monthLabel(month: string, lang: "tr" | "en"): string {
+  if (month === ALL_MONTHS) return lang === "tr" ? "Tüm Aylar" : "All Months";
   const [y, m] = month.split("-").map(Number);
   const names = lang === "tr"
     ? ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -75,6 +103,8 @@ function OkrCard({ title, value, target, detail, lang }: {
 
 export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
   const [month, setMonth] = useState<string>("");
+  const [callType, setCallType] = useState<OkrCallType>("ALL");
+  const [filterIds, setFilterIds] = useState<string[]>([]);
   const [data, setData] = useState<OkrData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -93,33 +123,53 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
   const langRef = useRef(lang);
   langRef.current = lang;
 
-  const load = useCallback((m: string) => {
+  // load'un state'e bağımlı olmaması için seçili filtreler ref'te tutulur;
+  // çağıran yalnızca değişen alanı geçer.
+  const filtersRef = useRef<Filters>({ month: "", callType: "ALL", agentIds: [] });
+
+  const load = useCallback((next: Partial<Filters>) => {
+    const f = { ...filtersRef.current, ...next };
+    filtersRef.current = f;
     const reqId = ++reqIdRef.current;
     setLoading(true);
     setError("");
-    const qs = m ? `?month=${m}` : "";
-    fetch(`/api/okr${qs}`)
+    const params = new URLSearchParams();
+    if (f.month) params.set("month", f.month);
+    if (f.callType !== "ALL") params.set("callType", f.callType);
+    if (f.agentIds.length > 0) params.set("agentIds", f.agentIds.join(","));
+    const qs = params.toString();
+    fetch(`/api/okr${qs ? `?${qs}` : ""}`)
       .then((r) => (r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.error)))))
       .then((d: OkrData) => {
-        // Eskimiş istek: kullanıcı bu arada başka bir ay seçtiyse yanıtı yok say.
+        // Eskimiş istek: kullanıcı bu arada başka bir filtre seçtiyse yanıtı yok say.
         if (reqId !== reqIdRef.current) return;
         dataRef.current = d;
         setData(d);
         setMonth(d.month);
+        filtersRef.current = { ...filtersRef.current, month: d.month };
         setDraftIds(d.bottomSellers.selected.map((s) => s.id));
+        // Tüm Aylar'da alt-5 listesi düzenlenemez (ayın listesi yok).
+        if (d.isAll) setEditing(false);
       })
       .catch((e) => {
         if (reqId !== reqIdRef.current) return;
         setError(e.message || (langRef.current === "tr" ? "Yüklenemedi." : "Failed to load."));
-        // Seçici ile ekrandaki veri ayrışmasın: başarısız ay seçimini geri al.
-        setMonth(dataRef.current?.month ?? "");
+        // Seçiciler ile ekrandaki veri ayrışmasın: başarısız seçimi geri al.
+        const prev = dataRef.current;
+        const reverted: Filters = prev
+          ? { month: prev.month, callType: prev.callType, agentIds: prev.agentIds }
+          : { month: "", callType: "ALL", agentIds: [] };
+        filtersRef.current = reverted;
+        setMonth(reverted.month);
+        setCallType(reverted.callType);
+        setFilterIds(reverted.agentIds);
       })
       .finally(() => {
         if (reqId === reqIdRef.current) setLoading(false);
       });
   }, []);
 
-  useEffect(() => { load(""); }, [load]);
+  useEffect(() => { load({}); }, [load]);
 
   const runClassify = async () => {
     setClassifying(true);
@@ -142,7 +192,7 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
         }
         lastRemaining = d.remaining;
       }
-      load(month);
+      load({});
     } catch (e) {
       setClassifyMsg(e instanceof Error ? e.message : (lang === "tr" ? "Sınıflandırma başarısız." : "Classification failed."));
     } finally {
@@ -160,7 +210,7 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
       });
       if (!res.ok) throw new Error((await res.json()).error);
       setEditing(false);
-      load(month);
+      load({});
     } catch (e) {
       setError(e instanceof Error ? e.message : (lang === "tr" ? "Kaydedilemedi." : "Save failed."));
     } finally {
@@ -192,24 +242,56 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
         ? `${r.perfectScoreOverrides} kayıt %100 kuralıyla pozitif`
         : `${r.perfectScoreOverrides} counted positive by the 100% rule`);
     }
+    // Bu iki paket yapısı gereği hep ikinci görüşmede sunulur → çağrı tipi
+    // filtresi bilerek uygulanmıyor; kullanıcı sayının neden değişmediğini görsün.
+    if (data.callType !== "ALL") {
+      parts.push(lang === "tr" ? "çağrı tipi filtresinden etkilenmez" : "not affected by call type filter");
+    }
     return parts.join(" · ");
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Ay seçici + özet */}
+      {/* Filtreler + özet */}
       <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <select
-          value={month}
-          onChange={(e) => { setMonth(e.target.value); load(e.target.value); }}
-          style={{ background: "var(--glass-bg)", border: "1px solid var(--rule)", borderRadius: 8, padding: "6px 12px", color: "var(--fg)", fontSize: 13, fontFamily: "inherit" }}
-        >
-          {data.availableMonths.map((m) => (
-            <option key={m} value={m}>{monthLabel(m, lang)}</option>
-          ))}
-        </select>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <select
+            value={month}
+            onChange={(e) => { setMonth(e.target.value); load({ month: e.target.value }); }}
+            style={selectStyle}
+          >
+            {data.availableMonths.map((m) => (
+              <option key={m} value={m}>{monthLabel(m, lang)}</option>
+            ))}
+          </select>
+          <select
+            value={callType}
+            onChange={(e) => {
+              const value = e.target.value as OkrCallType;
+              setCallType(value);
+              load({ callType: value });
+            }}
+            style={selectStyle}
+          >
+            {CALL_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{lang === "tr" ? t.tr : t.en}</option>
+            ))}
+          </select>
+          <ConsultantMultiSelect
+            agents={data.filterAgents}
+            selectedIds={filterIds}
+            onChange={(ids) => { setFilterIds(ids); load({ agentIds: ids }); }}
+            lang={lang}
+          />
+        </div>
         <div style={{ fontSize: 13, color: "var(--fg-dim)" }}>
-          {lang === "tr" ? `5 hedeften ${completed} tanesi tamamlandı` : `${completed} of 5 targets complete`}
+          {data.isAll
+            ? (lang === "tr"
+                ? `Kümülatif — 5 hedeften ${completed} tanesi tamamlandı`
+                : `Cumulative — ${completed} of 5 targets complete`)
+            : (lang === "tr"
+                ? `5 hedeften ${completed} tanesi tamamlandı`
+                : `${completed} of 5 targets complete`)}
         </div>
       </div>
 
@@ -288,6 +370,14 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
           </div>
         </div>
 
+        {data.isAll && (
+          <div style={{ fontSize: 11, color: "var(--fg-faint)", marginBottom: 10 }}>
+            {lang === "tr"
+              ? "Her ayın kendi listesi olduğu için bu değer aylık sonuçların ortalamasıdır; yalnızca listesi kaydedilmiş aylar sayılır."
+              : "Each month has its own list, so this is the average of the monthly results; only months with a saved list are counted."}
+          </div>
+        )}
+
         {data.bottomSellers.inheritedFrom && (
           <div style={{ fontSize: 11, color: "#eab308", marginBottom: 10 }}>
             {lang === "tr"
@@ -296,11 +386,28 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
           </div>
         )}
 
-        {data.bottomSellers.selected.length === 0 && !editing && (
+        {!data.isAll && data.bottomSellers.selected.length === 0 && !editing && (
           <div style={{ fontSize: 13, color: "var(--fg-faint)", marginBottom: 10 }}>
             {lang === "tr" ? "Henüz kimse seçilmedi." : "No one selected yet."}
           </div>
         )}
+
+        {data.isAll && data.bottomSellers.monthly.length === 0 && (
+          <div style={{ fontSize: 13, color: "var(--fg-faint)", marginBottom: 10 }}>
+            {lang === "tr" ? "Hiçbir ay için liste kaydedilmemiş." : "No list saved for any month."}
+          </div>
+        )}
+
+        {data.isAll && data.bottomSellers.monthly.map((m) => (
+          <div key={m.month} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid var(--rule)", fontSize: 13 }}>
+            <span style={{ color: "var(--fg)" }}>{monthLabel(m.month, lang)}</span>
+            <span style={{ color: m.value === null ? "var(--fg-faint)" : "var(--fg-dim)" }}>
+              {m.value === null
+                ? (lang === "tr" ? "veri yok — ortalamaya katılmadı" : "no data — excluded from average")
+                : fmt(m.value)}
+            </span>
+          </div>
+        ))}
 
         {data.bottomSellers.selected.map((s) => (
           <div key={s.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid var(--rule)", fontSize: 13 }}>
@@ -313,7 +420,8 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
           </div>
         ))}
 
-        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        {/* Liste ay bazında kaydedilir; Tüm Aylar görünümünde düzenlenecek tek bir ay yok. */}
+        <div style={{ marginTop: 12, display: data.isAll ? "none" : "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           {editing ? (
             <>
               <ConsultantMultiSelect

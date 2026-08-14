@@ -34,6 +34,25 @@ export function monthRange(month: string): { start: Date; end: Date } {
   };
 }
 
+/** Ay seçicisinde "tüm aylar" için kullanılan özel değer. */
+export const ALL_MONTHS = "ALL";
+
+/**
+ * Tek ay ya da ALL için tarih aralığı. ALL, ilk veri ayının başından son ayın
+ * sonuna kadar tek bir aralığa iner — kümülatif değerler böylece havuzlanmış
+ * (çağrı ağırlıklı) hesaplanır, aylık yüzdelerin ortalaması alınmaz.
+ */
+export function resolveRange(
+  month: string,
+  firstMonth: string,
+  lastMonth: string
+): { start: Date; end: Date } {
+  if (month === ALL_MONTHS) {
+    return { start: monthRange(firstMonth).start, end: monthRange(lastMonth).end };
+  }
+  return monthRange(month);
+}
+
 /** Verilen ana karşılık gelen ay, Türkiye saatine göre. */
 export function currentMonth(now: Date): string {
   const tr = new Date(now.getTime() + TR_OFFSET_MS);
@@ -60,7 +79,61 @@ export function monthsBetween(first: string, last: string): string[] {
   return out;
 }
 
+/** Çağrıları Türkiye saatine göre ay kovalarına dağıtır (giriş sırası korunur). */
+export function groupByTrMonth<T extends { callDate: Date }>(rows: T[]): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = currentMonth(row.callDate);
+    const bucket = out.get(key);
+    if (bucket) bucket.push(row);
+    else out.set(key, [row]);
+  }
+  return out;
+}
+
 const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** Aylık değerlerin ortalaması; verisi olmayan ay (null) ortalamaya katılmaz. */
+export function averageOfValues(values: (number | null)[]): number | null {
+  const nums = values.filter((v): v is number => v !== null);
+  if (nums.length === 0) return null;
+  return round2(nums.reduce((s, v) => s + v, 0) / nums.length);
+}
+
+export type OkrCallType = "ALL" | "FIRST_CALL" | "SECOND_CALL";
+
+const OKR_CALL_TYPES: readonly string[] = ["ALL", "FIRST_CALL", "SECOND_CALL"];
+
+/**
+ * Sorgu parametresini çağrı tipi filtresine çevirir; boş parametre = ALL.
+ * app/lib/callTypeFilter.ts'teki parseCallTypeFilter geçersiz değeri sessizce
+ * "Tümü" sayıyor; OKR panelinde bilerek hata fırlatıyoruz (route 400 döner) —
+ * yanlış yazılmış bir filtre, farkında olunmadan tüm çağrıları kapsamasın.
+ */
+export function parseCallType(raw: string | null | undefined): OkrCallType {
+  if (!raw) return "ALL";
+  if (!OKR_CALL_TYPES.includes(raw)) throw new Error(`Geçersiz çağrı tipi: ${raw}`);
+  return raw as OkrCallType;
+}
+
+/** "a, b ,a" → ["a","b"]. Boş parçalar atılır, tekrarlar teke iner. */
+export function parseAgentIds(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))];
+}
+
+/** Çağrı tipi + danışman filtrelerini bellekte uygular. */
+export function filterEvaluations<T extends { agentId: string; callType: string }>(
+  rows: T[],
+  filter: { callType: OkrCallType; agentIds: string[] }
+): T[] {
+  const ids = filter.agentIds.length > 0 ? new Set(filter.agentIds) : null;
+  return rows.filter(
+    (r) =>
+      (filter.callType === "ALL" || r.callType === filter.callType) &&
+      (ids === null || ids.has(r.agentId))
+  );
+}
 
 export function averageScore(rows: { score: number }[]): number | null {
   if (rows.length === 0) return null;
