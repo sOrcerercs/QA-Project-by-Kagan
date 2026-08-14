@@ -1,5 +1,6 @@
 -- OKR paneli — additive şema. Supabase SQL editöründe elle çalıştırılır.
 -- Mevcut hiçbir tabloyu değiştirmez, hiçbir veriyi silmez.
+-- Bu dosya güvenle birden fazla kez çalıştırılabilir (idempotent).
 
 CREATE TABLE IF NOT EXISTS "EvaluationUpsell" (
   "id"           TEXT NOT NULL,
@@ -15,10 +16,13 @@ CREATE TABLE IF NOT EXISTS "EvaluationUpsell" (
 CREATE UNIQUE INDEX IF NOT EXISTS "EvaluationUpsell_evaluationId_key"
   ON "EvaluationUpsell"("evaluationId");
 
-ALTER TABLE "EvaluationUpsell"
-  ADD CONSTRAINT "EvaluationUpsell_evaluationId_fkey"
-  FOREIGN KEY ("evaluationId") REFERENCES "Evaluation"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "EvaluationUpsell"
+    ADD CONSTRAINT "EvaluationUpsell_evaluationId_fkey"
+    FOREIGN KEY ("evaluationId") REFERENCES "Evaluation"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "OkrBottomSeller" (
   "id"        TEXT NOT NULL,
