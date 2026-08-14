@@ -110,4 +110,23 @@ describe("parseBatchResponse", () => {
     expect(parseBatchResponse("[{ bozuk", 1)).toBeNull();
     expect(parseBatchResponse("hiç JSON yok", 1)).toBeNull();
   });
+
+  it("geçerli parantezler içinde bozuk JSON'da null döner", () => {
+    expect(parseBatchResponse("[{ bozuk }]", 1)).toBeNull();
+  });
+
+  it("string i alanında null döner", () => {
+    const raw = `[{"i":"1","stemCell":"NA","premium":"NA"}]`;
+    expect(parseBatchResponse(raw, 1)).toBeNull();
+  });
+
+  it("eksik i alanında null döner", () => {
+    const raw = `[{"stemCell":"NA","premium":"NA"}]`;
+    expect(parseBatchResponse(raw, 1)).toBeNull();
+  });
+
+  it("yanlış indeks aralığında null döner", () => {
+    const raw = `[{"i":7,"stemCell":"NA","premium":"NA"},{"i":9,"stemCell":"NA","premium":"NA"}]`;
+    expect(parseBatchResponse(raw, 2)).toBeNull();
+  });
 });

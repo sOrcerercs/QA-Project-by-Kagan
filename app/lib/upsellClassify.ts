@@ -70,6 +70,14 @@ export function parseBatchResponse(raw: string, expected: number): UpsellVerdict
     out.push({ i, stemCell, premium });
   }
 
-  if (new Set(out.map((v) => v.i)).size !== expected) return null;
+  // buildBatchPrompt her zaman 1..N ile numaralandırır, bu yüzden dönen indekslerin
+  // tam olarak {1, 2, ..., expected} kümesi olması gerekir. Aksi halde model yanlış
+  // sayıları döndü ve verdiktler yanlış evaluasyonlara eşlenirdi — susturucu veri hatası.
+  const expectedIndices = new Set([...Array(expected)].map((_, i) => i + 1));
+  const actualIndices = new Set(out.map((v) => v.i));
+  if (actualIndices.size !== expected || ![...expectedIndices].every((i) => actualIndices.has(i))) {
+    return null;
+  }
+
   return out;
 }
