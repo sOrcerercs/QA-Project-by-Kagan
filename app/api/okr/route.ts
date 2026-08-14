@@ -119,12 +119,19 @@ export async function GET(req: NextRequest) {
       // Danışman filtresinin listesi seçili aydan/filtreden bağımsız olmalı,
       // yoksa filtrelenen kişi listeden düşüp geri alınamaz hale gelir.
       // Alt-5 seçicisinden (eligible) bilerek ayrı: burada sayılan kümenin
-      // TAMAMI listelenir (TEAM_LEADER'lar ve "Atanmamış" dahil), aksi halde
-      // listedeki herkesi seçmek "filtre yok" ile aynı sonucu vermezdi.
+      // TAMAMI listelenir (TEAM_LEADER'lar, "Atanmamış" ve PASİF hesaplar
+      // dahil), aksi halde listedeki herkesi seçmek "filtre yok" ile aynı
+      // sonucu vermezdi. Pasif hesapların değerlendirmeleri toplamlara dahil
+      // — çağrılar gerçekten yapıldı ve Raporlarım da onları sayıyor; kişi
+      // sonradan pasifleşince geçmiş ayın OKR rakamı değişmesin diye.
       filterAgents: users
-        .filter((u) => (REPORTABLE_ROLES as readonly string[]).includes(u.role) && u.isActive)
-        .map((u) => ({ id: u.id, name: u.name }))
-        .sort((a, b) => a.name.localeCompare(b.name, "tr")),
+        .filter((u) => (REPORTABLE_ROLES as readonly string[]).includes(u.role))
+        .map((u) => ({ id: u.id, name: u.name, isActive: u.isActive }))
+        .sort((a, b) =>
+          a.isActive === b.isActive
+            ? a.name.localeCompare(b.name, "tr")
+            : Number(b.isActive) - Number(a.isActive)
+        ),
     });
   } catch (e) {
     console.error("[GET /api/okr]", e);

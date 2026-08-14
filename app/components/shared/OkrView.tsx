@@ -24,7 +24,7 @@ interface OkrData {
   };
   pendingCount: number;
   agents: AgentAverage[];
-  filterAgents: { id: string; name: string }[];
+  filterAgents: { id: string; name: string; isActive: boolean }[];
 }
 
 interface Filters { month: string; callType: OkrCallType; agentIds: string[] }
@@ -278,7 +278,12 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
             ))}
           </select>
           <ConsultantMultiSelect
-            agents={data.filterAgents}
+            agents={data.filterAgents.map((a) => ({
+              id: a.id,
+              // Pasif hesaplar listede: değerlendirmeleri toplamlara dahil,
+              // etiket olmadan neden orada olduğu anlaşılmaz.
+              name: a.isActive ? a.name : `${a.name} ${lang === "tr" ? "(pasif)" : "(inactive)"}`,
+            }))}
             selectedIds={filterIds}
             onChange={(ids) => { setFilterIds(ids); load({ agentIds: ids }); }}
             lang={lang}
