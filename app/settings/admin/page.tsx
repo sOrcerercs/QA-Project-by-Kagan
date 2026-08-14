@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { motion } from "motion/react";
+import DuplicateEvaluationsView from "@/app/components/shared/DuplicateEvaluationsView";
 
 const MIcon = ({ name, className = "" }: { name: string; className?: string }) => (
   <span className={`material-symbols-outlined ${className}`}>{name}</span>
@@ -27,6 +28,7 @@ const ADMIN_T = {
     pageTitle: "Admin Ayarları",
     tabUsers: "Kullanıcılar", tabPrompts: "Promptlar", tabLogs: "Aktivite Logları",
     tabFeedbacks: "Geri Bildirimler", tabSync: "Senkronizasyon", tabSyncHistory: "Senkron Geçmişi",
+    tabDataHealth: "Veri Sağlığı",
     addUser: "Yeni Kullanıcı Ekle", fullName: "Ad Soyad", email: "E-posta",
     password: "Şifre", role: "Rol", team: "Takım (opsiyonel)",
     selectTeamLeader: "— Takım lideri seçin —",
@@ -92,6 +94,7 @@ const ADMIN_T = {
     pageTitle: "Admin Settings",
     tabUsers: "Users", tabPrompts: "Prompts", tabLogs: "Activity Logs",
     tabFeedbacks: "Feedbacks", tabSync: "Synchronization", tabSyncHistory: "Sync History",
+    tabDataHealth: "Data Health",
     addUser: "Add New User", fullName: "Full Name", email: "Email",
     password: "Password", role: "Role", team: "Team (optional)",
     selectTeamLeader: "— Select team leader —",
@@ -184,12 +187,14 @@ const ACTION_LABELS: Record<"tr" | "en", Record<string, string>> = {
   en: { LOGIN: "Logged In", LOGOUT: "Logged Out", PAGE_VIEW: "Page Viewed" },
 };
 
+type AdminTab = "users" | "prompts" | "logs" | "feedbacks" | "sync" | "syncHistory" | "reclassify" | "dataHealth";
+
 function AdminSettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawTab = searchParams.get("tab");
-  const initialTab = (rawTab === "kriko" || rawTab === "fireflies" ? "sync" : rawTab ?? "users") as "users" | "prompts" | "logs" | "feedbacks" | "sync" | "syncHistory" | "reclassify";
-  const [activeTab, setActiveTab] = useState<"users" | "prompts" | "logs" | "feedbacks" | "sync" | "syncHistory" | "reclassify">(initialTab);
+  const initialTab = (rawTab === "kriko" || rawTab === "fireflies" ? "sync" : rawTab ?? "users") as AdminTab;
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
 
   // Auth / theme / lang
   const [user, setUser] = useState<any>(null);
@@ -615,7 +620,7 @@ function AdminSettingsPageInner() {
     setFixProgress(null);
   };
 
-  const handleTabChange = (tab: "users" | "prompts" | "logs" | "feedbacks" | "sync" | "syncHistory" | "reclassify") => {
+  const handleTabChange = (tab: AdminTab) => {
     setActiveTab(tab);
     setAddUserMsg("");
     setPromptMsg("");
@@ -670,7 +675,7 @@ function AdminSettingsPageInner() {
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
         {/* Tab bar */}
         <div className="flex flex-wrap gap-2">
-          {(["users", "prompts", "logs", "feedbacks", "sync", "syncHistory", "reclassify"] as const).map((tab) => {
+          {(["users", "prompts", "logs", "feedbacks", "sync", "syncHistory", "reclassify", "dataHealth"] as const).map((tab) => {
             const tabMeta = {
               users: { icon: "group", label: t.tabUsers },
               prompts: { icon: "edit_note", label: t.tabPrompts },
@@ -679,6 +684,7 @@ function AdminSettingsPageInner() {
               sync: { icon: "sync", label: t.tabSync },
               syncHistory: { icon: "event_note", label: t.tabSyncHistory },
               reclassify: { icon: "find_replace", label: t.tabReclassify },
+              dataHealth: { icon: "content_copy", label: t.tabDataHealth },
             }[tab];
             return (
               <button
@@ -1784,6 +1790,9 @@ function AdminSettingsPageInner() {
             )}
           </div>
         )}
+
+        {/* ── VERİ SAĞLIĞI TAB ── */}
+        {activeTab === "dataHealth" && <DuplicateEvaluationsView lang={lang} />}
       </div>
     </div>
   );
