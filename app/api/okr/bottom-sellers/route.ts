@@ -36,6 +36,10 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Geçersiz kullanıcı." }, { status: 400 });
     }
 
+    // Silme işlemi mutlaka istenen ayla (month) sınırlı kalmalı: bu kapsam,
+    // geçmiş ayların kaydedilmiş alt-5 listelerini — dolayısıyla geçmiş OKR
+    // değerlerini — sabit tutan tek şeydir. Kapsam genişletilirse önceki
+    // aylara ait seçimler sessizce silinir.
     await prisma.$transaction([
       prisma.okrBottomSeller.deleteMany({ where: { month } }),
       prisma.okrBottomSeller.createMany({

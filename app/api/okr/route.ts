@@ -11,6 +11,9 @@ import type { UpsellStatus } from "@/app/lib/upsellClassify";
 
 const FIRST_DATA_MONTH = "2026-05"; // sistemdeki en eski değerlendirme: 2026-05-18
 
+// app/api/calls/sync-fireflies/route.ts içindeki UNASSIGNED_EMAIL ile aynı olmalı.
+const UNASSIGNED_AGENT_EMAIL = "unassigned@estenove.local";
+
 export async function GET(req: NextRequest) {
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
@@ -42,13 +45,30 @@ export async function GET(req: NextRequest) {
       prisma.evaluation.count({
         where: { ...dateFilter, callType: "SECOND_CALL", evaluationUpsell: { is: null } },
       }),
-      prisma.user.findMany({ select: { id: true, name: true } }),
+      prisma.user.findMany({ select: { id: true, name: true, role: true, isActive: true, email: true } }),
       prisma.okrBottomSeller.findMany({ where: { month }, select: { userId: true } }),
     ]);
 
     const names = new Map(users.map((u) => [u.id, u.name]));
-    const agents = agentAverages(evaluations, names);
-    const agentById = new Map(agents.map((a) => [a.id, a]));
+
+    // Alt-5 seçicisi yalnızca gerçek, aktif danışmanları göstermeli. Fireflies
+    // senkronizasyonu, konuşmacısı eşleşmeyen çağrılar için "Atanmamış" adlı
+    // AGENT rolünde kalıcı bir yer tutucu hesap açıyor (bkz.
+    // app/api/calls/sync-fireflies/route.ts) — rolü gerçekten AGENT olduğu için
+    // rol filtresi tek başına elemiyor, e-posta ile ayrıca dışlanıyor.
+    // isActive filtresi app/api/users/route.ts'in konvansiyonunu izler.
+    const eligible = new Set(
+      users
+        .filter((u) => u.role === "AGENT" && u.isActive && u.email !== UNASSIGNED_AGENT_EMAIL)
+        .map((u) => u.id)
+    );
+
+    const allAverages = agentAverages(evaluations, names);
+    // agentById bilerek FİLTRESİZ listeden kurulur: geçmiş bir ayda kaydedilmiş
+    // seçim, kişi sonradan pasifleştirilse bile o ayki skorunu göstermeye devam
+    // etmeli — aksi halde geçmiş OKR değeri sessizce değişir.
+    const agentById = new Map(allAverages.map((a) => [a.id, a]));
+    const agents = allAverages.filter((a) => eligible.has(a.id));
 
     // Kaydedilmiş seçim yoksa önceki aydan öner (kaydedilmez, sadece önseçili gelir).
     let selectedIds = savedRows.map((r) => r.userId);
