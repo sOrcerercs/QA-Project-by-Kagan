@@ -32,7 +32,16 @@ async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
   const limitArg = args.indexOf("--limit");
-  const limit = limitArg !== -1 ? Number(args[limitArg + 1]) : undefined;
+  let limit: number | undefined;
+  if (limitArg !== -1) {
+    // Hatalı --limit sessizce "sınırsız"a dönüşmemeli: prod'a yazan bir
+    // script'te yazım hatası tüm kayıtları işlemeye eskale etmemeli.
+    limit = Number(args[limitArg + 1]);
+    if (!Number.isFinite(limit) || !Number.isInteger(limit) || limit <= 0) {
+      console.error("--limit pozitif bir tam sayı olmalı (ör. --limit 50).");
+      process.exit(1);
+    }
+  }
 
   const pending = await prisma.evaluation.findMany({
     where: { callType: "SECOND_CALL", evaluationUpsell: { is: null } },
