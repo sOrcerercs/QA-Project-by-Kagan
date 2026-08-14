@@ -14,6 +14,9 @@ interface RateResult { value: number | null; presented: number; notPresented: nu
 interface OkrData {
   month: string;
   isAll: boolean;
+  /** Sistem öncesi ay: değerler elle girilmiş sabitten geliyor, hesaplanmadı. */
+  isManual: boolean;
+  history?: { evaCount: number; qualityAgents: number };
   callType: OkrCallType;
   agentIds: string[];
   availableMonths: string[];
@@ -210,7 +213,11 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
         dataRef.current = d;
         setData(d);
         setMonth(d.month);
-        filtersRef.current = { ...filtersRef.current, month: d.month };
+        // Sunucu etkin filtreleri yankılıyor; geçmiş aylarda ikisini de
+        // sıfırlıyor. Ekrandaki seçicilerle yanıt ayrışmasın diye buradan sync.
+        setCallType(d.callType);
+        setFilterIds(d.agentIds);
+        filtersRef.current = { month: d.month, callType: d.callType, agentIds: d.agentIds };
         setDraftIds(d.bottomSellers.selected.map((s) => s.id));
         // Tüm Aylar'da alt-5 listesi düzenlenemez (ayın listesi yok).
         if (d.isAll) setEditing(false);
@@ -299,7 +306,10 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
     okrStatus(data.stemCell.value, OKR_TARGETS.stemCell),
     okrStatus(data.bottomSellers.value, OKR_TARGETS.bottomSellers),
     okrStatus(data.premium.value, OKR_TARGETS.premium),
-  ].filter((s) => s === "TAMAMLANDI").length + 1; // +1 = otomasyon (sabit tamamlandı)
+  ].filter((s) => s === "TAMAMLANDI").length
+    // +1 = otomasyon. Elle girilen aylarda sayılmıyor: bu program o tarihte
+    // henüz yoktu, "puanlama otomasyonu tamamlandı" demek yanlış olurdu.
+    + (data.isManual ? 0 : 1);
 
   // Pasif hesaplar hem filtrede hem alt-5 seçicisinde duruyor (ayrıldığı ay
   // hâlâ ekipteydi); etiket olmadan kimin ayrıldığı görünmez.
@@ -308,6 +318,11 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
     inactiveSet.has(id) ? `${name} ${lang === "tr" ? "(pasif)" : "(inactive)"}` : name;
 
   const rateDetail = (r: RateResult) => {
+    if (data.isManual) {
+      return lang === "tr"
+        ? `${r.presented}/${r.presented + r.notPresented} · payda: tüm değerlendirmeler`
+        : `${r.presented}/${r.presented + r.notPresented} · denominator: all evaluations`;
+    }
     const parts = [`${r.presented}/${r.presented + r.notPresented} ${lang === "tr" ? "çağrı" : "calls"}`];
     if (r.na > 0) parts.push(`${r.na} N/A`);
     if (r.unknown > 0) parts.push(`${r.unknown} ${lang === "tr" ? "bilinmiyor" : "unknown"}`);
@@ -340,37 +355,62 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
           </select>
           <select
             value={callType}
+            disabled={data.isManual}
+            title={data.isManual ? (lang === "tr" ? "Elle girilen aylarda çağrı kaydı yok" : "No call records for manually entered months") : undefined}
             onChange={(e) => {
               const value = e.target.value as OkrCallType;
               setCallType(value);
               load({ callType: value });
             }}
-            style={selectStyle}
+            style={{ ...selectStyle, opacity: data.isManual ? 0.45 : 1, cursor: data.isManual ? "not-allowed" : "pointer" }}
           >
             {CALL_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{lang === "tr" ? t.tr : t.en}</option>
             ))}
           </select>
-          <ConsultantMultiSelect
-            agents={data.filterAgents.map((a) => ({ id: a.id, name: nameOf(a.id, a.name) }))}
-            selectedIds={filterIds}
-            onChange={(ids) => { setFilterIds(ids); load({ agentIds: ids }); }}
-            lang={lang}
-          />
+          {data.isManual ? (
+            <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>
+              {lang === "tr"
+                ? "çağrı kaydı olmadığı için filtreler uygulanamıyor"
+                : "filters unavailable — no call records"}
+            </span>
+          ) : (
+            <ConsultantMultiSelect
+              agents={data.filterAgents.map((a) => ({ id: a.id, name: nameOf(a.id, a.name) }))}
+              selectedIds={filterIds}
+              onChange={(ids) => { setFilterIds(ids); load({ agentIds: ids }); }}
+              lang={lang}
+            />
+          )}
         </div>
-        <div style={{ fontSize: 13, color: "var(--fg-dim)" }}>
-          {data.isAll
-            ? (lang === "tr"
-                ? `Kümülatif — 5 hedeften ${completed} tanesi tamamlandı`
-                : `Cumulative — ${completed} of 5 targets complete`)
-            : (lang === "tr"
-                ? `5 hedeften ${completed} tanesi tamamlandı`
-                : `${completed} of 5 targets complete`)}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {data.isManual && (
+            <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 999, background: "#eab30822", border: "1px solid #eab30855", color: "#eab308" }}>
+              {lang === "tr" ? "elle girildi" : "manually entered"}
+            </span>
+          )}
+          <div style={{ fontSize: 13, color: "var(--fg-dim)" }}>
+            {data.isAll
+              ? (lang === "tr"
+                  ? `Kümülatif — 5 hedeften ${completed} tanesi tamamlandı`
+                  : `Cumulative — ${completed} of 5 targets complete`)
+              : (lang === "tr"
+                  ? `5 hedeften ${completed} tanesi tamamlandı`
+                  : `${completed} of 5 targets complete`)}
+          </div>
         </div>
       </div>
 
-      {/* Bekleyen sınıflandırma */}
-      {data.pendingCount > 0 && (
+      {data.isAll && (
+        <div style={{ ...card, padding: "12px 20px", fontSize: 11, color: "var(--fg-faint)" }}>
+          {lang === "tr"
+            ? "Kümülatif yalnızca programda çağrı kaydı bulunan ayları havuzlar. Elle girilen aylar (Şubat, Mart 2026) paydası farklı hesaplandığı için bu değere katılmaz — onları ay seçicisinden tek tek görebilirsin."
+            : "The cumulative figure pools only months with call records. Manually entered months (February, March 2026) use a different denominator and are excluded — view them individually from the month selector."}
+        </div>
+      )}
+
+      {/* Bekleyen sınıflandırma — elle girilen ayda çağrı yok */}
+      {!data.isManual && data.pendingCount > 0 && (
         <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "var(--fg-dim)" }}>
             ⏳ {lang === "tr"
@@ -396,7 +436,11 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
           title={lang === "tr" ? "Kalite Skoru" : "Quality Score"}
           value={data.quality.value}
           target={OKR_TARGETS.quality}
-          detail={`${data.quality.count} ${lang === "tr" ? "değerlendirme" : "evaluations"}`}
+          detail={data.isManual
+            ? (lang === "tr"
+                ? `${data.quality.count} danışmanın ortalaması — çağrı ağırlıklı değil`
+                : `average of ${data.quality.count} consultants — not call-weighted`)
+            : `${data.quality.count} ${lang === "tr" ? "değerlendirme" : "evaluations"}`}
           lang={lang}
         />
         <OkrCard
@@ -417,18 +461,30 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
           <div style={{ fontSize: 13, color: "var(--fg-dim)", marginBottom: 12 }}>
             {lang === "tr" ? "Görüşme Puanlama Otomasyonu" : "Call Scoring Automation"}
           </div>
-          <div style={{ fontSize: 30, fontWeight: 600, color: "var(--fg)" }}>%100,00</div>
-          <div style={{ height: 6, background: "var(--rule)", borderRadius: 3, margin: "12px 0 10px", overflow: "hidden" }}>
-            <div style={{ width: "100%", height: "100%", background: "#22c55e" }} />
+          <div style={{ fontSize: 30, fontWeight: 600, color: "var(--fg)" }}>
+            {data.isManual ? "—" : "%100,00"}
           </div>
-          <div style={{ textAlign: "right", fontSize: 11, color: "#22c55e" }}>
-            ✅ {lang === "tr" ? "Tamamlandı" : "Complete"}
+          <div style={{ height: 6, background: "var(--rule)", borderRadius: 3, margin: "12px 0 10px", overflow: "hidden" }}>
+            <div style={{ width: data.isManual ? "0%" : "100%", height: "100%", background: "#22c55e" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+            <span style={{ color: "var(--fg-faint)" }}>
+              {data.isManual
+                ? (lang === "tr" ? "bu tarihte program henüz yoktu" : "the system did not exist yet")
+                : ""}
+            </span>
+            <span style={{ color: data.isManual ? "var(--fg-faint)" : "#22c55e", whiteSpace: "nowrap" }}>
+              {data.isManual
+                ? `— ${lang === "tr" ? "Veri yok" : "No data"}`
+                : `✅ ${lang === "tr" ? "Tamamlandı" : "Complete"}`}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Tanıtım yapılmayan çağrılar — varsayılan kapalı, satırlar açılınca yüklenir */}
-      <div style={card}>
+      {/* Tanıtım yapılmayan çağrılar — varsayılan kapalı, satırlar açılınca yüklenir.
+          Elle girilen aylarda gizli: altında çağrı kaydı yok. */}
+      <div style={{ ...card, display: data.isManual ? "none" : "block" }}>
         <button
           onClick={() => {
             const next = !gapsOpen;
@@ -533,6 +589,14 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
           </div>
         </div>
 
+        {data.isManual && (
+          <div style={{ fontSize: 11, color: "var(--fg-faint)", marginBottom: 10 }}>
+            {lang === "tr"
+              ? "Bu ay için seçilmiş 5 kişi listesi yok — Excel'de böyle bir liste bulunmuyordu."
+              : "No selected list of 5 for this month — the spreadsheet did not contain one."}
+          </div>
+        )}
+
         {data.isAll && (
           <div style={{ fontSize: 11, color: "var(--fg-faint)", marginBottom: 10 }}>
             {lang === "tr"
@@ -549,7 +613,7 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
           </div>
         )}
 
-        {!data.isAll && data.bottomSellers.selected.length === 0 && !editing && (
+        {!data.isAll && !data.isManual && data.bottomSellers.selected.length === 0 && !editing && (
           <div style={{ fontSize: 13, color: "var(--fg-faint)", marginBottom: 10 }}>
             {lang === "tr" ? "Henüz kimse seçilmedi." : "No one selected yet."}
           </div>
@@ -584,7 +648,7 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
         ))}
 
         {/* Liste ay bazında kaydedilir; Tüm Aylar görünümünde düzenlenecek tek bir ay yok. */}
-        <div style={{ marginTop: 12, display: data.isAll ? "none" : "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ marginTop: 12, display: data.isAll || data.isManual ? "none" : "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           {editing ? (
             <>
               <ConsultantMultiSelect

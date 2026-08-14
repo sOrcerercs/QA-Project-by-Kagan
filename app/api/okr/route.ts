@@ -5,12 +5,15 @@ import { canViewOkr } from "@/app/lib/okrPermissions";
 import { REPORTABLE_ROLES } from "@/app/lib/reportScope";
 import {
   FIRST_DATA_MONTH,
-  resolveRange, currentMonth, previousMonth, monthsBetween,
+  resolveRange, currentMonth, previousMonth,
   averageScore, upsellRate, agentAverages, bottomSellersValue,
   groupByTrMonth, averageOfValues, parseCallType, parseAgentIds, filterEvaluations, upsellGaps,
   ALL_MONTHS,
   type AgentAverage,
 } from "@/app/lib/okr";
+import {
+  isHistoryMonth, getHistoryMonth, historyRate, availableMonthsWithHistory,
+} from "@/app/lib/okrHistory";
 import type { UpsellStatus } from "@/app/lib/upsellClassify";
 
 // app/api/calls/sync-fireflies/route.ts içindeki UNASSIGNED_EMAIL ile aynı olmalı.
@@ -24,6 +27,18 @@ export async function GET(req: NextRequest) {
   const nowMonth = currentMonth(new Date());
   const month = req.nextUrl.searchParams.get("month") || nowMonth;
   const isAll = month === ALL_MONTHS;
+
+  // Sistem öncesi aylar (Şubat/Mart 2026) hesaplanamaz — altlarında çağrı
+  // kaydı yok. Elle girilmiş değerler sabitten dönülür; çağrı tipi ve danışman
+  // filtreleri bu aylarda anlamsız olduğu için yok sayılıp yanıtta sıfırlanır.
+  if (isHistoryMonth(month)) {
+    try {
+      return NextResponse.json(await historyResponse(month, nowMonth));
+    } catch (e) {
+      console.error("[GET /api/okr] geçmiş ay", e);
+      return NextResponse.json({ error: "OKR verileri yüklenemedi." }, { status: 500 });
+    }
+  }
 
   let range: { start: Date; end: Date };
   let callType: ReturnType<typeof parseCallType>;
@@ -111,9 +126,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       month,
       isAll,
+      isManual: false,
       callType,
       agentIds,
-      availableMonths: [ALL_MONTHS, ...monthsBetween(FIRST_DATA_MONTH, nowMonth).reverse()],
+      availableMonths: availableMonthsWithHistory(FIRST_DATA_MONTH, nowMonth),
       quality: { value: averageScore(qualityRows), count: qualityRows.length },
       stemCell: upsellRate(typedUpsell, "stemCell"),
       premium: upsellRate(typedUpsell, "premium"),
@@ -147,6 +163,57 @@ export async function GET(req: NextRequest) {
     console.error("[GET /api/okr]", e);
     return NextResponse.json({ error: "OKR verileri yüklenemedi." }, { status: 500 });
   }
+}
+
+/**
+ * Elle girilmiş geçmiş ay. Hiçbir değerlendirme sorgusu çalışmaz; yalnızca
+ * danışman filtresi listesi için kullanıcılar okunur ki arayüzün şekli bozulmasın.
+ *
+ * stemCell/premium alanları hesaplanan aylarla aynı RateResult şeklinde
+ * dönüyor ama paydası farklı (tüm değerlendirmeler) — arayüz isManual
+ * rozetiyle ve paydayı yazarak bunu görünür kılıyor.
+ */
+async function historyResponse(month: string, nowMonth: string) {
+  const h = getHistoryMonth(month)!;
+  const users = await prisma.user.findMany({
+    select: { id: true, name: true, role: true, isActive: true },
+  });
+  const isInactive = new Set(users.filter((u) => !u.isActive).map((u) => u.id));
+
+  const rate = (field: "stemCell" | "premium") => ({
+    value: historyRate(h, field),
+    presented: h[field],
+    notPresented: h.evaCount - h[field],
+    na: 0,
+    unknown: 0,
+    perfectScoreOverrides: 0,
+  });
+
+  return {
+    month,
+    isAll: false,
+    isManual: true,
+    callType: "ALL",
+    agentIds: [] as string[],
+    availableMonths: availableMonthsWithHistory(FIRST_DATA_MONTH, nowMonth),
+    quality: { value: h.quality, count: h.qualityAgents },
+    stemCell: rate("stemCell"),
+    premium: rate("premium"),
+    gapCount: 0,
+    bottomSellers: { value: null, inheritedFrom: null, selected: [], monthly: [] },
+    pendingCount: 0,
+    agents: [],
+    filterAgents: users
+      .filter((u) => (REPORTABLE_ROLES as readonly string[]).includes(u.role))
+      .map((u) => ({ id: u.id, name: u.name }))
+      .sort((a, b) => {
+        const aOut = isInactive.has(a.id), bOut = isInactive.has(b.id);
+        return aOut === bOut ? a.name.localeCompare(b.name, "tr") : Number(aOut) - Number(bOut);
+      }),
+    inactiveIds: [...isInactive],
+    // Arayüzdeki açıklama notları için.
+    history: { evaCount: h.evaCount, qualityAgents: h.qualityAgents },
+  };
 }
 
 interface BottomSellersResult {
