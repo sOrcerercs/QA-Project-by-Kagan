@@ -77,6 +77,7 @@ export const MAX_REPORT_CHARS = 8_000;
 
 export interface AnalysisCall {
   id: string;
+  agentId: string;
   agentName: string;
   customerName: string;
   callDate: Date;
@@ -86,11 +87,21 @@ export interface AnalysisCall {
   report: string;
 }
 
+// Kişi başına payda: "Koray 13/13 · Harun 15/15". Sayım ve kıyas cevaplarının
+// doğrulanabilmesi için tek toplam sayı yetmiyor.
+export interface AgentCoverage {
+  agentId: string;
+  agentName: string;
+  pool: number;
+  used: number;
+}
+
 export interface SelectionResult {
   selected: AnalysisCall[];
   poolCount: number;
   usedCount: number;
   truncated: boolean;
+  perAgent: AgentCoverage[];
 }
 
 const CALL_TYPE_TR: Record<string, string> = {
@@ -137,49 +148,93 @@ export function matchedKeywordCount(call: AnalysisCall, keywords: string[]): num
 
 const newestFirst = (a: AnalysisCall, b: AnalysisCall) => b.callDate.getTime() - a.callDate.getTime();
 
+function coverage(calls: AnalysisCall[], selected: AnalysisCall[]): AgentCoverage[] {
+  const byAgent = new Map<string, AgentCoverage>();
+  for (const c of calls) {
+    const cur = byAgent.get(c.agentId) ?? { agentId: c.agentId, agentName: c.agentName, pool: 0, used: 0 };
+    cur.pool++;
+    byAgent.set(c.agentId, cur);
+  }
+  const usedIds = new Set(selected.map((s) => s.id));
+  for (const c of calls) {
+    if (usedIds.has(c.id)) byAgent.get(c.agentId)!.used++;
+  }
+  return [...byAgent.values()].sort(
+    (a, b) => b.used - a.used || b.pool - a.pool || a.agentName.localeCompare(b.agentName, "tr")
+  );
+}
+
 export function selectContext(calls: AnalysisCall[], keywords: string[]): SelectionResult {
   const poolCount = calls.length;
-  if (poolCount === 0) return { selected: [], poolCount: 0, usedCount: 0, truncated: false };
+  if (poolCount === 0) {
+    return { selected: [], poolCount: 0, usedCount: 0, truncated: false, perAgent: [] };
+  }
 
   const totalCost = calls.reduce((sum, c) => sum + contextCost(c), 0);
 
   // Havuz olduğu gibi sığıyorsa hiç seçim yapmayız — tam kapsama.
   if (poolCount <= MAX_CALLS && totalCost <= CONTEXT_CHAR_BUDGET) {
+    const selected = [...calls].sort(newestFirst);
     return {
-      selected: [...calls].sort(newestFirst),
+      selected,
       poolCount,
       usedCount: poolCount,
       truncated: false,
+      perAgent: coverage(calls, selected),
     };
   }
 
-  // Sığmıyor: soruya en yakın çağrıları seç. Puanlar bir kez hesaplanır.
-  // Sıralama: (1) kaç farklı anahtar kelime geçiyor, (2) toplam isabet,
-  // (3) daha yeni çağrı.
+  // Sığmıyor: her danışmandan sırayla birer çağrı alarak bütçeyi eşit paylaştır.
+  // Küresel sıralama yapılsa bütçe tek bir danışmana akıyor (prod ölçümü: 4
+  // danışmanlık havuzda 31 vs 6) ve kişi başı oran kıyası anlamsızlaşıyordu.
+  // Her danışmanın kendi kuyruğu alaka sırasına göre dizilir.
   const scored = calls.map((c) => ({
     c,
     matched: matchedKeywordCount(c, keywords),
     hits: scoreCall(c, keywords),
   }));
-  scored.sort(
-    (a, b) => b.matched - a.matched || b.hits - a.hits || newestFirst(a.c, b.c)
-  );
 
-  const selected: AnalysisCall[] = [];
-  let used = 0;
-  for (const { c } of scored) {
-    if (selected.length >= MAX_CALLS) break;
-    const cost = contextCost(c);
-    if (used + cost > CONTEXT_CHAR_BUDGET) continue; // büyük olanı atla, doldurmaya devam et
-    selected.push(c);
-    used += cost;
+  const groups = new Map<string, typeof scored>();
+  for (const s of scored) {
+    const g = groups.get(s.c.agentId);
+    if (g) g.push(s);
+    else groups.set(s.c.agentId, [s]);
   }
 
+  const queues = [...groups.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([, g]) =>
+      g.sort((a, b) => b.matched - a.matched || b.hits - a.hits || newestFirst(a.c, b.c))
+    );
+
+  const cursors = queues.map(() => 0);
+  const selected: AnalysisCall[] = [];
+  let used = 0;
+  let progressed = true;
+
+  while (progressed && selected.length < MAX_CALLS) {
+    progressed = false;
+    for (let qi = 0; qi < queues.length && selected.length < MAX_CALLS; qi++) {
+      const queue = queues[qi];
+      while (cursors[qi] < queue.length) {
+        const candidate = queue[cursors[qi]++];
+        const cost = contextCost(candidate.c);
+        if (used + cost > CONTEXT_CHAR_BUDGET) continue; // sığmayanı atla
+        selected.push(candidate.c);
+        used += cost;
+        progressed = true;
+        break;
+      }
+    }
+  }
+
+  const ordered = selected.sort(newestFirst);
   return {
-    selected: selected.sort(newestFirst),
+    selected: ordered,
     poolCount,
-    usedCount: selected.length,
-    truncated: selected.length < poolCount,
+    usedCount: ordered.length,
+    truncated: ordered.length < poolCount,
+    perAgent: coverage(calls, ordered),
   };
 }
 
@@ -191,10 +246,6 @@ export function truncateTranscript(text: string): string {
 export function truncateReport(text: string): string {
   if (text.length <= MAX_REPORT_CHARS) return text;
   return `${text.slice(0, MAX_REPORT_CHARS)}\n… [rapor kısaltıldı]`;
-}
-
-function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10);
 }
 
 export function buildContextBlock(calls: AnalysisCall[]): string {
@@ -210,4 +261,32 @@ export function buildContextBlock(calls: AnalysisCall[]): string {
       return `${head}\n--- TRANSCRIPT ---\n${truncateTranscript(c.transcript)}${reportPart}`;
     })
     .join("\n\n");
+}
+
+/* ── Tarih aralığı ── */
+
+function parseDateOnly(value: unknown): Date | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export interface DateRange {
+  start: Date;
+  end: Date;
+  endExclusive: Date; // bitiş gününü tam kapsar (23:59:59.999)
+}
+
+// Geçersiz/eksik tarihte son 30 güne düşer; ters aralıkta null döner (400).
+export function resolveRange(startRaw: unknown, endRaw: unknown, now: Date): DateRange | null {
+  const end = parseDateOnly(endRaw) ?? now;
+  const start = parseDateOnly(startRaw) ?? new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+  if (start > end) return null;
+  const endExclusive = new Date(end);
+  endExclusive.setUTCHours(23, 59, 59, 999);
+  return { start, end, endExclusive };
+}
+
+export function ymd(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }

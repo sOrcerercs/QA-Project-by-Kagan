@@ -3,12 +3,14 @@ import {
   extractKeywords, extractNames, buildKeywords, MAX_KEYWORDS,
   scoreCall, matchedKeywordCount, selectContext, truncateTranscript, truncateReport, buildContextBlock,
   CONTEXT_CHAR_BUDGET, MAX_CALLS, MAX_TRANSCRIPT_CHARS, MAX_REPORT_CHARS,
+  resolveRange, ymd,
   type AnalysisCall,
 } from "./analysisRetrieval";
 
 function call(over: Partial<AnalysisCall> = {}): AnalysisCall {
   return {
     id: "c1",
+    agentId: "a1",
     agentName: "Ayşe Kaya",
     customerName: "Müşteri A",
     callDate: new Date("2026-08-10T09:00:00Z"),
@@ -186,7 +188,53 @@ describe("selectContext", () => {
 
   it("reports an empty pool without crashing", () => {
     const r = selectContext([], ["fiyat"]);
-    expect(r).toEqual({ selected: [], poolCount: 0, usedCount: 0, truncated: false });
+    expect(r).toEqual({ selected: [], poolCount: 0, usedCount: 0, truncated: false, perAgent: [] });
+  });
+});
+
+describe("selectContext — danışman başına eşit kota", () => {
+  // Ölçülen hata: 4 danışmanlık kıyas havuzunda bütçe tek bir danışmana
+  // akıyordu (Yurdagül 31 çağrı, Koray 6). Kıyas cevapları bu yüzden anlamsızdı.
+  it("gives every consultant a share instead of letting one take the budget", () => {
+    const wordy = Array.from({ length: MAX_CALLS }, (_, i) =>
+      call({ id: `A${i}`, agentId: "A", agentName: "Konuşkan", transcript: "greft greft greft", report: "" })
+    );
+    const quiet = Array.from({ length: 10 }, (_, i) =>
+      call({ id: `B${i}`, agentId: "B", agentName: "Sessiz", transcript: "başka konu", report: "" })
+    );
+    const r = selectContext([...wordy, ...quiet], ["greft"]);
+    expect(r.truncated).toBe(true);
+    const b = r.perAgent.find((p) => p.agentId === "B");
+    // anahtar kelimeyi hiç geçirmese de havuzdaki 10 çağrısının tamamı girer
+    expect(b).toEqual({ agentId: "B", agentName: "Sessiz", pool: 10, used: 10 });
+    const a = r.perAgent.find((p) => p.agentId === "A");
+    expect(a?.used).toBe(MAX_CALLS - 10);
+  });
+
+  it("keeps single-consultant behaviour ranked by relevance", () => {
+    const calls = [
+      ...Array.from({ length: MAX_CALLS }, (_, i) =>
+        call({ id: `n${i}`, agentId: "A", transcript: "alakasiz", report: "" })
+      ),
+      call({ id: "hit", agentId: "A", transcript: "greft anestezi taksit", report: "" }),
+    ];
+    const r = selectContext(calls, ["greft", "anestezi", "taksit"]);
+    expect(r.selected.map((c) => c.id)).toContain("hit");
+    expect(r.perAgent).toHaveLength(1);
+  });
+
+  it("reports per-consultant coverage when the whole pool fits", () => {
+    const calls = [
+      call({ id: "x", agentId: "A", agentName: "Ali" }),
+      call({ id: "y", agentId: "A", agentName: "Ali" }),
+      call({ id: "z", agentId: "B", agentName: "Veli" }),
+    ];
+    const r = selectContext(calls, ["fiyat"]);
+    expect(r.truncated).toBe(false);
+    expect(r.perAgent).toEqual([
+      { agentId: "A", agentName: "Ali", pool: 2, used: 2 },
+      { agentId: "B", agentName: "Veli", pool: 1, used: 1 },
+    ]);
   });
 });
 
@@ -255,5 +303,27 @@ describe("buildContextBlock", () => {
     const out = buildContextBlock([call({ report: "r".repeat(MAX_REPORT_CHARS + 5_000) })]);
     expect(out).toContain("[rapor kısaltıldı]");
     expect(out.length).toBeLessThan(MAX_REPORT_CHARS + 5_000);
+  });
+});
+
+describe("resolveRange", () => {
+  const now = new Date("2026-08-20T10:30:00Z");
+
+  it("uses the given day range and covers the whole end day", () => {
+    const r = resolveRange("2026-08-13", "2026-08-20", now)!;
+    expect(ymd(r.start)).toBe("2026-08-13");
+    expect(ymd(r.end)).toBe("2026-08-20");
+    expect(r.endExclusive.toISOString()).toBe("2026-08-20T23:59:59.999Z");
+  });
+
+  it("falls back to the last 30 days when dates are missing or malformed", () => {
+    const r = resolveRange(undefined, undefined, now)!;
+    expect(ymd(r.end)).toBe("2026-08-20");
+    expect(ymd(r.start)).toBe("2026-07-21");
+    expect(ymd(resolveRange("13/08/2026", "2026-08-20", now)!.start)).toBe("2026-07-21");
+  });
+
+  it("rejects a reversed range", () => {
+    expect(resolveRange("2026-08-20", "2026-08-01", now)).toBeNull();
   });
 });
