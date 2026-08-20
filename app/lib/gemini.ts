@@ -2,16 +2,20 @@ const GEMINI_MODEL = "gemini-2.5-flash";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function callGemini(
+type GeminiOpts = {
+  maxTokens?: number;
+  temperature?: number;
+  timeoutMs?: number;   // set → her denemeye AbortController timeout'u + ağ hatası retry'ı
+  maxAttempts?: number; // default 5 (mevcut davranış)
+  maxSleepMs?: number;  // default 15000 (mevcut davranış)
+};
+
+// Gemini generateContent çağrısının ortak gövdesi. `callGemini` (tek mesaj) ve
+// `callGeminiChat` (çok turlu) yalnızca `contents`'i farklı kurar.
+async function generateContent(
   systemPrompt: string,
-  userMessage: string,
-  opts: {
-    maxTokens?: number;
-    temperature?: number;
-    timeoutMs?: number;   // set → her denemeye AbortController timeout'u + ağ hatası retry'ı
-    maxAttempts?: number; // default 5 (mevcut davranış)
-    maxSleepMs?: number;  // default 15000 (mevcut davranış)
-  } = {}
+  contents: unknown[],
+  opts: GeminiOpts,
 ): Promise<string> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_AI_API_KEY tanımlı değil.");
@@ -19,7 +23,7 @@ export async function callGemini(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: systemPrompt }] },
-    contents: [{ parts: [{ text: userMessage }] }],
+    contents,
     generationConfig: {
       maxOutputTokens: opts.maxTokens ?? 65536,
       temperature: opts.temperature ?? 0.3,
@@ -74,4 +78,26 @@ export async function callGemini(
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Google AI yanıtı boş geldi.");
   return text;
+}
+
+export async function callGemini(
+  systemPrompt: string,
+  userMessage: string,
+  opts: GeminiOpts = {}
+): Promise<string> {
+  return generateContent(systemPrompt, [{ parts: [{ text: userMessage }] }], opts);
+}
+
+export type ChatTurn = { role: "user" | "model"; text: string };
+
+// Çok turlu sohbet. Analiz bölümü kullanır: geçmiş turlar metin olarak taşınır,
+// bağlam bloğu yalnızca son kullanıcı turuna eklenir (bkz. analiz tasarım dokümanı §3).
+export async function callGeminiChat(
+  systemPrompt: string,
+  turns: ChatTurn[],
+  opts: GeminiOpts = {}
+): Promise<string> {
+  if (turns.length === 0) throw new Error("callGeminiChat: turns boş olamaz.");
+  const contents = turns.map((t) => ({ role: t.role, parts: [{ text: t.text }] }));
+  return generateContent(systemPrompt, contents, opts);
 }
