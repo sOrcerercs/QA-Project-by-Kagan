@@ -24,7 +24,7 @@ const STOPWORDS = new Set([
   "with", "you",
 ]);
 
-export function extractKeywords(question: string): string[] {
+export function extractKeywords(question: string, limit: number = MAX_KEYWORDS): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const word of normalizeAgentName(question).split(/[^a-z0-9]+/)) {
@@ -33,9 +33,39 @@ export function extractKeywords(question: string): string[] {
     if (seen.has(word)) continue;
     seen.add(word);
     out.push(word);
-    if (out.length >= MAX_KEYWORDS) break;
+    if (out.length >= limit) break;
   }
   return out;
+}
+
+// Takip sorularının çözdüğü sorun: "Bu danışmanın zayıf yönü ne?" sorusunda
+// kişi adı geçmiyor, dolayısıyla o kişinin çağrıları havuza hiç girmiyor ve
+// model başka birini anlatıyordu. Önceki cevaptaki özel adları (ad + soyad
+// biçiminde ardışık büyük harfle başlayan sözcükler) anahtar kelimelere
+// taşıyoruz. En fazla 2 ad alınır — fazlası seçimi sulandırır.
+export function extractNames(text: string, maxNames = 2): string[] {
+  // \b kullanılmaz: ASCII tabanlı olduğu için Ş/İ/Ö ile başlayan adları kaçırıyor.
+  const pattern = /[A-ZÇĞİÖŞÜ][a-zçğıöşü]{1,}(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]{1,})+/g;
+  const tokens: string[] = [];
+  const seenNames = new Set<string>();
+  for (const match of text.match(pattern) ?? []) {
+    const norm = normalizeAgentName(match);
+    if (seenNames.has(norm)) continue;
+    seenNames.add(norm);
+    for (const part of norm.split(/\s+/)) {
+      if (part.length >= 3 && !tokens.includes(part)) tokens.push(part);
+    }
+    if (seenNames.size >= maxNames) break;
+  }
+  return tokens;
+}
+
+// Sorunun anahtar kelimeleri + (varsa) önceki cevaptaki kişi adları.
+export function buildKeywords(question: string, priorAnswer?: string): string[] {
+  const primary = extractKeywords(question);
+  if (!priorAnswer) return primary;
+  const names = extractNames(priorAnswer).filter((n) => !primary.includes(n));
+  return [...primary, ...names];
 }
 
 export const CONTEXT_CHAR_BUDGET = 900_000; // ~257k token — 1M pencerenin güvenli altı

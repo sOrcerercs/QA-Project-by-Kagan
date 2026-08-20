@@ -22,7 +22,9 @@ import SearchView from "@/app/components/shared/SearchView";
 import PromptsView from "@/app/components/shared/PromptsView";
 import KnownIssuesView from "./shared/KnownIssuesView";
 import OkrView from "@/app/components/shared/OkrView";
+import AnalysisView from "@/app/components/shared/AnalysisView";
 import { canViewOkr } from "@/app/lib/okrPermissions";
+import { canViewAnalysis } from "@/app/lib/analysisPermissions";
 
 /* ── Theme tokens ── */
 const DARK_THEME = {
@@ -58,6 +60,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     qaReport: "QA Raporu",
     knownIssues: "Bilinen Sorunlar",
     okr: "OKR Hedeflerim",
+    analysis: "Analiz",
   },
   en: {
     home: "Home", evaluations: "Evaluations", scores: "My Scores",
@@ -76,6 +79,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     qaReport: "QA Report",
     knownIssues: "Known Issues",
     okr: "My OKRs",
+    analysis: "Analysis",
   },
 };
 
@@ -645,6 +649,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
     { key: "home", icon: "home" },
   ];
   if (canViewOkr(user.email)) mainNavItems.push({ key: "okr", icon: "target" });
+  if (canViewAnalysis(user.email)) mainNavItems.push({ key: "analysis", icon: "spark" });
   mainNavItems.push({ key: "evaluations", icon: "list" });
   mainNavItems.push({ key: "reports", icon: "doc" });
   mainNavItems.push({ key: "comparison", icon: "compare" });
@@ -1349,6 +1354,21 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                   </p>
                 </div>
                 <OkrView lang={lang} />
+              </div>
+            )}
+
+            {/* ── ANALİZ ── */}
+            {activeTab === "analysis" && canViewAnalysis(user.email) && (
+              <div className={styles.page}>
+                <div className={styles.pageHd}>
+                  <h1 className={styles.pageH1}>{navLabels.analysis}</h1>
+                  <p className={styles.pageSub}>
+                    {lang === "tr"
+                      ? "Değerlendirme transcriptleri üzerinden serbest soru-cevap"
+                      : "Free-form Q&A over evaluation transcripts"}
+                  </p>
+                </div>
+                <AnalysisView lang={lang} />
               </div>
             )}
 

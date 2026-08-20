@@ -4,7 +4,7 @@ import { getUserFromToken } from "@/app/lib/auth";
 import { canViewAnalysis } from "@/app/lib/analysisPermissions";
 import { REPORTABLE_ROLES } from "@/app/lib/reportScope";
 import {
-  extractKeywords, selectContext, buildContextBlock, type AnalysisCall,
+  buildKeywords, selectContext, buildContextBlock, type AnalysisCall,
 } from "@/app/lib/analysisRetrieval";
 import { callGeminiChat, type ChatTurn } from "@/app/lib/gemini";
 
@@ -23,7 +23,12 @@ Kurallar:
 - Sayı veya oran verirken hangi çağrıları saydığını belirt.
 - Alıntı yaparken transcript'ten birebir alıntıla, cümleyi değiştirme.
 - Cevabını kullanıcının sorduğu dilde yaz. Kısa ve net ol, gereksiz giriş cümlesi kurma.
-- Uzun listelerde madde işareti kullan.`;
+- Uzun listelerde madde işareti kullan.
+- Takip sorusu önceki cevapta adı geçen bir danışman veya çağrı hakkındaysa
+  SADECE o kişi/çağrı hakkında konuş. O kişinin çağrısı bu turda verilen
+  bloklarda yoksa "Bu turda <kişi>'nin çağrısı gelmedi, tarih aralığını veya
+  danışman filtresini ona göre daraltın" de — başka bir kişi hakkında cevap
+  ÜRETME.`;
 
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -124,7 +129,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const keywords = extractKeywords(question);
+    // Takip sorularında önceki cevapta adı geçen danışmanı da anahtar kelimelere
+    // taşı; yoksa "bu danışmanın zayıf yönü ne?" sorusunda o kişinin çağrıları
+    // havuza hiç girmiyor ve model başka birini anlatıyor.
+    const priorAnswer = [...history].reverse().find((t) => t.role === "model")?.text;
+    const keywords = buildKeywords(question, priorAnswer);
     const selection = selectContext(calls, keywords);
     const contextBlock = buildContextBlock(selection.selected);
 

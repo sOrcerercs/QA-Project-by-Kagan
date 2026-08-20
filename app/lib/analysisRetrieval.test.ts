@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  extractKeywords, MAX_KEYWORDS,
+  extractKeywords, extractNames, buildKeywords, MAX_KEYWORDS,
   scoreCall, matchedKeywordCount, selectContext, truncateTranscript, truncateReport, buildContextBlock,
   CONTEXT_CHAR_BUDGET, MAX_CALLS, MAX_TRANSCRIPT_CHARS, MAX_REPORT_CHARS,
   type AnalysisCall,
@@ -43,6 +43,45 @@ describe("extractKeywords", () => {
 
   it("returns an empty array for a question made only of stopwords", () => {
     expect(extractKeywords("bu ne için ve nasıl?")).toEqual([]);
+  });
+});
+
+describe("extractNames", () => {
+  it("pulls a consultant's full name out of a previous answer", () => {
+    const prior = "Fiyat itirazına en iyi cevabı Caner Arsal veriyor (#20). Kısa özet: ...";
+    expect(extractNames(prior)).toEqual(["caner", "arsal"]);
+  });
+
+  it("handles Turkish capitals and takes at most two names", () => {
+    const prior = "Şeyma Yıldız ve İbrahim Öztürk iyi, Mehmet Kaya zayıf.";
+    const out = extractNames(prior);
+    expect(out).toEqual(["seyma", "yildiz", "ibrahim", "ozturk"]);
+  });
+
+  it("returns nothing when there is no proper name", () => {
+    expect(extractNames("verilen çağrılarda bunu bulamadım")).toEqual([]);
+  });
+});
+
+describe("buildKeywords", () => {
+  it("carries the previous answer's name into a follow-up question", () => {
+    const kws = buildKeywords(
+      "Bu danışmanın zayıf yönü ne peki?",
+      "Fiyat itirazına en iyi cevabı Caner Arsal veriyor (#20)."
+    );
+    expect(kws).toContain("caner");
+    expect(kws).toContain("arsal");
+    // sorunun kendi kelimeleri önce gelir
+    expect(kws.indexOf("zayif")).toBeLessThan(kws.indexOf("caner"));
+  });
+
+  it("is just the question's keywords on the first turn", () => {
+    expect(buildKeywords("fiyat itirazı var mı?")).toEqual(["fiyat", "itirazi"]);
+  });
+
+  it("does not duplicate a name already present in the question", () => {
+    const kws = buildKeywords("Caner Arsal nasıl?", "Caner Arsal iyi iş çıkarıyor.");
+    expect(kws.filter((k) => k === "caner").length).toBe(1);
   });
 });
 

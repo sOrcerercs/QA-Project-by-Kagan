@@ -47,6 +47,49 @@ const T = {
   },
 } as const;
 
+// Gemini cevapları markdown yazıyor (**kalın**, madde işaretleri, başlıklar).
+// Projede markdown renderer yok ve bunun için bağımlılık eklemeye değmez —
+// ihtiyaç duyulan üç işareti burada çeviriyoruz, gerisi düz metin kalıyor.
+function renderInline(text: string, keyPrefix: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.length > 4 && part.startsWith("**") && part.endsWith("**") ? (
+      <strong key={`${keyPrefix}-${i}`}>{part.slice(2, -2)}</strong>
+    ) : (
+      <span key={`${keyPrefix}-${i}`}>{part}</span>
+    )
+  );
+}
+
+function FormattedAnswer({ text }: { text: string }) {
+  return (
+    <>
+      {text.split("\n").map((raw, i) => {
+        const line = raw.replace(/\t/g, "  ");
+        const bullet = /^(\s*)[*-]\s+(.*)$/.exec(line);
+        if (bullet) {
+          const indent = Math.min(Math.floor(bullet[1].length / 2), 3);
+          return (
+            <div key={i} style={{ display: "flex", gap: 8, paddingLeft: indent * 14 }}>
+              <span style={{ opacity: 0.45 }}>•</span>
+              <span>{renderInline(bullet[2], String(i))}</span>
+            </div>
+          );
+        }
+        const heading = /^#{1,6}\s+(.*)$/.exec(line);
+        if (heading) {
+          return (
+            <div key={i} style={{ fontWeight: 600, marginTop: 8 }}>
+              {renderInline(heading[1], String(i))}
+            </div>
+          );
+        }
+        if (!line.trim()) return <div key={i} style={{ height: 7 }} />;
+        return <div key={i}>{renderInline(line, String(i))}</div>;
+      })}
+    </>
+  );
+}
+
 export default function AnalysisView({ lang = "tr" }: { lang?: "tr" | "en" }) {
   const t = T[lang];
 
@@ -161,7 +204,7 @@ export default function AnalysisView({ lang = "tr" }: { lang?: "tr" | "en" }) {
                   borderRadius: 14,
                   fontSize: 13.5,
                   lineHeight: 1.6,
-                  whiteSpace: "pre-wrap",
+                  whiteSpace: m.role === "assistant" && !m.error ? "normal" : "pre-wrap",
                   background: m.error
                     ? "rgba(239,68,68,0.12)"
                     : m.role === "user"
@@ -171,7 +214,7 @@ export default function AnalysisView({ lang = "tr" }: { lang?: "tr" | "en" }) {
                   color: m.error ? "#fca5a5" : "var(--fg)",
                 }}
               >
-                {m.content}
+                {m.role === "assistant" && !m.error ? <FormattedAnswer text={m.content} /> : m.content}
               </div>
               {m.meta && (
                 <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 5, paddingLeft: 4 }}>
