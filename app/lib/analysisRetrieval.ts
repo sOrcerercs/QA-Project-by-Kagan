@@ -38,9 +38,12 @@ export function extractKeywords(question: string): string[] {
   return out;
 }
 
-export const CONTEXT_CHAR_BUDGET = 600_000; // ~170k token — 1M pencerenin güvenli altı
+export const CONTEXT_CHAR_BUDGET = 900_000; // ~257k token — 1M pencerenin güvenli altı
 export const MAX_CALLS = 60;                // model onlarca blok arasında kaybolmasın
 export const MAX_TRANSCRIPT_CHARS = 25_000; // tek dev transcript (75k) bütçeyi yemesin
+// Raporlar prod'da transcript kadar uzun (ortalama 10.7k, en uzunu 1,5M karakter).
+// Kırpılmazsa bütçenin yarısını yiyor ve havuzdan çok daha az çağrı sığıyordu.
+export const MAX_REPORT_CHARS = 8_000;
 
 export interface AnalysisCall {
   id: string;
@@ -69,9 +72,14 @@ const CALL_TYPE_TR: Record<string, string> = {
 
 // Bir çağrının bağlam bütçesinden yiyeceği karakter miktarı.
 function contextCost(c: AnalysisCall): number {
-  return Math.min(c.transcript.length, MAX_TRANSCRIPT_CHARS) + (c.report?.length ?? 0);
+  return (
+    Math.min(c.transcript.length, MAX_TRANSCRIPT_CHARS) +
+    Math.min(c.report?.length ?? 0, MAX_REPORT_CHARS)
+  );
 }
 
+// Toplam isabet sayısı. Tek başına sıralama ölçütü olarak kullanılmaz: uzun
+// transcriptler sırf uzun oldukları için daha çok isabet topluyor.
 export function scoreCall(call: AnalysisCall, keywords: string[]): number {
   if (keywords.length === 0) return 0;
   const hay = normalizeAgentName(`${call.transcript}\n${call.report ?? ""}`);
@@ -84,6 +92,17 @@ export function scoreCall(call: AnalysisCall, keywords: string[]): number {
     }
   }
   return total;
+}
+
+// Kaç FARKLI anahtar kelime geçiyor. Sıralamanın birincil ölçütü — uzunluk
+// yanlılığı taşımaz: 3 farklı kelimeyi barındıran kısa bir çağrı, aynı kelimeyi
+// 20 kez tekrarlayan uzun bir çağrıdan önce gelir.
+export function matchedKeywordCount(call: AnalysisCall, keywords: string[]): number {
+  if (keywords.length === 0) return 0;
+  const hay = normalizeAgentName(`${call.transcript}\n${call.report ?? ""}`);
+  let matched = 0;
+  for (const k of keywords) if (hay.includes(k)) matched++;
+  return matched;
 }
 
 const newestFirst = (a: AnalysisCall, b: AnalysisCall) => b.callDate.getTime() - a.callDate.getTime();
@@ -105,8 +124,16 @@ export function selectContext(calls: AnalysisCall[], keywords: string[]): Select
   }
 
   // Sığmıyor: soruya en yakın çağrıları seç. Puanlar bir kez hesaplanır.
-  const scored = calls.map((c) => ({ c, score: scoreCall(c, keywords) }));
-  scored.sort((a, b) => b.score - a.score || newestFirst(a.c, b.c));
+  // Sıralama: (1) kaç farklı anahtar kelime geçiyor, (2) toplam isabet,
+  // (3) daha yeni çağrı.
+  const scored = calls.map((c) => ({
+    c,
+    matched: matchedKeywordCount(c, keywords),
+    hits: scoreCall(c, keywords),
+  }));
+  scored.sort(
+    (a, b) => b.matched - a.matched || b.hits - a.hits || newestFirst(a.c, b.c)
+  );
 
   const selected: AnalysisCall[] = [];
   let used = 0;
@@ -131,6 +158,11 @@ export function truncateTranscript(text: string): string {
   return `${text.slice(0, MAX_TRANSCRIPT_CHARS)}\n… [transcript kısaltıldı]`;
 }
 
+export function truncateReport(text: string): string {
+  if (text.length <= MAX_REPORT_CHARS) return text;
+  return `${text.slice(0, MAX_REPORT_CHARS)}\n… [rapor kısaltıldı]`;
+}
+
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -144,7 +176,7 @@ export function buildContextBlock(calls: AnalysisCall[]): string {
         `Tip: ${CALL_TYPE_TR[c.callType] ?? c.callType} | Puan: ${c.score} | ` +
         `Müşteri: ${c.customerName}`;
       const report = (c.report ?? "").trim();
-      const reportPart = report ? `\n--- DEĞERLENDİRME RAPORU ---\n${report}` : "";
+      const reportPart = report ? `\n--- DEĞERLENDİRME RAPORU ---\n${truncateReport(report)}` : "";
       return `${head}\n--- TRANSCRIPT ---\n${truncateTranscript(c.transcript)}${reportPart}`;
     })
     .join("\n\n");

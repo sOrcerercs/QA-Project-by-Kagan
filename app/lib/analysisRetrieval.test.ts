@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   extractKeywords, MAX_KEYWORDS,
-  scoreCall, selectContext, truncateTranscript, buildContextBlock,
-  CONTEXT_CHAR_BUDGET, MAX_CALLS, MAX_TRANSCRIPT_CHARS,
+  scoreCall, matchedKeywordCount, selectContext, truncateTranscript, truncateReport, buildContextBlock,
+  CONTEXT_CHAR_BUDGET, MAX_CALLS, MAX_TRANSCRIPT_CHARS, MAX_REPORT_CHARS,
   type AnalysisCall,
 } from "./analysisRetrieval";
 
@@ -63,7 +63,41 @@ describe("scoreCall", () => {
   });
 });
 
+describe("matchedKeywordCount", () => {
+  it("counts distinct keywords, not repetitions", () => {
+    const c = call({ transcript: "fiyat fiyat fiyat", report: "" });
+    expect(matchedKeywordCount(c, ["fiyat", "greft"])).toBe(1);
+    expect(scoreCall(c, ["fiyat", "greft"])).toBe(3);
+  });
+
+  it("counts every distinct keyword that appears", () => {
+    const c = call({ transcript: "fiyat greft", report: "anestezi" });
+    expect(matchedKeywordCount(c, ["fiyat", "greft", "anestezi", "taksit"])).toBe(3);
+  });
+
+  it("returns 0 without keywords", () => {
+    expect(matchedKeywordCount(call(), [])).toBe(0);
+  });
+});
+
 describe("selectContext", () => {
+  it("prefers broader keyword coverage over a long repetitive transcript", () => {
+    const filler = "q".repeat(24_000);
+    const calls = [
+      // uzun ama tek kelimeyi tekrarlıyor
+      call({ id: "long", transcript: `${filler} greft greft greft greft greft`, report: "" }),
+      // kısa ama üç farklı kelimeyi de içeriyor
+      call({ id: "broad", transcript: "greft anestezi taksit", report: "" }),
+      ...Array.from({ length: MAX_CALLS + 5 }, (_, i) =>
+        call({ id: `n${i}`, transcript: filler, report: "" })
+      ),
+    ];
+    const r = selectContext(calls, ["greft", "anestezi", "taksit"]);
+    expect(r.selected.map((c) => c.id)).toContain("broad");
+    // uzunluk yanlılığı kırıldı: geniş kapsamalı kısa çağrı seçime giriyor
+    expect(r.truncated).toBe(true);
+  });
+
   it("sends the whole pool untouched when it fits the budget", () => {
     const calls = [
       call({ id: "a", callDate: new Date("2026-08-01T00:00:00Z") }),
@@ -129,6 +163,33 @@ describe("truncateTranscript", () => {
   });
 });
 
+describe("truncateReport", () => {
+  it("leaves short reports alone", () => {
+    expect(truncateReport("kısa rapor")).toBe("kısa rapor");
+  });
+
+  it("cuts long reports and appends a note", () => {
+    // Prod'da 1,5M karakterlik bir rapor var; kırpılmazsa tek başına bütçeyi yer.
+    const out = truncateReport("r".repeat(1_500_000));
+    expect(out.length).toBeLessThan(MAX_REPORT_CHARS + 100);
+    expect(out).toContain("[rapor kısaltıldı]");
+  });
+});
+
+describe("selectContext budget accounting", () => {
+  it("counts a capped report cost, so a huge report does not drop the call", () => {
+    const calls = [
+      call({ id: "huge", transcript: "greft", report: "r".repeat(1_500_000) }),
+      ...Array.from({ length: MAX_CALLS + 5 }, (_, i) =>
+        call({ id: `n${i}`, transcript: "baska", report: "" })
+      ),
+    ];
+    const r = selectContext(calls, ["greft"]);
+    expect(r.truncated).toBe(true);
+    expect(r.selected.map((c) => c.id)).toContain("huge");
+  });
+});
+
 describe("buildContextBlock", () => {
   it("numbers the calls and labels every field", () => {
     const out = buildContextBlock([
@@ -149,5 +210,11 @@ describe("buildContextBlock", () => {
     const out = buildContextBlock([call({ report: "   " })]);
     expect(out).not.toContain("DEĞERLENDİRME RAPORU");
     expect(out).toContain("--- TRANSCRIPT ---");
+  });
+
+  it("truncates an oversized report inside the block", () => {
+    const out = buildContextBlock([call({ report: "r".repeat(MAX_REPORT_CHARS + 5_000) })]);
+    expect(out).toContain("[rapor kısaltıldı]");
+    expect(out.length).toBeLessThan(MAX_REPORT_CHARS + 5_000);
   });
 });
