@@ -41,6 +41,7 @@
 //   npx tsx scripts/reclassify-range.ts --id cmtk3z021000104l6q56m2hjs --apply
 //   npx tsx scripts/reclassify-range.ts --from 2026-09-01 --limit 5 --dump /tmp/rapor
 //   npx tsx scripts/reclassify-range.ts --from 2026-09-01 --apply --allow-hardfail
+//   npx tsx scripts/reclassify-range.ts --id <id> --thinking-budget 4096
 //
 // --dump <klasör>: üretilen raporu ve JSON bloğunu dosyaya yazar. Kuru
 // çalışmada skorun neden değiştiğini görmenin tek yolu bu — büyük bir skor
@@ -105,6 +106,18 @@ async function main() {
   const toRaw = arg(args, "--to");
 
   const dumpDir = arg(args, "--dump");
+  // Bütçeyi ölçmek için: Vercel Hobby'de istek tavanı 60 sn ve prod yerelden
+  // yavaş. Kaliteyi/gecikmeyi karşılaştırmadan sabit bir sayı seçmemek için.
+  const budgetRaw = arg(args, "--thinking-budget");
+  let thinkingBudget = SCORING_THINKING_BUDGET;
+  if (budgetRaw !== undefined) {
+    thinkingBudget = Number(budgetRaw);
+    if (!Number.isInteger(thinkingBudget) || thinkingBudget < 0 || thinkingBudget > 24576) {
+      console.error("--thinking-budget 0-24576 arası bir tam sayı olmalı.");
+      process.exit(1);
+    }
+  }
+
   const limitRaw = arg(args, "--limit");
   let limit: number | undefined;
   if (limitRaw !== undefined) {
@@ -218,7 +231,7 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
       const reportText = await callGemini("Sen bir satış koçusun.", fullPrompt, {
         maxTokens: 65536,
         temperature: 0,
-        thinkingBudget: SCORING_THINKING_BUDGET,
+        thinkingBudget,
       });
 
       const extracted = extractReportJson(reportText);
