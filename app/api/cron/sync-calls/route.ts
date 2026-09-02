@@ -122,7 +122,8 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
 
 /**
  * Vercel Cron tarafından çağrılır. CRON_SECRET ile korunur.
- * vercel.json'daki schedule: "*​/30 * * * *" (her 30 dakikada bir)
+ * vercel.json'daki schedule: "0 3 * * *" (her gece 03:00 UTC = 06:00 TR).
+ * Hobby planında cron günde bir kez koşar ve tetiklenme saati kesin değildir.
  */
 export async function GET(req: NextRequest) {
   // CRON_SECRET kontrolü — Vercel cron header'ında "Authorization: Bearer <CRON_SECRET>" gönderir

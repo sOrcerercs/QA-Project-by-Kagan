@@ -4,7 +4,7 @@ import { isFirefliesConfigured } from "@/app/lib/fireflies";
 
 /**
  * Vercel Cron tarafından çağrılır. CRON_SECRET ile korunur.
- * vercel.json schedule: "0 2 * * *" (her gece 02:00 UTC = 05:00 TR)
+ * vercel.json schedule: "0 4 * * *" (her gece 04:00 UTC = 07:00 TR)
  */
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
