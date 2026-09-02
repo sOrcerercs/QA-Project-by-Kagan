@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Check, User, Clock, Calendar } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { POSITIVE_COACHING, composePositiveFeedback } from "@/app/lib/positiveCoaching";
+import EvaluationReportCard from "@/app/components/shared/EvaluationReportCard";
 
 const MIcon = ({ name, className = "" }: { name: string; className?: string }) => (
   <span className={`material-symbols-outlined ${className}`}>{name}</span>
@@ -69,6 +70,7 @@ const L = {
     transcript: "💬 Konuşma Transkripti",
     readMore: "Devamını Oku",
     reportTitle: "📋 Değerlendirme Raporu",
+    rawReport: "Ham rapor metni",
     listenOnFireflies: "🎧 Fireflies'ta Dinle",
     noTranscript: "Transkript bulunamadı.",
     editTitle: "✏️ Değerlendirmeyi Yeniden Düzenle",
@@ -147,6 +149,7 @@ const L = {
     transcript: "💬 Conversation Transcript",
     readMore: "Read More",
     reportTitle: "📋 Evaluation Report",
+    rawReport: "Raw report text",
     listenOnFireflies: "🎧 Listen on Fireflies",
     noTranscript: "Transcript not found.",
     editTitle: "✏️ Re-evaluate",
@@ -238,6 +241,7 @@ export default function EvaluationDetailPage({
   };
   const [translatedReport, setTranslatedReport] = useState<string | null>(null);
   const [translatedWeakCriteria, setTranslatedWeakCriteria] = useState<Array<{ id: string; label: string; score: number; coachingNote: string }> | null>(null);
+  const [translatedReportData, setTranslatedReportData] = useState<unknown | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translateError, setTranslateError] = useState(false);
   const [reclassifyOpen, setReclassifyOpen] = useState(false);
@@ -296,6 +300,7 @@ export default function EvaluationDetailPage({
       if (!res.ok) throw new Error();
       setTranslatedReport(data.report);
       if (Array.isArray(data.weakCriteria)) setTranslatedWeakCriteria(data.weakCriteria);
+      if (data.reportData && typeof data.reportData === "object") setTranslatedReportData(data.reportData);
     } catch {
       setTranslateError(true);
     } finally {
@@ -373,7 +378,20 @@ export default function EvaluationDetailPage({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || t.refineError);
-      setEvaluation((prev: any) => ({ ...prev, report: data.report, score: data.score }));
+      setEvaluation((prev: any) => ({
+        ...prev,
+        report: data.report,
+        score: data.score,
+        sectionScores: data.sectionScores ?? prev.sectionScores,
+        weakCriteria: data.weakCriteria ?? prev.weakCriteria,
+        reportData: data.reportData ?? prev.reportData,
+      }));
+      // Rapor değişti → önbellekteki İngilizce çeviri bayatladı; sıfırla ki
+      // EN görünümde eski metin gösterilmesin (useEffect yeniden çevirir).
+      setTranslatedReport(null);
+      setTranslatedWeakCriteria(null);
+      setTranslatedReportData(null);
+
       setFeedback("");
       setFeedbackOpen(false);
     } catch (err: any) {
@@ -515,9 +533,13 @@ export default function EvaluationDetailPage({
         score: data.score,
         sectionScores: data.sectionScores ?? prev.sectionScores,
         weakCriteria: data.weakCriteria ?? prev.weakCriteria,
+        reportData: data.reportData ?? prev.reportData,
       }));
+      // Rapor değişti → önbellekteki İngilizce çeviri bayatladı; sıfırla ki
+      // EN görünümde eski metin gösterilmesin (useEffect yeniden çevirir).
       setTranslatedReport(null);
       setTranslatedWeakCriteria(null);
+      setTranslatedReportData(null);
     } catch (err: any) {
       setReclassifyError(err.message);
     } finally {
@@ -554,15 +576,6 @@ export default function EvaluationDetailPage({
 
   const canEdit = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
   const canReclassify = currentUser?.role === "ADMIN";
-
-  const scoreColor = (score: number) =>
-    score >= 85
-      ? "text-emerald-400"
-      : score >= 70
-      ? "text-primary"
-      : score >= 55
-      ? "text-amber-400"
-      : "text-error";
 
   const formatReport = (text: string) =>
     text.split("\n").map((line, i) => {
@@ -798,17 +811,9 @@ export default function EvaluationDetailPage({
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
-            <span className={`text-4xl font-black ${scoreColor(evaluation.score)}`}>
-              %{evaluation.score}
-            </span>
-            {evaluation.callType && (
-              <span className="px-3 py-1 rounded-lg text-xs font-bold border border-primary/20 bg-primary/10 text-primary">
-                {evaluation.callType.replace("_", " ")}
-              </span>
-            )}
-          </div>
+        {/* Skor ve çağrı tipi artık değerlendirme kartının başlığında gösteriliyor;
+            burada tekrar edilmiyor. Bu satırda yalnızca aksiyon düğmeleri var. */}
+        <div className="flex items-center justify-end mb-4">
           <div className="flex items-center gap-2">
             <button
               onClick={handleCopy}
@@ -883,47 +888,36 @@ export default function EvaluationDetailPage({
 
       {/* Split Content */}
       <div className="px-6 pb-2 grid grid-cols-2 gap-4 items-start">
-        {/* Left: Report */}
+        {/* Left: Değerlendirme Raporu — kart asıl görünüm, ham metin altta referans */}
         <div className="bg-surface-container border border-outline-variant rounded-2xl p-6 leading-relaxed">
-          {evaluation.weakCriteria && Array.isArray(evaluation.weakCriteria) && (evaluation.weakCriteria as any[]).length > 0 && (
-            <div className="mb-6 bg-surface-container-high border border-primary/20 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-1 rounded-full border border-primary/20 tracking-wide">
-                  COACHING
-                </span>
-                <span className="text-sm font-bold text-on-surface">{t.coachingCards}</span>
-              </div>
-              <div className="space-y-3">
-                {(
-                  (lang === "en" && translatedWeakCriteria) ||
-                  (evaluation.weakCriteria as Array<{ id: string; label: string; score: number; coachingNote: string }>)
-                ).map(
-                  (c, idx) => {
-                    const palette = [
-                      { card: "bg-red-500/10 border-red-500/30", num: "bg-red-500/20 text-red-400", label: "text-red-300" },
-                      { card: "bg-orange-500/10 border-orange-500/30", num: "bg-orange-500/20 text-orange-400", label: "text-orange-300" },
-                      { card: "bg-yellow-500/10 border-yellow-500/30", num: "bg-yellow-500/20 text-yellow-400", label: "text-yellow-300" },
-                    ];
-                    const p = palette[idx % palette.length];
-                    return (
-                      <div key={c.id} className={`flex gap-3 p-3 rounded-xl border ${p.card}`}>
-                        <span className={`flex-shrink-0 w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center ${p.num}`}>
-                          {idx + 1}
-                        </span>
-                        <div>
-                          <p className={`text-[11px] font-semibold mb-1 ${p.label}`}>{c.id} — {c.label}</p>
-                          <p className="text-[11px] text-on-surface-variant leading-relaxed">{c.coachingNote}</p>
-                        </div>
-                      </div>
-                    );
-                  }
-                )}
-              </div>
+          <div className="text-primary font-bold text-base border-b border-outline-variant pb-2 mb-4">
+            {t.reportTitle}
+          </div>
+
+          <EvaluationReportCard
+            lang={lang}
+            score={evaluation.score}
+            header={{
+              customerName: evaluation.customerName,
+              agentName: evaluation.agent?.name,
+              teamName: evaluation.agent?.team?.name,
+              callDate: new Date(evaluation.callDate).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR"),
+              callDuration: evaluation.callDuration,
+              callTypeLabel: evaluation.callType ? String(evaluation.callType).replace("_", " ") : null,
+            }}
+            sectionScores={evaluation.sectionScores}
+            reportData={lang === "en" && translatedReportData ? translatedReportData : evaluation.reportData}
+            weakCriteria={lang === "en" && translatedWeakCriteria ? translatedWeakCriteria : evaluation.weakCriteria}
+          />
+
+          <div className="mt-6 pt-4 border-t border-outline-variant">
+            <div className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wide mb-3">
+              {t.rawReport}
             </div>
-          )}
-          <ClampedPanel maxHeight={260} onReadMore={() => setReadMore("report")} readMoreLabel={t.readMore}>
-            {reportBody}
-          </ClampedPanel>
+            <ClampedPanel maxHeight={220} onReadMore={() => setReadMore("report")} readMoreLabel={t.readMore}>
+              {reportBody}
+            </ClampedPanel>
+          </div>
         </div>
 
         {/* Right: Transcript */}

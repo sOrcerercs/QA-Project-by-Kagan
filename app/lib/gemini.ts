@@ -1,5 +1,20 @@
 const GEMINI_MODEL = "gemini-2.5-flash";
 
+/**
+ * Rubrik uygulayan çağrılar için düşünme bütçesi.
+ *
+ * 2.5 Flash'ta düşünme varsayılan olarak açıktır; bu projede her çağrıda
+ * `thinkingBudget: 0` ile kapatılmıştı. Değerlendirme promptu ~1150 satır
+ * ve çok terimli aritmetik içeriyor — muhakeme kapalıyken model yanlış
+ * payda topluyor, aynı aramada tur başına farklı skor veriyor ve kendi
+ * gerekçesiyle çelişen verdict üretiyor.
+ *
+ * Dinamik bütçe (-1) yerine SABİT bütçe: gecikme öngörülebilir kalsın.
+ * Vercel'de istek süresi sınırlı ve senkron/cron çağrıları o sınıra yakın
+ * çalışıyor. Bu sayı kaliteyi/gecikmeyi ayarlamak için tek kol.
+ */
+export const SCORING_THINKING_BUDGET = 8192;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type GeminiOpts = {
@@ -8,6 +23,11 @@ type GeminiOpts = {
   timeoutMs?: number;   // set → her denemeye AbortController timeout'u + ağ hatası retry'ı
   maxAttempts?: number; // default 5 (mevcut davranış)
   maxSleepMs?: number;  // default 15000 (mevcut davranış)
+  /**
+   * Düşünme bütçesi. Varsayılan 0 (kapalı) — mevcut çağrıların davranışı
+   * korunsun diye. Rubrik uygulayan çağrılar SCORING_THINKING_BUDGET verir.
+   */
+  thinkingBudget?: number;
 };
 
 // Gemini generateContent çağrısının ortak gövdesi. `callGemini` (tek mesaj) ve
@@ -27,7 +47,7 @@ async function generateContent(
     generationConfig: {
       maxOutputTokens: opts.maxTokens ?? 65536,
       temperature: opts.temperature ?? 0.3,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingBudget: opts.thinkingBudget ?? 0 },
     },
   });
 

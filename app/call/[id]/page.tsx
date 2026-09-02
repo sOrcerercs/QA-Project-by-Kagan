@@ -73,6 +73,8 @@ export default function CallAnalysisPage() {
     formData.append("callType", callType);
 
     try {
+      // Elle tetiklenen tek analiz — düşünme açık (bkz. analyze route).
+      formData.append("deepAnalysis", "true");
       const response = await fetch("/api/analyze", {
         method: "POST",
         body: formData,
@@ -104,6 +106,7 @@ export default function CallAnalysisPage() {
             promptId: data.promptId,
             sectionScores: data.sectionScores ?? null,
             weakCriteria: data.weakCriteria ?? null,
+            reportData: data.reportData ?? null,
           }),
         });
       }
