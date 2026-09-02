@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { collectTranslatable, applyTranslations } from "@/app/lib/reportDataI18n";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -37,7 +38,7 @@ export async function POST(
   try {
     const evaluation = await prisma.evaluation.findUnique({
       where: { id },
-      select: { report: true, weakCriteria: true },
+      select: { report: true, weakCriteria: true, reportData: true },
     });
     if (!evaluation) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
@@ -76,6 +77,28 @@ Output format (same structure, translated label and coachingNote only):`;
       tasks.push(geminiTranslate(criteriaPrompt));
     }
 
+    // reportData: yalnızca modelin yazdığı serbest metinler düz bir dizi olarak
+    // gider ve aynı uzunlukta geri gelir. Kanıt alıntıları, highlight'lar,
+    // id'ler ve puanlar çeviriye hiç girmez (bkz. reportDataI18n.ts).
+    const reportDataTexts = collectTranslatable(evaluation.reportData);
+    const hasReportData = reportDataTexts.length > 0;
+    const reportDataTaskIndex = hasCriteria ? 2 : 1;
+
+    if (hasReportData) {
+      const textsPrompt = `Translate each string in the following JSON array from Turkish to English.
+
+Rules:
+1. Return ONLY a valid JSON array of strings — no explanation, no keys, no markdown fence.
+2. The output array MUST have exactly ${reportDataTexts.length} items, in the same order as the input.
+3. Translate each item independently. Never merge, split, reorder or drop items.
+4. Keep numbers, times, prices, proper nouns and product names (Estenove, NoveCare, Sapphire FUE, DHI, WhatsApp) unchanged.
+5. If an item is already English, return it unchanged.
+
+Input:
+${JSON.stringify(reportDataTexts)}`;
+      tasks.push(geminiTranslate(textsPrompt));
+    }
+
     const results = await Promise.allSettled(tasks);
 
     const reportResult = results[0];
@@ -97,7 +120,31 @@ Output format (same structure, translated label and coachingNote only):`;
       }
     }
 
-    return NextResponse.json({ report: translated, weakCriteria: translatedWeakCriteria });
+    let translatedReportData: unknown = null;
+    if (hasReportData) {
+      const task = results[reportDataTaskIndex];
+      if (task?.status === "fulfilled") {
+        try {
+          const raw = task.value as string;
+          const jsonMatch = raw.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            // Uzunluk tutmazsa applyTranslations orijinali döndürür — kart
+            // yarım çevrilmiş değil, tamamen Türkçe görünür.
+            translatedReportData = applyTranslations(evaluation.reportData, JSON.parse(jsonMatch[0]));
+          }
+        } catch (err) {
+          console.warn("[translate] reportData translation parse failed — falling back to Turkish:", err);
+        }
+      } else if (task?.status === "rejected") {
+        console.warn("[translate] reportData translation failed:", task.reason);
+      }
+    }
+
+    return NextResponse.json({
+      report: translated,
+      weakCriteria: translatedWeakCriteria,
+      reportData: translatedReportData,
+    });
   } catch (error: any) {
     console.error("Translate route error:", error.message);
     return NextResponse.json({ error: "Internal server error." }, { status: 500 });

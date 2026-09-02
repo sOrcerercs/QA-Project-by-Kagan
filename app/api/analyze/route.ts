@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { extractReportJson } from "@/app/lib/reportJson";
 import prisma from "@/app/lib/prisma";
 import { detectCallType } from "@/app/lib/callTypeDetector";
-import { callGemini } from "@/app/lib/gemini";
+import { callGemini, SCORING_THINKING_BUDGET } from "@/app/lib/gemini";
+
+// Düşünme açık olduğu için bu çağrılar ~40-60 sn sürebiliyor. Bu route'u
+// çağıran senkron/cron yolları zaten maxDuration = 300 kullanıyor;
+// analiz tarafı daha düşük bir platform varsayılanında kalırsa
+// zincirin en zayıf halkası burası olur.
+export const maxDuration = 300;
 
 const EXTRACT_NAMES_PROMPT = `Aşağıdaki telefon görüşmesi transkriptini oku ve iki kişiyi belirle:
 1. Danışman: Şirketi/kliniği temsil eden, hizmet sunan taraf
@@ -22,6 +29,12 @@ export async function POST(request: NextRequest) {
     const teamName = formData.get("teamName") as string || "Belirtilmedi";
     const requestedCallType = formData.get("callType") as string || "AUTO";
     const extractNames = formData.get("extractNames") === "true";
+    // Düşünme yalnızca elle tetiklenen tek analizlerde açılır. Vercel Hobby'de
+    // istek tavanı 60 sn; düşünmeli çağrı ~50 sn sürüyor ve toplu senkron
+    // aramaları sırayla işlediği için o pencereye sığmıyor.
+    // Varsayılan KAPALI: yeni bir çağıran eklenip bu alan unutulursa sonuç
+    // "eski kalite" olur, "prod'da zaman aşımı" değil.
+    const deepAnalysis = formData.get("deepAnalysis") === "true";
 
     if (!transcript || transcript.trim().length < 50) {
       return NextResponse.json(
@@ -87,27 +100,15 @@ ${transcript}
 Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATINDA Türkçe rapor üret.`;
 
     // 5. Ana analiz
-    const reportText = await callGemini("Sen bir satış koçusun.", fullPrompt, { maxTokens: 65536, temperature: 0.3 });
+    // Rubrik uygulayan çağrı: düşünme açık, sıcaklık 0 (aynı transkript
+    // tur başına farklı skor vermesin).
+    const reportText = await callGemini("Sen bir satış koçusun.", fullPrompt, {
+      maxTokens: 65536,
+      temperature: 0,
+      thinkingBudget: deepAnalysis ? SCORING_THINKING_BUDGET : 0,
+    });
 
-    // JSON_DATA bloğunu çek
-    const jsonBlockMatch = reportText.match(/===JSON_DATA===([\s\S]*?)===END_JSON===/);
-    let sectionScores: { A: number; B: number; C: number } | null = null;
-    let weakCriteria: Array<{ id: string; label: string; score: number; coachingNote: string }> | null = null;
-
-    if (jsonBlockMatch) {
-      try {
-        const parsed = JSON.parse(jsonBlockMatch[1].trim());
-        if (parsed.sectionScores && typeof parsed.sectionScores === "object") sectionScores = parsed.sectionScores;
-        if (Array.isArray(parsed.weakCriteria)) weakCriteria = parsed.weakCriteria;
-      } catch (err) {
-        console.warn("[analyze] JSON_DATA block parse failed — sectionScores and weakCriteria will be null:", err);
-      }
-    }
-
-    const cleanReport = reportText.replace(/\n*===JSON_DATA===[\s\S]*?===END_JSON===/g, "").trim();
-
-    const scoreMatch = cleanReport.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
-    const score = scoreMatch ? Math.round(parseFloat(scoreMatch[1].replace(",", "."))) : 0;
+    const { cleanReport, score, sectionScores, weakCriteria, reportData } = extractReportJson(reportText);
 
     return NextResponse.json({
       report: cleanReport,
@@ -116,6 +117,7 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
       promptId: activePrompt.id,
       sectionScores,
       weakCriteria,
+      reportData,
       detectedAgentName,
       detectedCustomerName,
     });

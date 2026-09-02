@@ -126,6 +126,9 @@ model Evaluation {
   classificationVerified Boolean @default(false) // admin confirmed the call type is correct → hidden from the suspicious-classifications scan
   sectionScores   Json?
   weakCriteria    Json?
+  // ===JSON_DATA=== bloğunun tamamı. sectionScores/weakCriteria kolonları
+  // korunuyor: trend, kriter raporu ve OKR sorguları onlara bağlı.
+  reportData      Json?
   callDate        DateTime  @default(now())
   createdAt       DateTime  @default(now())
 

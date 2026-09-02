@@ -141,6 +141,7 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
   const promptId = result.data.promptId || null;
   const weakCriteria = result.data.weakCriteria ?? null;
   const sectionScores = result.data.sectionScores ?? null;
+  const reportData = result.data.reportData ?? null;
 
   const evaluation = await prisma.evaluation.create({
     data: {
@@ -160,6 +161,7 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
       recordingUrl: `https://app.fireflies.ai/view/${transcript.id}`,
       weakCriteria,
       sectionScores,
+      reportData,
     },
   });
 
