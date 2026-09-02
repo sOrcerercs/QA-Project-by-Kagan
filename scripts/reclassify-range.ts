@@ -17,11 +17,6 @@
 // promptu kullanılır. Bu bir yeniden PUANLAMA işi, yeniden sınıflandırma değil;
 // tipi düzeltmek istiyorsan sayfadaki düğmeyi kullan.
 //
-// UPSELL SINIFLANDIRMASI SİLİNİR. Rapor metni değiştiği için EvaluationUpsell
-// satırı bayatlar — /api/evaluations/[id]/re-classify route'u da aynısını
-// yapıyor. Kayıt "bekleyen" havuzuna döner ve güncel raporla yeniden
-// sınıflandırılır.
-//
 // VARSAYILAN KURU ÇALIŞMA. Bu betik raporun TAMAMINI yeniden yazıyor; prod
 // verisinde yazma varsayılan olmamalı. Yazmak için --apply gerekir.
 //
@@ -265,10 +260,6 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
         where: { id: ev.id },
         data: { report: cleanReport, score, ...reportJsonFields(extracted) },
       });
-
-      // Rapor değişti → upsell sınıflandırması bayatladı; kayıt yeniden
-      // sınıflandırılsın diye satır silinir (re-classify route ile aynı).
-      await prisma.evaluationUpsell.deleteMany({ where: { evaluationId: ev.id } });
       updated++;
     } catch (e: any) {
       failed++;
