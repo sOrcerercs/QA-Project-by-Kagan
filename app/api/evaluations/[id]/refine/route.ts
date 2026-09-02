@@ -77,8 +77,11 @@ ${feedback}
 ${evaluation.report}
 
 === MEVCUT YAPISAL VERİ (referans) ===
-sectionScores: ${JSON.stringify(evaluation.sectionScores ?? null)}
-weakCriteria: ${JSON.stringify(evaluation.weakCriteria ?? [])}
+Aşağıdaki blok, üreteceğin ===JSON_DATA=== bloğunun MEVCUT hâlidir. Yönetici
+notunun ilgilendirmediği HER ALANI buradan birebir kopyala — passedCriteria,
+naCriteria, coaching ve medicalFlags dahil. Bir alanı anlatı metninden yeniden
+kurmaya çalışma; elindeki değeri koru.
+${JSON.stringify(evaluation.reportData ?? { sectionScores: evaluation.sectionScores ?? null, weakCriteria: evaluation.weakCriteria ?? [] }, null, 1)}
 
 === DEĞERLENDİRME KURALLARI (yalnızca puanlama ölçeği/format referansı — yeniden değerlendirme için DEĞİL) ===
 ${prompt.content}
