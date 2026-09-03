@@ -67,6 +67,9 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
   formData.append("callType", forceFirstCall ? "FIRST_CALL" : "AUTO");
 
   let report = "", score = 0, callType = "SECOND_CALL", promptId: string | null = null;
+  // Bu route şimdiye kadar analiz çıktısının yalnızca metnini saklıyordu;
+  // kriter kırılımı olmadan cron ile gelen kayıtlarda değerlendirme kartı boş kalıyor.
+  let sectionScores: any = null, weakCriteria: any = null, reportData: any = null;
   // Retry up to 3 times with exponential backoff (Groq rate limit koruması)
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -75,6 +78,9 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
         const d = await r.json();
         report = d.report || ""; score = d.score || 0;
         callType = d.callType || "SECOND_CALL"; promptId = d.promptId || null;
+        sectionScores = d.sectionScores ?? null;
+        weakCriteria = d.weakCriteria ?? null;
+        reportData = d.reportData ?? null;
         break;
       }
       const errText = await r.text().catch(() => "");
@@ -105,6 +111,9 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
         : (call.recording_url || null),
       unassigned: isUnassigned,
       source: "KRIKO",
+      sectionScores,
+      weakCriteria,
+      reportData,
     },
   });
 
@@ -113,7 +122,8 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
 
 /**
  * Vercel Cron tarafından çağrılır. CRON_SECRET ile korunur.
- * vercel.json'daki schedule: "*​/30 * * * *" (her 30 dakikada bir)
+ * vercel.json'daki schedule: "0 3 * * *" (her gece 03:00 UTC = 06:00 TR).
+ * Hobby planında cron günde bir kez koşar ve tetiklenme saati kesin değildir.
  */
 export async function GET(req: NextRequest) {
   // CRON_SECRET kontrolü — Vercel cron header'ında "Authorization: Bearer <CRON_SECRET>" gönderir

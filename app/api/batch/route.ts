@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { $Enums } from "@/app/generated/prisma";
 import prisma from "@/app/lib/prisma";
+import { extractReportJson, reportJsonFields } from "@/app/lib/reportJson";
 import { getUserFromToken } from "@/app/lib/auth";
 import { detectCallType } from "@/app/lib/callTypeDetector";
 import { shouldForceFirstCall } from "@/app/lib/evaluationRules";
+
+// Düşünme açık olduğu için bu çağrılar ~40-60 sn sürebiliyor. Bu route'u
+// çağıran senkron/cron yolları zaten maxDuration = 300 kullanıyor;
+// analiz tarafı daha düşük bir platform varsayılanında kalırsa
+// zincirin en zayıf halkası burası olur.
+export const maxDuration = 300;
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -12,7 +19,8 @@ async function callGemini(
   systemPrompt: string,
   userMessage: string,
   maxOutputTokens: number,
-  temperature = 0.3
+  temperature = 0,
+  thinkingBudget = 0
 ): Promise<string> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_AI_API_KEY tanımlı değil.");
@@ -23,7 +31,7 @@ async function callGemini(
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ parts: [{ text: userMessage }] }],
-      generationConfig: { maxOutputTokens, temperature, thinkingConfig: { thinkingBudget: 0 } },
+      generationConfig: { maxOutputTokens, temperature, thinkingConfig: { thinkingBudget } },
     }),
   });
 
@@ -145,23 +153,13 @@ ${call.transcript}
 
 Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATINDA Türkçe rapor üret.`;
 
-      const reportText = await callGemini("Sen bir satış koçusun.", fullPrompt, 65536);
+      // Toplu yükleme döngüde çalışıyor; düşünme açık olsa istek tavanına
+      // sığmaz. Kalite gereken kayıtlar tek tek "yeniden sınıflandır" ile
+      // düşünmeli yoldan geçirilir.
+      const reportText = await callGemini("Sen bir satış koçusun.", fullPrompt, 65536, 0);
 
-      // JSON_DATA bloğunu parse et
-      const jsonBlockMatch = reportText.match(/===JSON_DATA===([\s\S]*?)===END_JSON===/);
-      let sectionScores = null;
-      let weakCriteria = null;
-      if (jsonBlockMatch) {
-        try {
-          const parsed = JSON.parse(jsonBlockMatch[1].trim());
-          if (parsed.sectionScores && typeof parsed.sectionScores === "object") sectionScores = parsed.sectionScores;
-          if (Array.isArray(parsed.weakCriteria)) weakCriteria = parsed.weakCriteria;
-        } catch { /* sessiz hata */ }
-      }
-
-      const cleanReport = reportText.replace(/\n*===JSON_DATA===[\s\S]*?===END_JSON===/g, "").trim();
-      const scoreMatch = cleanReport.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
-      const score = scoreMatch ? Math.round(parseFloat(scoreMatch[1].replace(",", "."))) : 0;
+      const extracted = extractReportJson(reportText);
+      const { cleanReport, score } = extracted;
 
       const evaluation = await prisma.evaluation.create({
         data: {
@@ -173,8 +171,7 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
           score,
           callType: callType as $Enums.CallType,
           promptId: activePrompt.id,
-          ...(sectionScores && { sectionScores }),
-          ...(weakCriteria && weakCriteria.length > 0 && { weakCriteria }),
+          ...reportJsonFields(extracted),
         },
       });
 

@@ -2,7 +2,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { $Enums } from "@/app/generated/prisma";
 import prisma from "@/app/lib/prisma";
+import { extractReportJson, reportJsonFields } from "@/app/lib/reportJson";
 import { getUserFromToken } from "@/app/lib/auth";
+import { SCORING_THINKING_BUDGET } from "@/app/lib/gemini";
+
+// Düşünme açık olduğu için bu çağrılar ~40-60 sn sürebiliyor. Bu route'u
+// çağıran senkron/cron yolları zaten maxDuration = 300 kullanıyor;
+// analiz tarafı daha düşük bir platform varsayılanında kalırsa
+// zincirin en zayıf halkası burası olur.
+export const maxDuration = 300;
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -19,8 +27,9 @@ async function callGemini(systemPrompt: string, userMessage: string): Promise<st
       contents: [{ parts: [{ text: userMessage }] }],
       generationConfig: {
         maxOutputTokens: 65536,
-        temperature: 0.3,
-        thinkingConfig: { thinkingBudget: 0 },
+        // Rubrik uygulayan çağrı — bkz. SCORING_THINKING_BUDGET (gemini.ts).
+        temperature: 0,
+        thinkingConfig: { thinkingBudget: SCORING_THINKING_BUDGET },
       },
     }),
   });
@@ -101,20 +110,8 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
   try {
     const reportText = await callGemini("Sen bir satış koçusun.", fullPrompt);
 
-    const jsonBlockMatch = reportText.match(/===JSON_DATA===([\s\S]*?)===END_JSON===/);
-    let sectionScores = null;
-    let weakCriteria = null;
-    if (jsonBlockMatch) {
-      try {
-        const parsed = JSON.parse(jsonBlockMatch[1].trim());
-        if (parsed.sectionScores && typeof parsed.sectionScores === "object") sectionScores = parsed.sectionScores;
-        if (Array.isArray(parsed.weakCriteria)) weakCriteria = parsed.weakCriteria;
-      } catch { /* parse failed */ }
-    }
-
-    const cleanReport = reportText.replace(/\n*===JSON_DATA===[\s\S]*?===END_JSON===/g, "").trim();
-    const scoreMatch = cleanReport.match(/(?:Genel Skor|Puan):[^0-9\n]*(\d+(?:[.,]\d+)?)/i);
-    const rawScore = scoreMatch ? Math.round(parseFloat(scoreMatch[1].replace(",", "."))) : null;
+    const extracted = extractReportJson(reportText);
+    const { cleanReport, scoreRaw: rawScore } = extracted;
     const score = rawScore !== null && rawScore >= 0 && rawScore <= 100 ? rawScore : evaluation.score;
 
     const updated = await prisma.evaluation.update({
@@ -124,8 +121,7 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
         promptId: activePrompt.id,
         report: cleanReport,
         score,
-        ...(sectionScores && { sectionScores }),
-        ...(weakCriteria && weakCriteria.length > 0 && { weakCriteria }),
+        ...reportJsonFields(extracted),
       },
     });
 
@@ -135,6 +131,7 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
       callType: updated.callType,
       sectionScores: updated.sectionScores,
       weakCriteria: updated.weakCriteria,
+      reportData: updated.reportData,
     });
   } catch (error: any) {
     console.error("re-classify error:", error.message);

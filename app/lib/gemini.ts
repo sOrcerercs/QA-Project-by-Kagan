@@ -1,5 +1,29 @@
 const GEMINI_MODEL = "gemini-2.5-flash";
 
+/**
+ * Rubrik uygulayan çağrılar için düşünme bütçesi.
+ *
+ * 2.5 Flash'ta düşünme varsayılan olarak açıktır; bu projede her çağrıda
+ * `thinkingBudget: 0` ile kapatılmıştı. Değerlendirme promptu ~1150 satır
+ * ve çok terimli aritmetik içeriyor — muhakeme kapalıyken model yanlış
+ * payda topluyor, aynı aramada tur başına farklı skor veriyor ve kendi
+ * gerekçesiyle çelişen verdict üretiyor.
+ *
+ * Bütçe bir TAVAN, hedef değil — model ihtiyacı kadarını kullanır. Ölçüldü
+ * (aynı kayıt, tekrarlı koşu):
+ *    4096 → 3 koşunun 2'si DEJENERE: muhakeme görünür çıktıya taşıyor,
+ *           JSON bloğu hiç gelmiyor, 4+ dk sürüp maxOutputTokens'a dayanıyor
+ *    8192 → 4/4 temiz, 40-44 sn
+ *   16384 → 2/2 temiz, 39-42 sn
+ * Yani yükseltmek gecikme getirmiyor, düşürmek kırıyor. 16384 dejenerasyona
+ * karşı bedava emniyet payı.
+ *
+ * Bu sayı zaman aşımını ÇÖZMEZ: prod'da tek çağrı ~52 sn ve Vercel Hobby
+ * tavanı 60 sn. O sınır ancak işi Vercel dışına taşıyarak aşılır
+ * (bkz. scripts/reclassify-range.ts).
+ */
+export const SCORING_THINKING_BUDGET = 16384;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function callGemini(
@@ -11,6 +35,11 @@ export async function callGemini(
     timeoutMs?: number;   // set → her denemeye AbortController timeout'u + ağ hatası retry'ı
     maxAttempts?: number; // default 5 (mevcut davranış)
     maxSleepMs?: number;  // default 15000 (mevcut davranış)
+    /**
+     * Düşünme bütçesi. Varsayılan 0 (kapalı) — mevcut çağrıların davranışı
+     * korunsun diye. Rubrik uygulayan çağrılar SCORING_THINKING_BUDGET verir.
+     */
+    thinkingBudget?: number;
   } = {}
 ): Promise<string> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
@@ -23,7 +52,7 @@ export async function callGemini(
     generationConfig: {
       maxOutputTokens: opts.maxTokens ?? 65536,
       temperature: opts.temperature ?? 0.3,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingBudget: opts.thinkingBudget ?? 0 },
     },
   });
 
