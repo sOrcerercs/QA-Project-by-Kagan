@@ -17,6 +17,11 @@
 // promptu kullanılır. Bu bir yeniden PUANLAMA işi, yeniden sınıflandırma değil;
 // tipi düzeltmek istiyorsan sayfadaki düğmeyi kullan.
 //
+// UPSELL SINIFLANDIRMASI SİLİNİR. Rapor metni değiştiği için EvaluationUpsell
+// satırı bayatlar — /api/evaluations/[id]/re-classify route'u da aynısını
+// yapıyor. Kayıt "bekleyen" havuzuna döner ve güncel raporla yeniden
+// sınıflandırılır.
+//
 // VARSAYILAN KURU ÇALIŞMA. Bu betik raporun TAMAMINI yeniden yazıyor; prod
 // verisinde yazma varsayılan olmamalı. Yazmak için --apply gerekir.
 //
@@ -41,7 +46,6 @@
 //   npx tsx scripts/reclassify-range.ts --id cmtk3z021000104l6q56m2hjs --apply
 //   npx tsx scripts/reclassify-range.ts --from 2026-09-01 --limit 5 --dump /tmp/rapor
 //   npx tsx scripts/reclassify-range.ts --from 2026-09-01 --apply --allow-hardfail
-//   npx tsx scripts/reclassify-range.ts --id <id> --thinking-budget 4096
 //
 // --dump <klasör>: üretilen raporu ve JSON bloğunu dosyaya yazar. Kuru
 // çalışmada skorun neden değiştiğini görmenin tek yolu bu — büyük bir skor
@@ -106,18 +110,6 @@ async function main() {
   const toRaw = arg(args, "--to");
 
   const dumpDir = arg(args, "--dump");
-  // Bütçeyi ölçmek için: Vercel Hobby'de istek tavanı 60 sn ve prod yerelden
-  // yavaş. Kaliteyi/gecikmeyi karşılaştırmadan sabit bir sayı seçmemek için.
-  const budgetRaw = arg(args, "--thinking-budget");
-  let thinkingBudget = SCORING_THINKING_BUDGET;
-  if (budgetRaw !== undefined) {
-    thinkingBudget = Number(budgetRaw);
-    if (!Number.isInteger(thinkingBudget) || thinkingBudget < 0 || thinkingBudget > 24576) {
-      console.error("--thinking-budget 0-24576 arası bir tam sayı olmalı.");
-      process.exit(1);
-    }
-  }
-
   const limitRaw = arg(args, "--limit");
   let limit: number | undefined;
   if (limitRaw !== undefined) {
@@ -156,7 +148,7 @@ async function main() {
     where,
     select: {
       id: true, customerName: true, callDuration: true, transcript: true,
-      callType: true, score: true, callDate: true,
+      callType: true, score: true, callDate: true, reportData: true,
       agent: { select: { name: true, team: { select: { name: true } } } },
     },
     orderBy: { callDate: "asc" },
@@ -191,10 +183,11 @@ async function main() {
 
   let updated = 0, unchangedScore = 0, failed = 0, noPrompt = 0;
   const hardFailSkipped: string[] = [];
+  const blocklessSkipped: string[] = [];
   const started = Date.now();
 
   for (let i = 0; i < evaluations.length; i++) {
-    const ev = evaluations[i];
+    const ev = { ...evaluations[i], hadReportData: evaluations[i].reportData != null };
     const tag = `[${i + 1}/${evaluations.length}] ${ev.id}`;
     const who = `${ev.customerName} · ${ev.agent?.name ?? "—"}`;
 
@@ -231,7 +224,7 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
       const reportText = await callGemini("Sen bir satış koçusun.", fullPrompt, {
         maxTokens: 65536,
         temperature: 0,
-        thinkingBudget,
+        thinkingBudget: SCORING_THINKING_BUDGET,
       });
 
       const extracted = extractReportJson(reportText);
@@ -256,6 +249,17 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
       const blok = extracted.reportData ? "blok✓" : "blok✗";
       console.log(`${tag} ${delta}  ${blok}  ${took}  ${who}`);
 
+      // Blok üretilmediyse kayda HİÇ DOKUNMA. reportJsonFields boş bloğu
+      // yazmadığı için eski blok yerinde kalır; rapor ve skor yenilenirse
+      // kayıt yarısı yeni yarısı eski olur ve kart, yeni skorun yanında ESKİ
+      // kriterleri gösterir. Ölçüldü: 1 Eylül'ün 2. turunda 3 kayıt böyle
+      // bozuldu (kolon %42 ≠ blok %46 gibi).
+      if (!extracted.reportData && ev.hadReportData) {
+        blocklessSkipped.push(`${ev.id}  ${who}`);
+        console.log(`${tag} YAZILMADI — blok üretilmedi, eski blokla karışmasın`);
+        continue;
+      }
+
       // Puanı olan bir kaydı hard fail yüzünden sıfıra düşürmek, yanlış
       // pozitifte geri dönüşü zor bir veri kaybı. Bilinçli onay istiyoruz.
       const zeroesOutByHardFail =
@@ -273,6 +277,10 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
         where: { id: ev.id },
         data: { report: cleanReport, score, ...reportJsonFields(extracted) },
       });
+
+      // Rapor değişti → upsell sınıflandırması bayatladı; kayıt yeniden
+      // sınıflandırılsın diye satır silinir (re-classify route ile aynı).
+      await prisma.evaluationUpsell.deleteMany({ where: { evaluationId: ev.id } });
       updated++;
     } catch (e: any) {
       failed++;
@@ -285,6 +293,11 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
     (unchangedScore ? ` · skor satırı okunamayan ${unchangedScore} (eski skor korundu)` : "") +
     ` · süre ${hhmmss(Date.now() - started)}`,
   );
+  if (blocklessSkipped.length) {
+    console.log(`\nblok üretilmediği için yazılmayan ${blocklessSkipped.length} kayıt:`);
+    for (const line of blocklessSkipped) console.log("  " + line);
+    console.log("  bunları tekrar çalıştır; model o turda bloğu üretmemiş.");
+  }
   if (hardFailSkipped.length) {
     console.log(`\nhard fail nedeniyle yazılmayan ${hardFailSkipped.length} kayıt:`);
     for (const line of hardFailSkipped) console.log("  " + line);

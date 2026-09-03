@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractReportJson, reportJsonFields } from "./reportJson";
+import { extractReportJson, reportJsonFields, deriveScoreFromBlock } from "./reportJson";
 
 const report = `📊 DEĞERLENDİRME
 Genel Skor: 58
@@ -91,5 +91,55 @@ describe("reportJsonFields", () => {
   it("boş weakCriteria dizisini yazmaz", () => {
     const fields = reportJsonFields({ sectionScores: null, weakCriteria: [], reportData: { a: 1 } });
     expect(fields).toEqual({ reportData: { a: 1 } });
+  });
+});
+
+describe("deriveScoreFromBlock", () => {
+  const blok = {
+    passedCriteria: [
+      { id: "A3", earned: 1.5, weight: 1.5 },
+      { id: "A2", earned: 0.5, weight: 0.5 },
+    ],
+    weakCriteria: [
+      { id: "A1", verdict: "PARTIAL", loss: 1.5, weight: 3 },
+      { id: "B2", verdict: "FAIL", loss: 3, weight: 3 },
+    ],
+    naCriteria: [{ id: "A5" }],
+    overallScore: 65,
+  };
+
+  it("skoru kriter verisinden hesaplar, modelin yazdığına bakmaz", () => {
+    // kazanılan 1.5+0.5+1.5+0 = 3.5 · uygulanabilir 1.5+0.5+3+3 = 8 → %44
+    expect(deriveScoreFromBlock(blok)).toBe(44);
+  });
+
+  it("naCriteria'yı paydaya katmaz", () => {
+    const ile = deriveScoreFromBlock({ ...blok, naCriteria: [{ id: "A5" }, { id: "B1" }] });
+    expect(ile).toBe(44);
+  });
+
+  it("hardFail skoru sıfırlar", () => {
+    expect(deriveScoreFromBlock({ ...blok, hardFail: true })).toBe(0);
+  });
+
+  it("puanlanamayan aramada null döner", () => {
+    expect(deriveScoreFromBlock({ ...blok, scorable: false })).toBeNull();
+  });
+
+  it("ağırlık eksikse null döner — metinden okunan skora düşülsün", () => {
+    expect(deriveScoreFromBlock({ passedCriteria: [{ id: "A1", earned: 1 }] })).toBeNull();
+  });
+
+  it("D1'i paydaya katmaz", () => {
+    const ile = deriveScoreFromBlock({
+      ...blok,
+      weakCriteria: [...blok.weakCriteria, { id: "D1", verdict: "FAIL", loss: 0, weight: 0 }],
+    });
+    expect(ile).toBe(44);
+  });
+
+  it("blok yoksa null", () => {
+    expect(deriveScoreFromBlock(null)).toBeNull();
+    expect(deriveScoreFromBlock({})).toBeNull();
   });
 });

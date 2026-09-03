@@ -344,7 +344,13 @@ export default function EvaluationReportCard({
   if (card.isEmpty) return null;
 
   const meters = card.sections;
-  const bandText = card.band ?? (typeof score === "number" ? scoreBand(score, lang) : null);
+  // Bant SKORDAN türetilir, bloktan okunmaz. Skor artık kodda hesaplanıyor
+  // (deriveScoreFromBlock); modelin yazdığı bant kendi yanlış skoruna göre
+  // hesaplandığı için kaçınılmaz olarak bayat kalıyor. ÖLÇÜLDÜ: 9 kayıtta
+  // bant düzeltilmiş skorla çelişiyordu (%39 alan kayıt "Koçluk Gerekiyor"
+  // diyordu, "Kritik" olmalıydı). Bant zaten skorun bir fonksiyonu — yargı
+  // değil, tablo okuması.
+  const bandText = typeof score === "number" ? scoreBand(score, lang) : card.band;
   const metaLine = header
     ? [header.agentName, header.teamName, header.callDate, header.callDuration]
         .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
