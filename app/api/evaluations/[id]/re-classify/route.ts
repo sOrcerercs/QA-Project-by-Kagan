@@ -122,6 +122,9 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
         report: cleanReport,
         score,
         ...reportJsonFields(extracted),
+        // Bu route düşünme AÇIK çalışıyor; panel bu kaydı tekrar sıraya almasın.
+        deepScoredAt: new Date(),
+        deepScoreLockedAt: null,
       },
     });
 

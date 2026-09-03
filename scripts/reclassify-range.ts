@@ -275,7 +275,14 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
 
       await prisma.evaluation.update({
         where: { id: ev.id },
-        data: { report: cleanReport, score, ...reportJsonFields(extracted) },
+        data: {
+          report: cleanReport,
+          score,
+          ...reportJsonFields(extracted),
+          // Panel bu kaydı tekrar sıraya almasın.
+          deepScoredAt: new Date(),
+          deepScoreLockedAt: null,
+        },
       });
 
       // Rapor değişti → upsell sınıflandırması bayatladı; kayıt yeniden
