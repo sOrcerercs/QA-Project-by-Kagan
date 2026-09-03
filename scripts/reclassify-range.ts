@@ -148,7 +148,7 @@ async function main() {
     where,
     select: {
       id: true, customerName: true, callDuration: true, transcript: true,
-      callType: true, score: true, callDate: true,
+      callType: true, score: true, callDate: true, reportData: true,
       agent: { select: { name: true, team: { select: { name: true } } } },
     },
     orderBy: { callDate: "asc" },
@@ -183,10 +183,11 @@ async function main() {
 
   let updated = 0, unchangedScore = 0, failed = 0, noPrompt = 0;
   const hardFailSkipped: string[] = [];
+  const blocklessSkipped: string[] = [];
   const started = Date.now();
 
   for (let i = 0; i < evaluations.length; i++) {
-    const ev = evaluations[i];
+    const ev = { ...evaluations[i], hadReportData: evaluations[i].reportData != null };
     const tag = `[${i + 1}/${evaluations.length}] ${ev.id}`;
     const who = `${ev.customerName} · ${ev.agent?.name ?? "—"}`;
 
@@ -248,6 +249,17 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
       const blok = extracted.reportData ? "blok✓" : "blok✗";
       console.log(`${tag} ${delta}  ${blok}  ${took}  ${who}`);
 
+      // Blok üretilmediyse kayda HİÇ DOKUNMA. reportJsonFields boş bloğu
+      // yazmadığı için eski blok yerinde kalır; rapor ve skor yenilenirse
+      // kayıt yarısı yeni yarısı eski olur ve kart, yeni skorun yanında ESKİ
+      // kriterleri gösterir. Ölçüldü: 1 Eylül'ün 2. turunda 3 kayıt böyle
+      // bozuldu (kolon %42 ≠ blok %46 gibi).
+      if (!extracted.reportData && ev.hadReportData) {
+        blocklessSkipped.push(`${ev.id}  ${who}`);
+        console.log(`${tag} YAZILMADI — blok üretilmedi, eski blokla karışmasın`);
+        continue;
+      }
+
       // Puanı olan bir kaydı hard fail yüzünden sıfıra düşürmek, yanlış
       // pozitifte geri dönüşü zor bir veri kaybı. Bilinçli onay istiyoruz.
       const zeroesOutByHardFail =
@@ -281,6 +293,11 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
     (unchangedScore ? ` · skor satırı okunamayan ${unchangedScore} (eski skor korundu)` : "") +
     ` · süre ${hhmmss(Date.now() - started)}`,
   );
+  if (blocklessSkipped.length) {
+    console.log(`\nblok üretilmediği için yazılmayan ${blocklessSkipped.length} kayıt:`);
+    for (const line of blocklessSkipped) console.log("  " + line);
+    console.log("  bunları tekrar çalıştır; model o turda bloğu üretmemiş.");
+  }
   if (hardFailSkipped.length) {
     console.log(`\nhard fail nedeniyle yazılmayan ${hardFailSkipped.length} kayıt:`);
     for (const line of hardFailSkipped) console.log("  " + line);

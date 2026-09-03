@@ -115,8 +115,17 @@ Bir bölümün değeri `null` ise o bölüm için ölçer çizilmez ("puanlanabi
 kriter yoktu" demek — 0 ile karıştırılmaz).
 
 **Puanlar.** `earned` ve `loss` birbirinin tümleyeni; hangisini verirsen diğeri
-`weight` üzerinden hesaplanır. İkisini birden vermen gerekmez. Toplamlar ve
-sıralama kodda yapılır — modelin aritmetiğine güvenilmez.
+`weight` üzerinden hesaplanır. İkisini birden vermen gerekmez.
+
+**`overallScore` ve `sectionScores` KOD TARAFINDAN HESAPLANIR** — bloğa
+yazabilirsin (rapor metniyle tutarlı olsun diye) ama kart ve veritabanı
+onları kullanmaz.
+
+Gerekçe ölçüldü: 87 kaydın 16'sında (%18) modelin `overallScore`'u kendi
+kriter verisini tutmuyordu (sapma −10 ile +26 puan), 6 kayıtta bölüm skorları
+tutmuyordu. Verdict'ler ve ağırlıklar güvenilir; güvenilmez olan çok terimli
+toplam. Bu yüzden modelden istenen şey YARGI, hesap değil.
+
 `naCriteria` paydaya girmez, onlara puan yazma.
 
 **`verdict`.** `FAIL` → kartta **KIRIK**, `PARTIAL` → **EKSİK**.
@@ -129,9 +138,12 @@ olarak yazılır.
 **`hardFail: true`** → maddelerin üstünde kırmızı "Ağır ihlal" uyarısı çıkar.
 Bölüm skorları korunur.
 
-**`band`.** Kartın rozet metni. Vermezsen koddaki yedek eşiklerden
-(85/70/55) türetilir — ama bant adları promptlar arasında farklı olduğu için
-**vermen tavsiye edilir.**
+**`band`.** Artık **kod tarafından skordan türetiliyor**, bloktan okunmuyor.
+Skoru da kod hesapladığı için (aşağıya bak), modelin yazdığı bant kendi
+yanlış skoruna göre hesaplanmış oluyordu — 9 kayıtta düzeltilmiş skorla
+çelişiyordu. Bant skorun bir fonksiyonu, yargı değil.
+Bloğa yazmaya devam edebilirsin (rapor metniyle tutarlı olsun diye), ama
+kart onu kullanmaz.
 
 **Kanıt.** `text` transkriptten **birebir** alıntı, `timestamp` transkriptteki
 `[MM:SS]` damgası. `note` modelin kendi açıklamasıdır (çevrilir), `text`
