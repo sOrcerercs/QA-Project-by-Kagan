@@ -104,7 +104,10 @@ const PANEL_T = {
     rsStart: "Yeniden Değerlendir",
     rsStop: "Durdur",
     rsRunning: (d: number, t: number) => `${d} / ${t} işlendi`,
-    rsDone: (n: number) => `${n} değerlendirme yeniden üretildi.`,
+    rsDone: (n: number, r: number) =>
+      `${n} değerlendirme yeniden üretildi.` +
+      (r ? ` (${r} kayıt ilk denemede tamamlanamadı, tekrar denendi.)` : ""),
+    rsRetrying: (r: number) => `${r} kayıt ilk denemede tamamlanamadı — kuyruk yeniden deneyecek.`,
     rsInterrupted: (n: number) => `Bağlantı kesildi — ${n} kayıt tamamlandı. Düğmeye yeniden basarsan kaldığı yerden devam eder.`,
     rsEta: (n: number) => `~${Math.max(1, Math.round(n * 50 / 60 / 3))} dk (3 paralel)`,
     rsHint: "Her kayıt ayrı istekte, düşünme açık işlenir (~50 sn). Sekme açık ve bilgisayar uyanık kalmalı; kesilirse düğmeye yeniden bas, kaldığı yerden devam eder.",
@@ -200,7 +203,9 @@ const PANEL_T = {
     rsStart: "Re-score",
     rsStop: "Stop",
     rsRunning: (d: number, t: number) => `${d} / ${t} processed`,
-    rsDone: (n: number) => `${n} evaluations regenerated.`,
+    rsDone: (n: number, r: number) =>
+      `${n} evaluations regenerated.` + (r ? ` (${r} failed on first attempt and were retried.)` : ""),
+    rsRetrying: (r: number) => `${r} record(s) failed on first attempt — the queue will retry.`,
     rsInterrupted: (n: number) => `Connection lost — ${n} records completed. Press the button again to resume.`,
     rsEta: (n: number) => `~${Math.max(1, Math.round(n * 50 / 60 / 3))} min (3 parallel)`,
     rsHint: "Each record runs in its own request with thinking on (~50 s). Keep the tab open and the machine awake; if interrupted, press again to resume.",
@@ -379,6 +384,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     };
 
     let done = 0;
+    let tekrar = 0;
     let kesildi = false;
 
     const worker = async () => {
@@ -399,7 +405,14 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
           return;
         }
         if (data.processed) { done++; setRsDone(done); }
-        else if (data.error) setRsMsg(data.error);   // kayıt kilidini bıraktı, döngü sürsün
+        else if (data.error) {
+          // Blok üretilememesi geçici ve kendi kendine toparlanan bir durum:
+          // kayıt damgalanmadı, kilidi bırakıldı, kuyruk onu tekrar alacak.
+          // Ham hata metnini basmak gereksiz endişe yaratıyordu — sayıp
+          // özetliyoruz. 3 denemede de olmazsa zaten sarı uyarıda çıkıyor.
+          tekrar++;
+          setRsMsg(t.rsRetrying(tekrar));
+        }
         if ((data.remaining ?? 0) === 0) return;
       }
     };
@@ -409,7 +422,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     } finally {
       // finally: ağ hatası da olsa düğme "işleniyor"da takılı kalmasın.
       setRsBusy(false);
-      setRsMsg(kesildi ? t.rsInterrupted(done) : t.rsDone(done));
+      setRsMsg(kesildi ? t.rsInterrupted(done) : t.rsDone(done, tekrar));
       fetchRescore();
     }
   };
