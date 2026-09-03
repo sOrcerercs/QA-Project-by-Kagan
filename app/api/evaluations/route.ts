@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
 
-  const { agentId, customerName, callDuration, transcript, report, score, callType, promptId, sectionScores, weakCriteria, reportData } = await req.json();
+  const { agentId, customerName, callDuration, transcript, report, score, callType, promptId, sectionScores, weakCriteria, reportData, deepAnalysis } = await req.json();
 
   // Duplicate guard: same agent + same transcript → update instead of create
   const transcriptPrefix = typeof transcript === "string" ? transcript.slice(0, 300) : "";
@@ -33,6 +33,8 @@ export async function POST(req: NextRequest) {
           ...(sectionScores && { sectionScores }),
           ...(weakCriteria && weakCriteria.length > 0 && { weakCriteria }),
           ...(reportData && { reportData }),
+          // Düşünme açık üretildiyse damgala — panel tekrar sıraya almasın.
+          ...(deepAnalysis === true && { deepScoredAt: new Date() }),
         },
         include: { agent: { select: { teamId: true } } },
       })
@@ -44,6 +46,8 @@ export async function POST(req: NextRequest) {
           ...(sectionScores && { sectionScores }),
           ...(weakCriteria && weakCriteria.length > 0 && { weakCriteria }),
           ...(reportData && { reportData }),
+          // Düşünme açık üretildiyse damgala — panel tekrar sıraya almasın.
+          ...(deepAnalysis === true && { deepScoredAt: new Date() }),
         },
         include: { agent: { select: { teamId: true } } },
       });

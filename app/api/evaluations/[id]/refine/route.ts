@@ -124,6 +124,9 @@ ${evaluation.transcript}`;
         report: cleanRefineReport,
         score,
         ...reportJsonFields(extracted),
+        // Bu route düşünme AÇIK çalışıyor; panel bu kaydı tekrar sıraya almasın.
+        deepScoredAt: new Date(),
+        deepScoreLockedAt: null,
       },
     });
 

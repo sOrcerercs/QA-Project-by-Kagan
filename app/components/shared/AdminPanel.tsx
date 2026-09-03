@@ -98,6 +98,18 @@ const PANEL_T = {
     manualSync: "Manuel Senkronizasyon", labelDate: "Tarih (boş = dün)",
     syncing: "Senkronize Ediliyor...", syncNow: "Şimdi Senkronize Et",
     syncStarted: "Senkronizasyon başlatıldı, lütfen bekleyin (1-3 dakika sürebilir)...",
+    rsTitle: "Düşünmeli Yeniden Değerlendirme",
+    rsPending: "düzeltilmemiş değerlendirme",
+    rsEmpty: "Bu aralıkta düzeltilmemiş değerlendirme yok.",
+    rsStart: "Yeniden Değerlendir",
+    rsStop: "Durdur",
+    rsRunning: (d: number, t: number) => `${d} / ${t} işlendi`,
+    rsDone: (n: number) => `${n} değerlendirme yeniden üretildi.`,
+    rsInterrupted: (n: number) => `Bağlantı kesildi — ${n} kayıt tamamlandı. Düğmeye yeniden basarsan kaldığı yerden devam eder.`,
+    rsEta: (n: number) => `~${Math.max(1, Math.round(n * 50 / 60 / 3))} dk (3 paralel)`,
+    rsHint: "Her kayıt ayrı istekte, düşünme açık işlenir (~50 sn). Sekme açık ve bilgisayar uyanık kalmalı; kesilirse düğmeye yeniden bas, kaldığı yerden devam eder.",
+    rsExhausted: (n: number) => `${n} kayıt 3 denemede de tamamlanamadı — terminalden reclassify-range ile geçir.`,
+    rsScope: (d: string) => `Kuyruk ${d} tarihinden itibaren çağrıları kapsar.`,
     ffSyncStarted: "Senkronizasyon başlatıldı, lütfen bekleyin...",
     syncError: "Hata: ", syncFailed: "Senkronizasyon başarısız.",
     syncDone: (imp: number, una: number, ski: number) => `✅ Tamamlandı: ${imp} import, ${una} atanmamış, ${ski} atlandı.`,
@@ -182,6 +194,18 @@ const PANEL_T = {
     manualSync: "Manual Sync", labelDate: "Date (empty = yesterday)",
     syncing: "Syncing...", syncNow: "Sync Now",
     syncStarted: "Sync started, please wait (may take 1–3 minutes)...",
+    rsTitle: "Deep Re-scoring",
+    rsPending: "evaluations not yet deep-scored",
+    rsEmpty: "Nothing to re-score in this range.",
+    rsStart: "Re-score",
+    rsStop: "Stop",
+    rsRunning: (d: number, t: number) => `${d} / ${t} processed`,
+    rsDone: (n: number) => `${n} evaluations regenerated.`,
+    rsInterrupted: (n: number) => `Connection lost — ${n} records completed. Press the button again to resume.`,
+    rsEta: (n: number) => `~${Math.max(1, Math.round(n * 50 / 60 / 3))} min (3 parallel)`,
+    rsHint: "Each record runs in its own request with thinking on (~50 s). Keep the tab open and the machine awake; if interrupted, press again to resume.",
+    rsExhausted: (n: number) => `${n} records failed 3 attempts — use reclassify-range from the terminal.`,
+    rsScope: (d: string) => `Queue covers calls from ${d} onwards.`,
     ffSyncStarted: "Sync started, please wait...",
     syncError: "Error: ", syncFailed: "Sync failed.",
     syncDone: (imp: number, una: number, ski: number) => `✅ Done: ${imp} imported, ${una} unassigned, ${ski} skipped.`,
@@ -310,6 +334,85 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const [krikoProgress, setKrikoProgress] = useState(0);
   const [krikoSecondsLeft, setKrikoSecondsLeft] = useState(0);
   const krikoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* ── düşünmeli yeniden değerlendirme ── */
+  const [rsStatus, setRsStatus] = useState<{ pending: number; exhausted: number; scopeFrom: string } | null>(null);
+  const [rsBusy, setRsBusy] = useState(false);
+  const [rsDone, setRsDone] = useState(0);
+  const [rsTotal, setRsTotal] = useState(0);
+  const [rsMsg, setRsMsg] = useState("");
+  const [rsFrom, setRsFrom] = useState("");
+  const [rsTo, setRsTo] = useState("");
+  const rsStopRef = useRef(false);
+
+  const rsQuery = () => {
+    const q = new URLSearchParams();
+    if (rsFrom) q.set("from", rsFrom);
+    if (rsTo) q.set("to", rsTo);
+    return q.toString();
+  };
+
+  const fetchRescore = async () => {
+    const res = await fetch(`/api/evaluations/rescore?${rsQuery()}`);
+    if (res.ok) setRsStatus(await res.json());
+  };
+
+  /**
+   * Kuyruğu tarayıcıdan boşaltır: her istek TEK kayıt işler. Vercel Hobby'de
+   * tavan 60 sn, düşünmeli analiz ~52 sn — bu yüzden döngü sunucuda değil
+   * burada. Sunucudaki iyimser kilit aynı kaydın iki kez alınmasını engelliyor,
+   * o yüzden üç işçi paralel çalışabiliyor.
+   */
+  const handleRescore = async () => {
+    rsStopRef.current = false;
+    setRsBusy(true); setRsDone(0); setRsMsg("");
+
+    const ilk = await (await fetch(`/api/evaluations/rescore?${rsQuery()}`)).json();
+    setRsTotal(ilk.pending ?? 0);
+    if (!ilk.pending) { setRsBusy(false); return; }
+
+    const body = () => {
+      const b: Record<string, string> = {};
+      if (rsFrom) b.from = rsFrom;
+      if (rsTo) b.to = rsTo;
+      return JSON.stringify(b);
+    };
+
+    let done = 0;
+    let kesildi = false;
+
+    const worker = async () => {
+      while (!rsStopRef.current) {
+        let data: any;
+        try {
+          const res = await fetch("/api/evaluations/rescore/next", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: body(),
+          });
+          data = await res.json().catch(() => ({}));
+        } catch {
+          // Ağ koptu: bilgisayar uyudu, sekme donduruldu, bağlantı gitti.
+          // Döngüyü durdur — yoksa uyanışta arka arkaya hata alır. Sunucu
+          // tarafında kilit 5 dakika sonra kendiliğinden serbest kalıyor,
+          // düğmeye yeniden basmak kaldığı yerden devam ettirir.
+          kesildi = true;
+          rsStopRef.current = true;
+          return;
+        }
+        if (data.processed) { done++; setRsDone(done); }
+        else if (data.error) setRsMsg(data.error);   // kayıt kilidini bıraktı, döngü sürsün
+        if ((data.remaining ?? 0) === 0) return;
+      }
+    };
+
+    try {
+      await Promise.all([worker(), worker(), worker()]);
+    } finally {
+      // finally: ağ hatası da olsa düğme "işleniyor"da takılı kalmasın.
+      setRsBusy(false);
+      setRsMsg(kesildi ? t.rsInterrupted(done) : t.rsDone(done));
+      fetchRescore();
+    }
+  };
   const [unassignedItems, setUnassignedItems] = useState<any[]>([]);
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [expandedUnassignedId, setExpandedUnassignedId] = useState<string | null>(null);
@@ -642,6 +745,11 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     setSeconds(0);
     setTimeout(() => setProgress(0), 1200);
   };
+
+  // İlk yüklemede kuyruk durumunu çek. fetchRescore her render'da yeniden
+  // kurulduğu için bağımlılığa eklenmiyor; tarih değişince onBlur zaten çağırıyor.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchRescore(); }, []);
 
   /* ── kriko sync ── */
   const handleKrikoSync = async () => {
@@ -1129,6 +1237,68 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
             )}
             {krikoMsg && <p style={{ fontSize: 13, marginTop: 10, color: krikoMsg.startsWith(t.syncError) ? "#f87171" : krikoMsg.startsWith("✅") ? "#34d399" : "var(--fg-faint)" }}>{krikoMsg}</p>}
             {krikoLastResult && syncResultGrid(krikoLastResult)}
+          </div>
+
+          {/* Düşünmeli yeniden değerlendirme — senkron zayıf analiz üretiyor
+              (Vercel Hobby'de 60 sn tavan), kaliteyi bu kuyruk tamamlıyor. */}
+          <div className={styles.card} style={{ padding: 20 }}>
+            <div className={styles.sectHd}>
+              <h2>{t.rsTitle}{rsStatus && rsStatus.pending > 0 && (
+                <span style={{ fontSize: 11, background: "rgba(96,165,250,.15)", color: "#60a5fa", padding: "2px 7px", borderRadius: 5, marginLeft: 6 }}>{rsStatus.pending}</span>
+              )}</h2>
+              <button onClick={fetchRescore} className={styles.btnSmall} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <Icon name="refresh" size={12} />{t.refresh}
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginTop: 12 }}>
+              <div>
+                <label className={styles.fbLabel}>{t.labelDate}</label>
+                <input type="date" className={styles.formInput} value={rsFrom} onChange={e => setRsFrom(e.target.value)} onBlur={fetchRescore} />
+              </div>
+              <div>
+                <label className={styles.fbLabel}>—</label>
+                <input type="date" className={styles.formInput} value={rsTo} onChange={e => setRsTo(e.target.value)} onBlur={fetchRescore} />
+              </div>
+              <button
+                onClick={handleRescore}
+                disabled={rsBusy || !rsStatus?.pending}
+                className={`${styles.btn} ${styles.btnPrimary}`}
+                style={{ borderRadius: 9, opacity: (rsBusy || !rsStatus?.pending) ? 0.5 : 1 }}
+              >
+                <Icon name={rsBusy ? "refresh" : "cloud"} size={14} />
+                <span>{rsBusy ? t.syncing : t.rsStart}</span>
+              </button>
+              {rsBusy && (
+                <button onClick={() => { rsStopRef.current = true; }} className={styles.btnSmall}>{t.rsStop}</button>
+              )}
+            </div>
+
+            {rsStatus && !rsBusy && (
+              <p style={{ fontSize: 13, marginTop: 10, color: "var(--fg-faint)" }}>
+                {rsStatus.pending > 0
+                  ? `${rsStatus.pending} ${t.rsPending} · ${t.rsEta(rsStatus.pending)}`
+                  : t.rsEmpty}
+              </p>
+            )}
+
+            {rsBusy && rsTotal > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,.07)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 3, background: "var(--accent)", width: `${Math.round((rsDone / rsTotal) * 100)}%`, transition: "width .4s linear" }} />
+                </div>
+                <p style={{ fontSize: 12, marginTop: 6, color: "var(--fg-faint)" }}>{t.rsRunning(rsDone, rsTotal)}</p>
+              </div>
+            )}
+
+            {rsStatus && rsStatus.exhausted > 0 && (
+              <p style={{ fontSize: 12, marginTop: 8, color: "#fbbf24" }}>{t.rsExhausted(rsStatus.exhausted)}</p>
+            )}
+            {rsMsg && <p style={{ fontSize: 13, marginTop: 8, color: "var(--fg-faint)" }}>{rsMsg}</p>}
+            <p style={{ fontSize: 11, marginTop: 10, color: "var(--fg-faint)", opacity: .7 }}>
+              {t.rsHint}
+              {rsStatus?.scopeFrom && " " + t.rsScope(new Date(rsStatus.scopeFrom).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR"))}
+            </p>
           </div>
 
           {unassignedItems.filter((i: any) => !i.source || i.source === "KRIKO").length > 0 && (

@@ -107,6 +107,7 @@ export default function CallAnalysisPage() {
             sectionScores: data.sectionScores ?? null,
             weakCriteria: data.weakCriteria ?? null,
             reportData: data.reportData ?? null,
+            deepAnalysis: data.deepAnalysis === true,
           }),
         });
       }

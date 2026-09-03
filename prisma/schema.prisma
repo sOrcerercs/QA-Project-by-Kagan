@@ -129,6 +129,13 @@ model Evaluation {
   // ===JSON_DATA=== bloğunun tamamı. sectionScores/weakCriteria kolonları
   // korunuyor: trend, kriter raporu ve OKR sorguları onlara bağlı.
   reportData      Json?
+  // Düşünme AÇIK üretilmiş kaydın damgası. NULL → kuyrukta bekliyor.
+  // reportData varlığı bu anlama GELMEZ: blok düşünme kapalıyken de üretiliyor.
+  deepScoredAt      DateTime?
+  // İşleme alındı kilidi; iki paralel istek aynı kaydı işlemesin diye.
+  deepScoreLockedAt DateTime?
+  // Kaç kez denendi. Vercel tavanına sürekli takılan kayıt kuyruğu tıkamasın.
+  deepScoreAttempts Int       @default(0)
   callDate        DateTime  @default(now())
   createdAt       DateTime  @default(now())
 
@@ -153,6 +160,8 @@ model Evaluation {
   agentFeedbackAt  DateTime?
   objectionText    String?
   objectionAt      DateTime?
+
+  @@index([deepScoredAt, callDate])
 }
 
 model SyncLog {
