@@ -120,6 +120,8 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
       reportData,
       detectedAgentName,
       detectedCustomerName,
+      // İstemci bunu /api/evaluations POST'una taşır; kayıt damgalansın diye.
+      deepAnalysis,
     });
 
   } catch (error: any) {
