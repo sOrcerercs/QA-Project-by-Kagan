@@ -82,6 +82,7 @@ const L = {
     backToDashboard: "Dashboard",
     back: "Geri",
     refineError: "Yeniden değerlendirme başarısız.",
+    refineTimeout: "İşlem sunucu zaman sınırını aştı; değerlendirme değişmedi. Daha kısa bir not deneyin ya da 'yeniden sınıflandır' kullanın.",
     translating: "Rapor çevriliyor...",
     translateError: "Çeviri başarısız — orijinal rapor gösteriliyor.",
     readTitle: "Değerlendirme Okundu Mu?",
@@ -161,6 +162,7 @@ const L = {
     backToDashboard: "Dashboard",
     back: "Back",
     refineError: "Re-evaluation failed.",
+    refineTimeout: "The request exceeded the server time limit; the evaluation was not changed. Try a shorter note or use re-classify.",
     translating: "Translating report...",
     translateError: "Translation failed — showing original report.",
     readTitle: "Was the Evaluation Read?",
@@ -376,8 +378,15 @@ export default function EvaluationDetailPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ feedback }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || t.refineError);
+      // Zaman aşımında sunucu JSON değil HTML hata sayfası döndürüyor;
+      // res.json() orada patlayıp "Unexpected token '<'" gibi anlamsız bir
+      // mesaj üretiyordu. Güvenli ayrıştırıp anlaşılır mesaj veriyoruz.
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) {
+        throw new Error(
+          data?.error ?? (res.status === 504 || res.status === 502 ? t.refineTimeout : t.refineError),
+        );
+      }
       setEvaluation((prev: any) => ({
         ...prev,
         report: data.report,
@@ -1157,7 +1166,11 @@ export default function EvaluationDetailPage({
                   </button>
                 )}
               </div>
-              {refineError && <p className="text-error text-xs mb-3">{refineError}</p>}
+              {refineError && (
+                <p className="text-error text-sm font-medium mb-3 bg-error/10 border border-error/30 rounded-lg px-3 py-2">
+                  {refineError}
+                </p>
+              )}
               <div className="flex gap-3 items-end">
                 <textarea
                   className="flex-1 bg-surface-container border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface resize-none outline-none focus:border-primary placeholder:text-outline min-h-[52px] max-h-[120px] transition-colors"
