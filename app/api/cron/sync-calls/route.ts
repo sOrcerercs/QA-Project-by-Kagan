@@ -12,6 +12,7 @@ import {
   KrikoCall,
 } from "@/app/lib/kriko";
 import { shouldForceFirstCall } from "@/app/lib/evaluationRules";
+import { isDuplicateCallError } from "@/app/lib/prismaErrors";
 
 const UNASSIGNED_EMAIL = "unassigned@estenove.local";
 const UNASSIGNED_NAME = "Atanmamış";
@@ -95,7 +96,8 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
     }
   }
 
-  await prisma.evaluation.create({
+  try {
+    await prisma.evaluation.create({
     data: {
       agentId,
       customerName: call.customer_name || "Bilinmiyor",
@@ -115,7 +117,12 @@ async function processCall(call: KrikoCall, unassignedUserId: string, baseUrl: s
       weakCriteria,
       reportData,
     },
-  });
+    });
+  } catch (e) {
+    // Paralel koşu araya girip yazdı — hata değil, atla.
+    if (isDuplicateCallError(e)) return { status: "skipped" as const };
+    throw e;
+  }
 
   return { status: isUnassigned ? "unassigned" as const : "imported" as const };
 }
