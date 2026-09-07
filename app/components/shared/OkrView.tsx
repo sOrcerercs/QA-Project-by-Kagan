@@ -9,11 +9,14 @@ import {
 import type { UpsellStatus } from "@/app/lib/upsellClassify";
 
 interface AgentAverage { id: string; name: string; avgScore: number | null; callCount: number }
-interface RateResult { value: number | null; presented: number; notPresented: number; na: number; unknown: number; perfectScoreOverrides: number }
+interface RateResult { value: number | null; presented: number; notPresented: number; na: number; unknown: number; perfectScoreOverrides: number; premiumCoverExclusions: number; budgetExclusions: number; fixedChoiceExclusions: number }
 
 interface OkrData {
   month: string;
   isAll: boolean;
+  /** Elle girilen aylar bu yanıtta havuza katıldı mı (yalnızca filtresiz ALL). */
+  historyPooled?: boolean;
+  historyPooledMonths?: string[];
   /** Sistem öncesi ay: değerler elle girilmiş sabitten geliyor, hesaplanmadı. */
   isManual: boolean;
   history?: { evaCount: number; qualityAgents: number };
@@ -44,6 +47,11 @@ interface GapRow {
   score: number;
   stemCell: UpsellStatus;
   premium: UpsellStatus;
+  // Muafiyet kuralları arayüzdeki odak süzmesinde de aynı sonucu versin diye
+  // taşınıyor (bkz. okr.ts effectiveStatus).
+  customerChosePremium: "EVET" | "HAYIR" | null;
+  budgetConstraint: "EVET" | "HAYIR" | null;
+  customerFixedChoice: "EVET" | "HAYIR" | null;
   reportLine: string | null;
 }
 
@@ -324,12 +332,31 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
         : `${r.presented}/${r.presented + r.notPresented} · denominator: all evaluations`;
     }
     const parts = [`${r.presented}/${r.presented + r.notPresented} ${lang === "tr" ? "çağrı" : "calls"}`];
-    if (r.na > 0) parts.push(`${r.na} N/A`);
+    if (r.na > 0) {
+      parts.push(lang === "tr"
+        ? `${r.na} N/A pozitif sayıldı`
+        : `${r.na} N/A counted positive`);
+    }
     if (r.unknown > 0) parts.push(`${r.unknown} ${lang === "tr" ? "bilinmiyor" : "unknown"}`);
     if (r.perfectScoreOverrides > 0) {
       parts.push(lang === "tr"
         ? `${r.perfectScoreOverrides} kayıt %100 kuralıyla pozitif`
         : `${r.perfectScoreOverrides} counted positive by the 100% rule`);
+    }
+    if (r.premiumCoverExclusions > 0) {
+      parts.push(lang === "tr"
+        ? `${r.premiumCoverExclusions} kayıt Premium anlatıldığı için konusuz`
+        : `${r.premiumCoverExclusions} excluded — Premium covers it`);
+    }
+    if (r.budgetExclusions > 0) {
+      parts.push(lang === "tr"
+        ? `${r.budgetExclusions} kayıt bütçe kısıtı nedeniyle konusuz`
+        : `${r.budgetExclusions} excluded — customer budget constraint`);
+    }
+    if (r.fixedChoiceExclusions > 0) {
+      parts.push(lang === "tr"
+        ? `${r.fixedChoiceExclusions} kayıt müşterinin net paket tercihi nedeniyle konusuz`
+        : `${r.fixedChoiceExclusions} excluded — customer had a fixed package choice`);
     }
     // Bu iki paket yapısı gereği hep ikinci görüşmede sunulur → çağrı tipi
     // filtresi bilerek uygulanmıyor; kullanıcı sayının neden değişmediğini görsün.
@@ -403,9 +430,13 @@ export default function OkrView({ lang = "tr" }: { lang?: "tr" | "en" }) {
 
       {data.isAll && (
         <div style={{ ...card, padding: "12px 20px", fontSize: 11, color: "var(--fg-faint)" }}>
-          {lang === "tr"
-            ? "Kümülatif yalnızca programda çağrı kaydı bulunan ayları havuzlar. Elle girilen aylar (Şubat, Mart 2026) paydası farklı hesaplandığı için bu değere katılmaz — onları ay seçicisinden tek tek görebilirsin."
-            : "The cumulative figure pools only months with call records. Manually entered months (February, March 2026) use a different denominator and are excluded — view them individually from the month selector."}
+          {data.historyPooled
+            ? (lang === "tr"
+              ? "Kümülatif, elle girilen ayları (Şubat, Mart 2026) da havuza katar. O aylar da yalnızca ikinci görüşmelerden oluşuyor. Tek fark: program N/A sayılan çağrıları paydadan düşerken elle girilen toplamlarda bu ayıklama yok, bu da o iki ayı bir miktar düşük gösterir. Kalite kartında ayrıca Şubat/Mart yalnızca ikinci görüşmeyi, sonraki aylar birinci görüşmeleri de kapsıyor."
+              : "The cumulative figure also pools manually entered months (February, March 2026). Those months are second calls only, same as the rest. The one difference: the app drops N/A calls from the denominator while the manual totals do not, which understates those two months slightly. For quality, February/March cover second calls only while later months also include first calls.")
+            : (lang === "tr"
+              ? "Elle girilen aylar (Şubat, Mart 2026) bu değere katılmadı: o aylar tek bir toplam satırı, çağrı tipine veya danışmana bölünemiyor. Filtreleri kaldırırsan havuza girerler."
+              : "Manually entered months (February, March 2026) are excluded here: they are a single total row and cannot be split by call type or consultant. Clear the filters to include them.")}
         </div>
       )}
 

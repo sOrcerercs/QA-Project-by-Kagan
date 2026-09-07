@@ -6,6 +6,9 @@ import {
   historyMonths,
   historyRate,
   availableMonthsWithHistory,
+  historyTotals,
+  poolUpsellWithHistory,
+  poolQualityWithHistory,
 } from "./okrHistory";
 import { ALL_MONTHS } from "./okr";
 
@@ -78,5 +81,64 @@ describe("OKR_HISTORY verisi", () => {
       expect(h.stemCell).toBeLessThanOrEqual(h.evaCount);
       expect(h.premium).toBeLessThanOrEqual(h.evaCount);
     }
+  });
+});
+
+describe("historyTotals", () => {
+  it("iki ayın ham sayılarını toplar", () => {
+    const t = historyTotals();
+    expect(t.evaCount).toBe(195 + 232);
+    expect(t.stemCell).toBe(178 + 210);
+    expect(t.premium).toBe(172 + 200);
+  });
+
+  it("kaliteyi evaCount ile ağırlıklandırarak toplar", () => {
+    expect(historyTotals().qualityWeightedSum).toBeCloseTo(78.45 * 195 + 82.48 * 232, 6);
+  });
+});
+
+describe("poolUpsellWithHistory", () => {
+  const rate = {
+    value: 50, presented: 100, notPresented: 100, na: 7, unknown: 3,
+    perfectScoreOverrides: 0, premiumCoverExclusions: 0, budgetExclusions: 0, fixedChoiceExclusions: 0,
+  };
+
+  it("sunulanı ekler, kalanını sunulmadıya yazar", () => {
+    const out = poolUpsellWithHistory(rate, "stemCell");
+    expect(out.presented).toBe(100 + 388);
+    expect(out.notPresented).toBe(100 + (427 - 388));
+    expect(out.value).toBe(77.83); // 488/627
+  });
+
+  it("premium alanı için premium sayılarını kullanır", () => {
+    const out = poolUpsellWithHistory(rate, "premium");
+    expect(out.presented).toBe(100 + 372);
+    expect(out.notPresented).toBe(100 + (427 - 372));
+  });
+
+  it("NA, bilinmiyor ve dışlama sayaçlarına dokunmaz", () => {
+    const out = poolUpsellWithHistory(rate, "stemCell");
+    expect(out.na).toBe(7);
+    expect(out.unknown).toBe(3);
+    expect(out.premiumCoverExclusions).toBe(0);
+  });
+
+  it("payda sıfırken bile geçmiş aylardan değer üretir", () => {
+    const bos = { ...rate, value: null, presented: 0, notPresented: 0 };
+    expect(poolUpsellWithHistory(bos, "stemCell").value).toBe(90.87);
+  });
+});
+
+describe("poolQualityWithHistory", () => {
+  it("çağrı sayısıyla ağırlıklı ortalama alır", () => {
+    const out = poolQualityWithHistory({ value: 81.5, count: 3371 });
+    expect(out.count).toBe(3371 + 427);
+    expect(out.value).toBe(81.4);
+  });
+
+  it("hesaplanan ay yoksa yalnızca geçmiş aylardan hesaplar", () => {
+    const out = poolQualityWithHistory({ value: null, count: 0 });
+    expect(out.count).toBe(427);
+    expect(out.value).toBe(80.64);
   });
 });

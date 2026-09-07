@@ -1,6 +1,6 @@
 // OKR panelinin tüm hesabı. DB ve AI erişimi yoktur; veriyi parametre alır.
 // reportAggregation.ts ile aynı deseni izler.
-import type { UpsellStatus } from "@/app/lib/upsellClassify";
+import type { UpsellStatus, YesNo } from "@/app/lib/upsellClassify";
 
 export const OKR_TARGETS = {
   quality: 99.5,
@@ -150,11 +150,76 @@ export interface UpsellRateResult {
   na: number;
   unknown: number;
   perfectScoreOverrides: number;
+  /** Premium anlatıldığı için Stem Cell paydadan düşen kayıt sayısı. */
+  premiumCoverExclusions: number;
+  /** Müşterinin bütçe kısıtı nedeniyle cezası kaldırılan kayıt sayısı. */
+  budgetExclusions: number;
+  /** Müşteri net paket tercihi belirttiği için cezası kaldırılan kayıt sayısı. */
+  fixedChoiceExclusions: number;
+}
+
+/** Kuralların üzerinde çalıştığı asgari satır. */
+export interface UpsellRow {
+  stemCell: UpsellStatus;
+  premium: UpsellStatus;
+  score: number;
+  /** Artık hiçbir kural okumuyor; bkz. upsellClassify.ts UpsellVerdict. */
+  customerChosePremium?: YesNo | null;
+  budgetConstraint?: YesNo | null;
+  /** Müşteri belirli bir paketi net olarak tercih ettiğini beyan etti mi? */
+  customerFixedChoice?: YesNo | null;
+}
+
+/** Cezayı kaldıran kuralın kimliği; arayüzde her biri ayrı sayılıyor. */
+export type UpsellExemption = "budget" | "fixedChoice" | "premiumCover";
+
+/**
+ * Kaydın cezasını kaldıran kural — yoksa null.
+ *
+ * Üç muafiyet, üçü de YALNIZCA cezayı kaldırır: sunulduysa hiçbir şey
+ * değişmez, çünkü çabayı cezalandırmamak asıl amaç. Sıra önemlidir, çünkü bir
+ * kayıtta birden fazlası birleşebilir ve arayüz "hangi kural yüzünden" diye
+ * sayıyor:
+ *
+ * 1. Bütçe kısıtı: müşteri parasının yetmediğini söylediyse ne Stem Cell ne
+ *    Premium beklenir; satışın kendisi önceliklidir. İkisi de NA olur.
+ * 2. Net paket tercihi (2026-08-27): müşteri belirli bir paketi tercih
+ *    ettiğini net olarak beyan ettiyse üstünü satmak için ısrarcı olunmaz.
+ *    İkisi de NA olur. DİKKAT: raporun "yalnızca temel paket anlatıldı"
+ *    demesi bu değildir — o danışmanın kapsamı, müşterinin beyanı değil; ayrım
+ *    sınıflandırıcı prompt'unda anlam düzeyinde yapılıyor.
+ * 3. Premium kapsaması: Premium paketin içinde Stem Cell zaten var. Danışman
+ *    Premium'u anlattıysa Advanced'i ayrıca anlatmaması eksiklik değil —
+ *    Stem Cell NA olur. (Müşterinin Premium'u seçmiş olması ARANMAZ;
+ *    2026-08-15'te kullanıcı koşulu buraya gevşetti.)
+ *
+ * Kurallar yalnızca toplama anında uygulanır; EvaluationUpsell satırı raporun
+ * ne dediğini tutmaya devam eder ve kural tek fonksiyonda geri alınabilir
+ * (kusursuz puan kuralıyla aynı yaklaşım, bkz. upsellRate).
+ */
+export function upsellExemption(
+  row: UpsellRow,
+  field: "stemCell" | "premium"
+): UpsellExemption | null {
+  if (row[field] !== "SUNULMADI") return null;
+  if (row.budgetConstraint === "EVET") return "budget";
+  if (row.customerFixedChoice === "EVET") return "fixedChoice";
+  if (field === "stemCell" && row.premium === "SUNULDU") return "premiumCover";
+  return null;
 }
 
 /**
- * NA (bütçe kısıtı) ve BILINMIYOR (rapor satırı yok) paydadan tamamen düşer;
- * sayıları arayüzde ayrıca gösterilsin diye döndürülür.
+ * Kayıtta saklanan sınıflandırmanın metriğe yansıyan hali. Muafiyet listesi ve
+ * sırası tek yerde, upsellExemption'da durur — sayaçlar da oradan okunur ki
+ * "hangi kural devreye girdi" cevabı iki yerde ayrışmasın.
+ */
+export function effectiveStatus(row: UpsellRow, field: "stemCell" | "premium"): UpsellStatus {
+  return upsellExemption(row, field) ? "NA" : row[field];
+}
+
+/**
+ * NA pozitif sayılır, BILINMIYOR (rapor satırı yok) paydadan tamamen düşer;
+ * ikisinin de sayısı arayüzde ayrıca gösterilsin diye döndürülür.
  *
  * Kusursuz puan kuralı: skoru PERFECT_SCORE olan bir görüşmede saklanan
  * sınıflandırma ne olursa olsun upsell SUNULDU sayılır. Kural yalnızca burada,
@@ -163,20 +228,34 @@ export interface UpsellRateResult {
  * Kuralla pozitife çevrilen kayıt sayısı perfectScoreOverrides ile raporlanır.
  */
 export function upsellRate(
-  rows: { stemCell: UpsellStatus; premium: UpsellStatus; score: number }[],
+  rows: UpsellRow[],
   field: "stemCell" | "premium"
 ): UpsellRateResult {
   let presented = 0, notPresented = 0, na = 0, unknown = 0, perfectScoreOverrides = 0;
+  let premiumCoverExclusions = 0, budgetExclusions = 0, fixedChoiceExclusions = 0;
   for (const row of rows) {
     if (row.score >= PERFECT_SCORE) {
       presented++;
       if (row[field] !== "SUNULDU") perfectScoreOverrides++;
       continue;
     }
-    switch (row[field]) {
+    // Hangi muafiyetin devreye girdiği arayüzde ayrı ayrı gösteriliyor; kararın
+    // kendisi de aynı yerden geliyor ki sayaç ile statü ayrışamasın.
+    const exemption = upsellExemption(row, field);
+    if (exemption === "budget") budgetExclusions++;
+    else if (exemption === "fixedChoice") fixedChoiceExclusions++;
+    else if (exemption === "premiumCover") premiumCoverExclusions++;
+    const status: UpsellStatus = exemption ? "NA" : row[field];
+    switch (status) {
       case "SUNULDU": presented++; break;
       case "SUNULMADI": notPresented++; break;
-      case "NA": na++; break;
+      // NA POZİTİF sayılır (2026-08-16, kullanıcı kararı): bu çağrılarda B8/B9
+      // maddesi zaten kırılmadı, dolayısıyla danışman puan kaybetmedi. Paydadan
+      // düşürmek yerine başarı hanesine yazılıyorlar. `na` sayacı yine de
+      // tutuluyor ki arayüz kaç kaydın bu yolla pozitife geçtiğini gösterebilsin.
+      case "NA": presented++; na++; break;
+      // BILINMIYOR farklı: raporda "Upsell Durumu" satırı hiç yok, yani karar
+      // verecek veri yok. Ne pozitif ne negatif — paydadan tamamen düşer.
       case "BILINMIYOR": unknown++; break;
     }
   }
@@ -184,6 +263,7 @@ export function upsellRate(
   return {
     value: denom === 0 ? null : round2((presented / denom) * 100),
     presented, notPresented, na, unknown, perfectScoreOverrides,
+    premiumCoverExclusions, budgetExclusions, fixedChoiceExclusions,
   };
 }
 
@@ -201,14 +281,16 @@ export type UpsellFocus = "ALL" | "stemCell" | "premium";
  * Hem sunucuda (tüm eksikler) hem arayüzde (paket odağı) aynı fonksiyon
  * kullanılıyor ki iki taraf ayrışmasın.
  */
-export function upsellGaps<T extends { stemCell: UpsellStatus; premium: UpsellStatus; score: number }>(
-  rows: T[],
-  focus: UpsellFocus
-): T[] {
+export function upsellGaps<T extends UpsellRow>(rows: T[], focus: UpsellFocus): T[] {
   return rows.filter((r) => {
     if (r.score >= PERFECT_SCORE) return false;
-    if (focus === "ALL") return r.stemCell === "SUNULMADI" || r.premium === "SUNULMADI";
-    return r[focus] === "SUNULMADI";
+    // Muafiyetler burada da uygulanır — kart ile liste ayrışmasın
+    // (bkz. effectiveStatus).
+    const stemCell = effectiveStatus(r, "stemCell");
+    const premium = effectiveStatus(r, "premium");
+    if (focus === "ALL") return stemCell === "SUNULMADI" || premium === "SUNULMADI";
+    if (focus === "stemCell") return stemCell === "SUNULMADI";
+    return premium === "SUNULMADI";
   });
 }
 

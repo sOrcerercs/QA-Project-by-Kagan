@@ -13,8 +13,9 @@ import {
 } from "@/app/lib/okr";
 import {
   isHistoryMonth, getHistoryMonth, historyRate, availableMonthsWithHistory,
+  historyMonths, poolUpsellWithHistory, poolQualityWithHistory,
 } from "@/app/lib/okrHistory";
-import type { UpsellStatus } from "@/app/lib/upsellClassify";
+import type { UpsellStatus, YesNo } from "@/app/lib/upsellClassify";
 
 // app/api/calls/sync-fireflies/route.ts içindeki UNASSIGNED_EMAIL ile aynı olmalı.
 const UNASSIGNED_AGENT_EMAIL = "unassigned@estenove.local";
@@ -72,8 +73,14 @@ export async function GET(req: NextRequest) {
         // Çağrı tipi filtresi bilerek uygulanmıyor: Stem Cell/Premium yapıları
         // gereği hep ikinci görüşmede sunulur.
         where: { evaluation: { ...dateFilter, callType: "SECOND_CALL", ...roleFilter, ...agentFilter } },
-        // score, kusursuz puan kuralı için gerekli (bkz. upsellRate)
-        select: { stemCell: true, premium: true, evaluation: { select: { score: true } } },
+        // score, kusursuz puan kuralı için gerekli (bkz. upsellRate);
+        // budgetConstraint + premium, muafiyet kuralları için
+        // (bkz. okr.ts effectiveStatus)
+        select: {
+          stemCell: true, premium: true, customerChosePremium: true, budgetConstraint: true,
+          customerFixedChoice: true,
+          evaluation: { select: { score: true } },
+        },
       }),
       prisma.evaluation.count({
         where: { ...dateFilter, callType: "SECOND_CALL", evaluationUpsell: { is: null }, ...roleFilter, ...agentFilter },
@@ -120,8 +127,19 @@ export async function GET(req: NextRequest) {
     const typedUpsell = upsellRows.map(r => ({
       stemCell: r.stemCell as UpsellStatus,
       premium: r.premium as UpsellStatus,
+      customerChosePremium: r.customerChosePremium as YesNo | null,
+      budgetConstraint: r.budgetConstraint as YesNo | null,
+      customerFixedChoice: r.customerFixedChoice as YesNo | null,
       score: r.evaluation.score,
     }));
+
+    // Elle girilen aylar (Şubat/Mart 2026) yalnızca "Tüm Aylar"da ve yalnızca
+    // FİLTRESİZ görünümde havuza katılır. Bu aylar tek bir toplam satırı;
+    // danışmana ya da çağrı tipine bölünemiyor, filtre altında katmak sayıyı
+    // düpedüz yanlış yapardı (tek danışman seçilince üstüne 427 çağrılık ay
+    // toplamı binerdi). Arayüz nedenini gösterebilsin diye bayrak dönülüyor.
+    const historyPooled = isAll && callType === "ALL" && agentIds.length === 0;
+    const quality = { value: averageScore(qualityRows), count: qualityRows.length };
 
     return NextResponse.json({
       month,
@@ -130,9 +148,16 @@ export async function GET(req: NextRequest) {
       callType,
       agentIds,
       availableMonths: availableMonthsWithHistory(FIRST_DATA_MONTH, nowMonth),
-      quality: { value: averageScore(qualityRows), count: qualityRows.length },
-      stemCell: upsellRate(typedUpsell, "stemCell"),
-      premium: upsellRate(typedUpsell, "premium"),
+      historyPooled,
+      // Arayüzdeki açıklama metni için: hangi aylar havuza girdi/girmedi.
+      historyPooledMonths: historyMonths(),
+      quality: historyPooled ? poolQualityWithHistory(quality) : quality,
+      stemCell: historyPooled
+        ? poolUpsellWithHistory(upsellRate(typedUpsell, "stemCell"), "stemCell")
+        : upsellRate(typedUpsell, "stemCell"),
+      premium: historyPooled
+        ? poolUpsellWithHistory(upsellRate(typedUpsell, "premium"), "premium")
+        : upsellRate(typedUpsell, "premium"),
       // Eksik listesinin başlık sayısı. Satırların kendisi GET /api/okr/gaps'ten
       // panel açılınca geliyor: rapor metinleri ortalama 10 KB, tüm aylarda
       // 5,7 MB — kapalı panel için her açılışta taşınmamalı.
@@ -187,6 +212,11 @@ async function historyResponse(month: string, nowMonth: string) {
     na: 0,
     unknown: 0,
     perfectScoreOverrides: 0,
+    // Elle girilen geçmiş aylar (Şubat/Mart 2026) sistem öncesi; kural
+    // uygulanabilecek satır verisi yok.
+    premiumCoverExclusions: 0,
+    budgetExclusions: 0,
+    fixedChoiceExclusions: 0,
   });
 
   return {

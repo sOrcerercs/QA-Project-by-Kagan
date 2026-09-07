@@ -20,7 +20,7 @@ import {
   averageOfValues,
   upsellGaps,
 } from "./okr";
-import type { UpsellStatus } from "./upsellClassify";
+import type { UpsellStatus, YesNo } from "./upsellClassify";
 
 describe("monthRange", () => {
   it("ayı Türkiye saatiyle (UTC+3) keser", () => {
@@ -87,27 +87,35 @@ describe("upsellRate", () => {
     { stemCell: "BILINMIYOR", premium: "BILINMIYOR", score: 60 },
   ] as const;
 
-  it("NA ve BILINMIYOR'u paydadan düşürür", () => {
+  it("NA'yı pozitif sayar, BILINMIYOR'u paydadan düşürür", () => {
     const r = upsellRate([...rows], "stemCell");
-    expect(r.presented).toBe(2);
+    expect(r.presented).toBe(3); // 2 SUNULDU + 1 NA
     expect(r.notPresented).toBe(1);
-    expect(r.na).toBe(1);
+    expect(r.na).toBe(1); // sayaç şeffaflık için korunur
     expect(r.unknown).toBe(1);
-    expect(r.value).toBe(66.67);
+    expect(r.value).toBe(75);
     expect(r.perfectScoreOverrides).toBe(0);
   });
 
   it("premium alanını ayrı hesaplar", () => {
     const r = upsellRate([...rows], "premium");
-    expect(r.presented).toBe(1);
+    expect(r.presented).toBe(3); // 1 SUNULDU + 2 NA
     expect(r.notPresented).toBe(1);
-    expect(r.value).toBe(50);
+    expect(r.na).toBe(2); // stemCell'de 1 — alanlar ayrı sayılıyor
+    expect(r.unknown).toBe(1);
+    expect(r.value).toBe(75);
   });
 
-  it("payda sıfırsa null döner", () => {
+  it("yalnızca NA varsa %100 döner", () => {
     const r = upsellRate([{ stemCell: "NA", premium: "NA", score: 80 }], "stemCell");
-    expect(r.value).toBeNull();
+    expect(r.value).toBe(100);
     expect(r.na).toBe(1);
+  });
+
+  it("yalnızca BILINMIYOR varsa payda sıfır, null döner", () => {
+    const r = upsellRate([{ stemCell: "BILINMIYOR", premium: "BILINMIYOR", score: 80 }], "stemCell");
+    expect(r.value).toBeNull();
+    expect(r.unknown).toBe(1);
   });
 
   it("boş listede null döner", () => {
@@ -142,6 +150,207 @@ describe("upsellRate", () => {
     expect(r.notPresented).toBe(1);
     expect(r.value).toBe(0);
     expect(r.perfectScoreOverrides).toBe(0);
+  });
+});
+
+describe("upsellRate — Premium anlatıldıysa Stem Cell konusuz", () => {
+  // Premium paketin içinde Stem Cell zaten var: danışman Premium'u anlattıysa
+  // Advanced'i ayrıca anlatmaması eksiklik değil.
+  const premiumSunuldu = {
+    stemCell: "SUNULMADI" as UpsellStatus,
+    premium: "SUNULDU" as UpsellStatus,
+    score: 92,
+  };
+
+  it("Stem Cell'i NA'ya çevirir; NA pozitif sayıldığı için oran düşmez", () => {
+    const r = upsellRate([premiumSunuldu], "stemCell");
+    expect(r.notPresented).toBe(0);
+    expect(r.na).toBe(1);
+    expect(r.presented).toBe(1);
+    expect(r.value).toBe(100);
+    expect(r.premiumCoverExclusions).toBe(1);
+  });
+
+  it("Premium metriğini etkilemez", () => {
+    const r = upsellRate([premiumSunuldu], "premium");
+    expect(r.presented).toBe(1);
+    expect(r.value).toBe(100);
+    expect(r.premiumCoverExclusions).toBe(0);
+  });
+
+  it("Premium anlatılmadıysa tetiklenmez", () => {
+    const r = upsellRate([{ ...premiumSunuldu, premium: "SUNULMADI" as UpsellStatus }], "stemCell");
+    expect(r.notPresented).toBe(1);
+    expect(r.premiumCoverExclusions).toBe(0);
+  });
+
+  it("Stem Cell zaten sunulduysa dışlama sayılmaz", () => {
+    const r = upsellRate([{ ...premiumSunuldu, stemCell: "SUNULDU" as UpsellStatus }], "stemCell");
+    expect(r.presented).toBe(1);
+    expect(r.premiumCoverExclusions).toBe(0);
+  });
+
+  it("müşterinin Premium'u seçip seçmemesi artık sonucu değiştirmez", () => {
+    const hayir = upsellRate([{ ...premiumSunuldu, customerChosePremium: "HAYIR" as const }], "stemCell");
+    const evet = upsellRate([{ ...premiumSunuldu, customerChosePremium: "EVET" as const }], "stemCell");
+    expect(hayir.na).toBe(1);
+    expect(evet.na).toBe(1);
+    expect(hayir.value).toBe(evet.value);
+  });
+});
+
+describe("upsellRate — bütçe kısıtı kuralı", () => {
+  const kisitli = {
+    stemCell: "SUNULMADI" as UpsellStatus,
+    premium: "SUNULMADI" as UpsellStatus,
+    budgetConstraint: "EVET" as const,
+    score: 70,
+  };
+
+  it("Stem Cell'i NA'ya çevirir, ceza yazılmaz", () => {
+    const r = upsellRate([kisitli], "stemCell");
+    expect(r.notPresented).toBe(0);
+    expect(r.na).toBe(1);
+    expect(r.value).toBe(100);
+    expect(r.budgetExclusions).toBe(1);
+  });
+
+  it("Premium'u da NA'ya çevirir", () => {
+    const r = upsellRate([kisitli], "premium");
+    expect(r.notPresented).toBe(0);
+    expect(r.na).toBe(1);
+    expect(r.value).toBe(100);
+    expect(r.budgetExclusions).toBe(1);
+  });
+
+  // Kural yalnızca ceza kaldırır: bütçe kısıtına rağmen anlatan danışman
+  // pozitif kalmalı, yoksa çaba cezalandırılmış olur.
+  it("bütçe kısıtına rağmen sunulduysa pozitif kalır", () => {
+    const r = upsellRate([{ ...kisitli, stemCell: "SUNULDU" as UpsellStatus }], "stemCell");
+    expect(r.presented).toBe(1);
+    expect(r.value).toBe(100);
+    expect(r.budgetExclusions).toBe(0);
+  });
+
+  it("bütçe kısıtı yoksa tetiklenmez", () => {
+    const r = upsellRate([{ ...kisitli, budgetConstraint: "HAYIR" as const }], "stemCell");
+    expect(r.notPresented).toBe(1);
+    expect(r.budgetExclusions).toBe(0);
+  });
+
+  it("alan hiç yoksa tetiklenmez", () => {
+    const r = upsellRate([{ stemCell: "SUNULMADI", premium: "SUNULMADI", score: 70 }], "stemCell");
+    expect(r.notPresented).toBe(1);
+    expect(r.budgetExclusions).toBe(0);
+  });
+
+  it("kusursuz puan kuralı önce gelir, dışlama sayılmaz", () => {
+    const r = upsellRate([{ ...kisitli, score: 100 }], "stemCell");
+    expect(r.presented).toBe(1);
+    expect(r.budgetExclusions).toBe(0);
+    expect(r.perfectScoreOverrides).toBe(1);
+  });
+});
+
+describe("upsellRate — net paket tercihi kuralı", () => {
+  const netTercih = {
+    stemCell: "SUNULMADI" as UpsellStatus,
+    premium: "SUNULMADI" as UpsellStatus,
+    customerFixedChoice: "EVET" as const,
+    score: 70,
+  };
+
+  it("Stem Cell'i NA'ya çevirir, ceza yazılmaz", () => {
+    const r = upsellRate([netTercih], "stemCell");
+    expect(r.notPresented).toBe(0);
+    expect(r.na).toBe(1);
+    expect(r.value).toBe(100);
+    expect(r.fixedChoiceExclusions).toBe(1);
+  });
+
+  it("Premium'u da NA'ya çevirir", () => {
+    const r = upsellRate([netTercih], "premium");
+    expect(r.notPresented).toBe(0);
+    expect(r.na).toBe(1);
+    expect(r.value).toBe(100);
+    expect(r.fixedChoiceExclusions).toBe(1);
+  });
+
+  // Kural yalnızca ceza kaldırır: müşteri Essential'ı seçmiş olsa da anlatan
+  // danışman pozitif kalmalı.
+  it("net tercihe rağmen sunulduysa pozitif kalır", () => {
+    const r = upsellRate([{ ...netTercih, premium: "SUNULDU" as UpsellStatus }], "premium");
+    expect(r.presented).toBe(1);
+    expect(r.value).toBe(100);
+    expect(r.fixedChoiceExclusions).toBe(0);
+  });
+
+  it("net tercih yoksa tetiklenmez", () => {
+    const r = upsellRate([{ ...netTercih, customerFixedChoice: "HAYIR" as const }], "stemCell");
+    expect(r.notPresented).toBe(1);
+    expect(r.fixedChoiceExclusions).toBe(0);
+  });
+
+  it("alan hiç yoksa tetiklenmez", () => {
+    const r = upsellRate([{ stemCell: "SUNULMADI", premium: "SUNULMADI", score: 70 }], "stemCell");
+    expect(r.notPresented).toBe(1);
+    expect(r.fixedChoiceExclusions).toBe(0);
+  });
+
+  it("kusursuz puan kuralı önce gelir, dışlama sayılmaz", () => {
+    const r = upsellRate([{ ...netTercih, score: 100 }], "stemCell");
+    expect(r.presented).toBe(1);
+    expect(r.fixedChoiceExclusions).toBe(0);
+    expect(r.perfectScoreOverrides).toBe(1);
+  });
+});
+
+// Üç muafiyet aynı kayıtta birleşebilir. Sayaçlar arayüzde ayrı ayrı
+// gösterildiği için her kayıt TEK bir kovaya yazılmalı, ve kova gerçekten
+// devreye giren kuralın kovası olmalı.
+describe("upsellRate — muafiyet sayaçlarının ayrımı", () => {
+  const eksik = {
+    stemCell: "SUNULMADI" as UpsellStatus,
+    premium: "SUNULMADI" as UpsellStatus,
+    score: 70,
+  };
+
+  it("bütçe kısıtı net tercihten önce gelir", () => {
+    const r = upsellRate(
+      [{ ...eksik, budgetConstraint: "EVET" as const, customerFixedChoice: "EVET" as const }],
+      "stemCell"
+    );
+    expect(r.na).toBe(1);
+    expect(r.budgetExclusions).toBe(1);
+    expect(r.fixedChoiceExclusions).toBe(0);
+    expect(r.premiumCoverExclusions).toBe(0);
+  });
+
+  it("net tercih Premium kapsamasından önce gelir", () => {
+    const r = upsellRate(
+      [{ ...eksik, premium: "SUNULDU" as UpsellStatus, customerFixedChoice: "EVET" as const }],
+      "stemCell"
+    );
+    expect(r.na).toBe(1);
+    expect(r.fixedChoiceExclusions).toBe(1);
+    expect(r.premiumCoverExclusions).toBe(0);
+    expect(r.budgetExclusions).toBe(0);
+  });
+
+  it("yalnızca Premium kapsaması varsa onun kovasına yazar", () => {
+    const r = upsellRate([{ ...eksik, premium: "SUNULDU" as UpsellStatus }], "stemCell");
+    expect(r.na).toBe(1);
+    expect(r.premiumCoverExclusions).toBe(1);
+    expect(r.fixedChoiceExclusions).toBe(0);
+    expect(r.budgetExclusions).toBe(0);
+  });
+
+  it("hiçbir muafiyet yoksa hiçbir sayaç artmaz", () => {
+    const r = upsellRate([eksik], "stemCell");
+    expect(r.notPresented).toBe(1);
+    expect(r.premiumCoverExclusions).toBe(0);
+    expect(r.budgetExclusions).toBe(0);
+    expect(r.fixedChoiceExclusions).toBe(0);
   });
 });
 
@@ -356,12 +565,13 @@ describe("bottomSellersValue — işten ayrılan danışman", () => {
 });
 
 describe("upsellGaps", () => {
-  const row = (over: Partial<{ id: string; stemCell: string; premium: string; score: number }>) => ({
+  const row = (over: Partial<{ id: string; stemCell: string; premium: string; score: number; customerChosePremium: string; budgetConstraint: string; customerFixedChoice: string }>) => ({
     id: "x", stemCell: "SUNULDU", premium: "SUNULDU", score: 80, ...over,
-  }) as { id: string; stemCell: UpsellStatus; premium: UpsellStatus; score: number };
+  }) as { id: string; stemCell: UpsellStatus; premium: UpsellStatus; score: number; customerChosePremium?: YesNo; budgetConstraint?: YesNo; customerFixedChoice?: YesNo };
 
   it("yalnızca Stem Cell sunulmayan çağrıyı listeler", () => {
-    const out = upsellGaps([row({ id: "a", stemCell: "SUNULMADI" })], "ALL");
+    // premium de SUNULMADI: aksi halde Premium kapsama muafiyeti devreye girer.
+    const out = upsellGaps([row({ id: "a", stemCell: "SUNULMADI", premium: "SUNULMADI" })], "ALL");
     expect(out.map((r) => r.id)).toEqual(["a"]);
   });
 
@@ -391,12 +601,14 @@ describe("upsellGaps", () => {
 
   it("odak stemCell ise yalnızca Stem Cell eksiklerini döner", () => {
     const rows = [
-      row({ id: "stem", stemCell: "SUNULMADI" }),
+      // "stem" tek başına Stem Cell eksiği sayılamaz: Premium anlatılmışsa
+      // muafiyet devreye giriyor, o yüzden ikisi de SUNULMADI olan iki kayıt var.
+      row({ id: "stem", stemCell: "SUNULMADI", premium: "SUNULMADI" }),
       row({ id: "prem", premium: "SUNULMADI" }),
       row({ id: "iki", stemCell: "SUNULMADI", premium: "SUNULMADI" }),
     ];
     expect(upsellGaps(rows, "stemCell").map((r) => r.id)).toEqual(["stem", "iki"]);
-    expect(upsellGaps(rows, "premium").map((r) => r.id)).toEqual(["prem", "iki"]);
+    expect(upsellGaps(rows, "premium").map((r) => r.id)).toEqual(["stem", "prem", "iki"]);
   });
 
   it("giriş sırasını korur", () => {
@@ -406,5 +618,29 @@ describe("upsellGaps", () => {
 
   it("boş girdide boş dizi döner", () => {
     expect(upsellGaps([], "ALL")).toEqual([]);
+  });
+
+  it("Premium anlatıldıysa Stem Cell eksiği listelenmez", () => {
+    const rows = [row({ id: "kapsandi", stemCell: "SUNULMADI" })];
+    expect(upsellGaps(rows, "ALL")).toEqual([]);
+    expect(upsellGaps(rows, "stemCell")).toEqual([]);
+  });
+
+  it("Premium de anlatılmadıysa listelenir", () => {
+    const rows = [row({ id: "iki", stemCell: "SUNULMADI", premium: "SUNULMADI" })];
+    expect(upsellGaps(rows, "ALL").map((r) => r.id)).toEqual(["iki"]);
+  });
+
+  it("bütçe kısıtı olan çağrı eksik sayılmaz", () => {
+    const rows = [row({ id: "butce", stemCell: "SUNULMADI", premium: "SUNULMADI", budgetConstraint: "EVET" })];
+    expect(upsellGaps(rows, "ALL")).toEqual([]);
+    expect(upsellGaps(rows, "premium")).toEqual([]);
+  });
+
+  it("müşteri net paket tercihi belirttiyse eksik sayılmaz", () => {
+    const rows = [row({ id: "tercih", stemCell: "SUNULMADI", premium: "SUNULMADI", customerFixedChoice: "EVET" })];
+    expect(upsellGaps(rows, "ALL")).toEqual([]);
+    expect(upsellGaps(rows, "stemCell")).toEqual([]);
+    expect(upsellGaps(rows, "premium")).toEqual([]);
   });
 });

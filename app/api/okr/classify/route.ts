@@ -58,6 +58,9 @@ export async function POST(req: NextRequest) {
           evaluationId,
           stemCell: verdict.stemCell,
           premium: verdict.premium,
+          customerChosePremium: verdict.customerChosePremium ?? null,
+          budgetConstraint: verdict.budgetConstraint ?? null,
+          customerFixedChoice: verdict.customerFixedChoice ?? null,
           model: CLASSIFIER_MODEL,
         },
       });

@@ -6,7 +6,7 @@ import { REPORTABLE_ROLES } from "@/app/lib/reportScope";
 import {
   FIRST_DATA_MONTH, resolveRange, currentMonth, parseAgentIds, upsellGaps, PERFECT_SCORE,
 } from "@/app/lib/okr";
-import { extractUpsellLine, type UpsellStatus } from "@/app/lib/upsellClassify";
+import { extractUpsellLine, type UpsellStatus, type YesNo } from "@/app/lib/upsellClassify";
 
 /**
  * Tanıtımın (Stem Cell / Premium) yapılmadığı ikinci görüşmelerin listesi.
@@ -52,6 +52,9 @@ export async function GET(req: NextRequest) {
       select: {
         stemCell: true,
         premium: true,
+        customerChosePremium: true,
+        budgetConstraint: true,
+        customerFixedChoice: true,
         evaluation: {
           select: {
             id: true, score: true, callDate: true, customerName: true, report: true,
@@ -71,6 +74,9 @@ export async function GET(req: NextRequest) {
         score: r.evaluation.score,
         stemCell: r.stemCell as UpsellStatus,
         premium: r.premium as UpsellStatus,
+        customerChosePremium: r.customerChosePremium as YesNo | null,
+        budgetConstraint: r.budgetConstraint as YesNo | null,
+        customerFixedChoice: r.customerFixedChoice as YesNo | null,
         // Sınıflandırmanın dayanağı: raporun "Upsell Durumu" satırı. Yanlış
         // sınıflandırmayı çağrıyı açmadan bu satırdan yakalayabiliyoruz.
         reportLine: extractUpsellLine(r.evaluation.report),

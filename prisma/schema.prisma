@@ -249,6 +249,18 @@ model EvaluationUpsell {
   evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
   stemCell     String                        // SUNULDU | SUNULMADI | NA | BILINMIYOR
   premium      String                        // SUNULDU | SUNULMADI | NA | BILINMIYOR
+  // Müşteri Premium paketi tercih ettiğini beyan etti mi? EVET | HAYIR | null.
+  // 2026-08-15'ten beri hiçbir kural okumuyor (Stem Cell muafiyetinin koşulu
+  // "danışman Premium'u anlattı"ya gevşetildi); veri toplanmaya devam ediyor.
+  customerChosePremium String?
+  // Müşteri bütçesinin yetmediğini belirtti mi? EVET | HAYIR | null.
+  // EVET ise o çağrıda hem Stem Cell hem Premium paydadan düşer
+  // (bkz. okr.ts effectiveStatus).
+  budgetConstraint     String?
+  // Müşteri belirli bir paketi net olarak tercih ettiğini beyan etti mi?
+  // EVET | HAYIR | null. EVET ise o çağrıda hem Stem Cell hem Premium cezası
+  // kalkar — üstünü satmak için ısrarcı olunmuyor (bkz. okr.ts upsellExemption).
+  customerFixedChoice  String?
   source       String     @default("AI")     // AI | MANUAL
   model        String?
   classifiedAt DateTime   @default(now())
