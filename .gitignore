@@ -46,4 +46,11 @@ next-env.d.ts
 .superpowers/
 docs/superpowers/
 QA Project
+
+# editör/araç ayarları (kişisel)
 /.claude/
+/.vscode/
+
+# yerel çalışma notları — depo public, dışarı çıkmasın
+/CLAUDE.md
+/SABAH-KONTROL.md
