@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Düşünmeli analiz prod'da ~52 sn. Bu route ASLA birden fazla kayıt işlemez —
-// döngü tarayıcıda kurulur (bkz. AdminPanel). Vercel Hobby'de tavan 60 sn
-// olduğu için kayıtların ~%28'i burada zaman aşımına uğrayabilir; o durumda
-// kayıt damgalanmaz, kilidi bırakılır ve sonraki turda yeniden alınır.
+// Düşünmeli analiz prod'da ~29-55 sn (ölçüldü). Bu route ASLA birden fazla
+// kayıt işlemez — döngü tarayıcıda kurulur (bkz. AdminPanel).
+//
+// DİKKAT: aşağıdaki 300 bir DİLEK, garanti değil. Gerçek tavanı plan belirler
+// (Hobby'de 60 sn) ve platform süreci öldürdüğünde `catch` HİÇ ÇALIŞMAZ —
+// yani kilit bırakılmaz, kayıt 5 dk kilitli ve bir deneme hakkı eksik kalır.
+// Bu yüzden Gemini çağrısına tavanın ALTINDA kendi zaman aşımımızı veriyoruz:
+// süreç öldürülmeden biz kontrollü şekilde hata veriyoruz (geminiBudgetMs).
 export const maxDuration = 300;
 
 import prisma from "@/app/lib/prisma";
@@ -17,10 +21,15 @@ import {
   markDeepScored,
   buildEvaluationPrompt,
   pendingWhere,
+  remainingGeminiBudgetMs,
+  DEEP_SCORE_GEMINI_MAX_ATTEMPTS,
 } from "@/app/lib/deepScore";
 import { parseTrDay } from "../route";
 
 export async function POST(req: NextRequest) {
+  // Tavan isteğin BAŞINDAN işler; Gemini bütçesi buna göre daraltılır.
+  const t0 = Date.now();
+
   const user = await getUserFromToken(req);
   if (!user || user.role !== "ADMIN") {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
@@ -57,10 +66,19 @@ export async function POST(req: NextRequest) {
     });
     if (!activePrompt) throw new Error(`${target.callType} için aktif prompt yok`);
 
+    // timeoutMs + maxAttempts BİRLİKTE verilmek zorunda: callGemini'de abort
+    // ağ hatası sayılır ve maxAttempts (varsayılan 5) kadar tekrarlanır.
+    // Tek başına timeoutMs yazmak 5 x 52 sn eder, tavanı daha beter aşar.
     const reportText = await callGemini(
       "Sen bir satış koçusun.",
       buildEvaluationPrompt(activePrompt.content, target),
-      { maxTokens: 65536, temperature: 0, thinkingBudget: SCORING_THINKING_BUDGET },
+      {
+        maxTokens: 65536,
+        temperature: 0,
+        thinkingBudget: SCORING_THINKING_BUDGET,
+        timeoutMs: remainingGeminiBudgetMs(Date.now() - t0),
+        maxAttempts: DEEP_SCORE_GEMINI_MAX_ATTEMPTS,
+      },
     );
 
     const extracted = extractReportJson(reportText);
@@ -69,7 +87,7 @@ export async function POST(req: NextRequest) {
     // rapor ve skor yenilenirse kayıt yarısı yeni yarısı eski olur ve kart,
     // yeni skorun yanında ESKİ kriterleri gösterir. Betikte de aynı koruma var.
     if (!extracted.reportData) {
-      await releaseEvaluationLock(target.id);
+      await releaseEvaluationLock(target.id).catch(() => {});
       return NextResponse.json(
         { processed: false, remaining: await kalan(), evaluationId: target.id,
           error: "model zorunlu JSON bloğunu üretmedi" },
@@ -83,6 +101,9 @@ export async function POST(req: NextRequest) {
         ? extracted.scoreRaw
         : target.score;
 
+    // Rapor yazımı ile damgalama TEK güncellemede: ayrı olsalar arada bir
+    // hata olduğunda kayıt "yeni raporlu ama damgasız" kalır, kuyruk onu
+    // tekrar alır ve aynı işi bir deneme hakkı daha yakarak yeniden yapar.
     await prisma.evaluation.update({
       where: { id: target.id },
       data: {
@@ -90,10 +111,10 @@ export async function POST(req: NextRequest) {
         score,
         promptId: activePrompt.id,
         ...reportJsonFields(extracted),
+        deepScoredAt: new Date(),
+        deepScoreLockedAt: null,
       },
     });
-
-    await markDeepScored(target.id);
 
     return NextResponse.json({
       processed: true,
@@ -105,7 +126,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     // Damgalanmaz, kilit bırakılır — deneme hakkı varsa yeniden alınır.
-    await releaseEvaluationLock(target.id);
+    // .catch: kayıt arada silinmişse (P2025) release patlar ve ASIL hatayı
+    // gizleyip yanıtsız 500'e çevirirdi.
+    await releaseEvaluationLock(target.id).catch(() => {});
     const message = e instanceof Error ? e.message : "bilinmeyen hata";
     return NextResponse.json(
       { processed: false, remaining: await kalan(), evaluationId: target.id, error: message },

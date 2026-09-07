@@ -8,6 +8,13 @@ import {
   DEEP_SCORE_FROM,
   type RescoreTarget,
 } from "./deepScore";
+import {
+  DEEP_SCORE_RESERVE_MS,
+  DEEP_SCORE_GEMINI_MAX_ATTEMPTS,
+  geminiBudgetMs,
+  remainingGeminiBudgetMs,
+  classifyRescoreResponse,
+} from "./rescoreStep";
 
 const target: RescoreTarget = {
   id: "e1",
@@ -107,5 +114,93 @@ describe("nextAttemptsExhausted", () => {
   it("hak dolunca true", () => {
     expect(nextAttemptsExhausted(DEEP_SCORE_MAX_ATTEMPTS)).toBe(true);
     expect(nextAttemptsExhausted(DEEP_SCORE_MAX_ATTEMPTS + 1)).toBe(true);
+  });
+});
+
+/* ───────────────────────────────────────────────────────────────
+   Zaman bütçesi — 60 sn'lik platform tavanı altında kalmalı.
+   ─────────────────────────────────────────────────────────────── */
+describe("geminiBudgetMs — platform tavanı", () => {
+  it("tavandan pay ayırır", () => {
+    expect(geminiBudgetMs(60_000, 8_000)).toBe(52_000);
+  });
+
+  it("tek denemeyle toplam süre tavanı AŞMAZ", () => {
+    const cap = 60_000;
+    const budget = geminiBudgetMs(cap, DEEP_SCORE_RESERVE_MS);
+    // tek deneme + rezerv <= tavan
+    expect(budget * DEEP_SCORE_GEMINI_MAX_ATTEMPTS + DEEP_SCORE_RESERVE_MS)
+      .toBeLessThanOrEqual(cap);
+  });
+
+  it("kuyruk yolunda İÇ TEKRAR YOK — tekrar olsa tavan aşılır", () => {
+    // maxAttempts 5 (kütüphane varsayılanı) olsaydı 5 x 52 sn = 260 sn.
+    expect(DEEP_SCORE_GEMINI_MAX_ATTEMPTS).toBe(1);
+  });
+
+  it("pay tavandan büyükse pozitif kalır", () => {
+    expect(geminiBudgetMs(5_000, 8_000)).toBeGreaterThan(0);
+  });
+});
+
+/* ───────────────────────────────────────────────────────────────
+   İstemci yanıt sınıflandırması.
+   ASIL ARIZA: platform 504 döndüğünde gövde JSON değil, bu yüzden
+   `remaining ?? 0` sıfır çıkıyor ve döngü kuyruk boşmuş gibi
+   SESSİZCE duruyor — kullanıcı başarı mesajı görüyor.
+   ─────────────────────────────────────────────────────────────── */
+describe("classifyRescoreResponse", () => {
+  it("işlenen kaydı tanır", () => {
+    expect(classifyRescoreResponse(200, { processed: true, remaining: 4 }))
+      .toEqual({ kind: "processed" });
+  });
+
+  it("kuyruk gerçekten boşsa empty", () => {
+    expect(classifyRescoreResponse(200, { processed: false, remaining: 0 }))
+      .toEqual({ kind: "empty" });
+  });
+
+  it("sunucunun JSON hatası tekrar edilebilir", () => {
+    expect(classifyRescoreResponse(500, {
+      processed: false, remaining: 3, error: "model zorunlu JSON bloğunu üretmedi",
+    })).toEqual({ kind: "retryable", error: "model zorunlu JSON bloğunu üretmedi" });
+  });
+
+  it("PLATFORM ZAMAN AŞIMI (JSON olmayan gövde) empty DEĞİL, unavailable", () => {
+    expect(classifyRescoreResponse(504, null)).toEqual({ kind: "unavailable" });
+  });
+
+  it("gövde JSON ama remaining yoksa empty sayılmaz", () => {
+    expect(classifyRescoreResponse(502, {})).toEqual({ kind: "unavailable" });
+  });
+
+  it("yetkisizlik kalıcı hatadır, tekrar edilmez", () => {
+    expect(classifyRescoreResponse(403, { error: "Yetkisiz." })).toEqual({ kind: "fatal", error: "Yetkisiz." });
+  });
+});
+
+describe("remainingGeminiBudgetMs — geçen süreyi düşer", () => {
+  it("ön iş yoksa statik bütçeye eşittir", () => {
+    expect(remainingGeminiBudgetMs(0, 60_000, 8_000)).toBe(52_000);
+  });
+
+  it("ön işte geçen süreyi düşer", () => {
+    expect(remainingGeminiBudgetMs(4_000, 60_000, 8_000)).toBe(48_000);
+  });
+
+  it("toplam HER ZAMAN tavanın altında kalır", () => {
+    for (const elapsed of [0, 1_000, 5_000, 20_000, 55_000]) {
+      const budget = remainingGeminiBudgetMs(elapsed, 60_000, 8_000);
+      // taban 5 sn devreye girmediği sürece: geçen + bütçe + pay <= tavan
+      if (budget > 5_000) expect(elapsed + budget + 8_000).toBeLessThanOrEqual(60_000);
+    }
+  });
+
+  it("ön iş payı yemiş olsa bile 5 sn taban verir", () => {
+    expect(remainingGeminiBudgetMs(58_000, 60_000, 8_000)).toBe(5_000);
+  });
+
+  it("negatif geçen süre bütçeyi şişirmez", () => {
+    expect(remainingGeminiBudgetMs(-10_000, 60_000, 8_000)).toBe(52_000);
   });
 });
