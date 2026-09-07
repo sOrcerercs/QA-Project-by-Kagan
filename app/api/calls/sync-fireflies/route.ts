@@ -17,6 +17,7 @@ import {
 } from "@/app/lib/fireflies";
 import { yesterdayInTR } from "@/app/lib/kriko";
 import { shouldForceFirstCall } from "@/app/lib/evaluationRules";
+import { isDuplicateCallError } from "@/app/lib/prismaErrors";
 
 const UNASSIGNED_EMAIL = "unassigned@estenove.local";
 const UNASSIGNED_NAME = "Atanmamış";
@@ -143,7 +144,9 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
   const sectionScores = result.data.sectionScores ?? null;
   const reportData = result.data.reportData ?? null;
 
-  const evaluation = await prisma.evaluation.create({
+  let evaluation;
+  try {
+    evaluation = await prisma.evaluation.create({
     data: {
       agentId: finalAgentId,
       customerName: finalCustomerName,
@@ -163,7 +166,12 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
       sectionScores,
       reportData,
     },
-  });
+    });
+  } catch (e) {
+    // Paralel koşu araya girip yazdı — hata değil, atla.
+    if (isDuplicateCallError(e)) return { status: "skipped" as const, reason: "already_imported" };
+    throw e;
+  }
 
   if (!finalIsUnassigned) {
     const agent = await prisma.user.findUnique({ where: { id: finalAgentId }, select: { teamId: true } });

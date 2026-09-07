@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { extractReportJson, reportJsonFields } from "@/app/lib/reportJson";
 import { getUserFromToken } from "@/app/lib/auth";
-import { SCORING_THINKING_BUDGET } from "@/app/lib/gemini";
 
 // Düşünme açık olduğu için bu çağrılar ~40-60 sn sürebiliyor. Bu route'u
 // çağıran senkron/cron yolları zaten maxDuration = 300 kullanıyor;
@@ -97,7 +96,19 @@ ${evaluation.transcript}`;
         systemInstruction: { parts: [{ text: "Sen bir satış koçusun." }] },
         contents: [{ parts: [{ text: fullPrompt }] }],
         // temperature 0 → faithful minimal edit, less collateral drift.
-        generationConfig: { maxOutputTokens: 65536, temperature: 0, thinkingConfig: { thinkingBudget: SCORING_THINKING_BUDGET } },
+        // DÜŞÜNME KAPALI — bilinçli. Refine, tamamlanmış bir raporu MİNİMAL
+        // düzenliyor; muhakeme ilk üretimde zaten yapıldı. Ölçüldü (aynı kayıt,
+        // aynı not): kapalı 18 sn, açık 48 sn, ÇIKTI BİREBİR AYNI
+        // (11 doğru · 1 kırık · 1 uygulanmayan).
+        //
+        // Açıkken prod'da KIRIYOR: yerelde 70 sn ölçüldü, Vercel Hobby tavanı
+        // 60 sn. Fonksiyon yazma adımına ulaşmadan öldürülüyor; kullanıcı
+        // "tamamlandı ama değişmedi" görüyor. Refine raporun TAMAMINI yeniden
+        // ürettiği için re-classify'dan daha uzun sürüyor.
+        //
+        // re-classify'da düşünme AÇIK kalıyor: o tam bir yeniden değerlendirme
+        // ve orada ölçülebilir kazanç var (aritmetik, D1 kararlılığı).
+        generationConfig: { maxOutputTokens: 65536, temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
       }),
     });
 
