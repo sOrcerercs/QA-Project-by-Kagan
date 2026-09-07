@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { classifyRescoreResponse } from "@/app/lib/rescoreStep";
 import styles from "@/app/components/LandingPage.module.css";
 import { canEditQa } from "@/app/lib/qaPermissions";
 
@@ -108,6 +109,10 @@ const PANEL_T = {
       `${n} değerlendirme yeniden üretildi.` +
       (r ? ` (${r} kayıt ilk denemede tamamlanamadı, tekrar denendi.)` : ""),
     rsRetrying: (r: number) => `${r} kayıt ilk denemede tamamlanamadı — kuyruk yeniden deneyecek.`,
+    rsTimedOut: (n: number) =>
+      `${n} kayıt sunucu zaman sınırını aştı (60 sn). Deneme hakkı yakıldı ve kayıt 5 dk kilitli kalır; ` +
+      `hakkı dolanları terminalden reclassify-range ile geçir.`,
+    rsFatal: (m: string) => `Durduruldu — sunucu hatası: ${m}`,
     rsInterrupted: (n: number) => `Bağlantı kesildi — ${n} kayıt tamamlandı. Düğmeye yeniden basarsan kaldığı yerden devam eder.`,
     rsEta: (n: number) => `~${Math.max(1, Math.round(n * 50 / 60 / 3))} dk (3 paralel)`,
     rsHint: "Her kayıt ayrı istekte, düşünme açık işlenir (~50 sn). Sekme açık ve bilgisayar uyanık kalmalı; kesilirse düğmeye yeniden bas, kaldığı yerden devam eder.",
@@ -206,6 +211,10 @@ const PANEL_T = {
     rsDone: (n: number, r: number) =>
       `${n} evaluations regenerated.` + (r ? ` (${r} failed on first attempt and were retried.)` : ""),
     rsRetrying: (r: number) => `${r} record(s) failed on first attempt — the queue will retry.`,
+    rsTimedOut: (n: number) =>
+      `${n} record(s) exceeded the server time limit (60s). An attempt was consumed and the record stays ` +
+      `locked for 5 min; use reclassify-range from the terminal for records that ran out of attempts.`,
+    rsFatal: (m: string) => `Stopped — server error: ${m}`,
     rsInterrupted: (n: number) => `Connection lost — ${n} records completed. Press the button again to resume.`,
     rsEta: (n: number) => `~${Math.max(1, Math.round(n * 50 / 60 / 3))} min (3 parallel)`,
     rsHint: "Each record runs in its own request with thinking on (~50 s). Keep the tab open and the machine awake; if interrupted, press again to resume.",
@@ -385,16 +394,27 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
 
     let done = 0;
     let tekrar = 0;
+    let asim = 0;
     let kesildi = false;
+    let olumcul: string | null = null;
+
+    // Üst üste bu kadar sonuçsuz tur → bu işçi çekilir. Aksi hâlde platform
+    // her isteği kesiyorsa döngü sonsuza kadar deneme hakkı yakar.
+    const ARDISIK_HATA_SINIRI = 3;
 
     const worker = async () => {
+      let ardisik = 0;
       while (!rsStopRef.current) {
-        let data: any;
+        let status: number;
+        let payload: unknown;
         try {
           const res = await fetch("/api/evaluations/rescore/next", {
             method: "POST", headers: { "Content-Type": "application/json" }, body: body(),
           });
-          data = await res.json().catch(() => ({}));
+          status = res.status;
+          // Platform kestiyse gövde JSON DEĞİLDİR (HTML hata sayfası) →
+          // null döner ve aşağıda "unavailable" olarak sınıflanır.
+          payload = await res.json().catch(() => null);
         } catch {
           // Ağ koptu: bilgisayar uyudu, sekme donduruldu, bağlantı gitti.
           // Döngüyü durdur — yoksa uyanışta arka arkaya hata alır. Sunucu
@@ -404,16 +424,37 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
           rsStopRef.current = true;
           return;
         }
-        if (data.processed) { done++; setRsDone(done); }
-        else if (data.error) {
-          // Blok üretilememesi geçici ve kendi kendine toparlanan bir durum:
-          // kayıt damgalanmadı, kilidi bırakıldı, kuyruk onu tekrar alacak.
-          // Ham hata metnini basmak gereksiz endişe yaratıyordu — sayıp
-          // özetliyoruz. 3 denemede de olmazsa zaten sarı uyarıda çıkıyor.
+
+        const step = classifyRescoreResponse(status, payload);
+
+        if (step.kind === "processed") {
+          ardisik = 0;
+          done++; setRsDone(done);
+          continue;
+        }
+
+        if (step.kind === "empty") return;          // sunucu AÇIKÇA "kalan 0" dedi
+
+        if (step.kind === "fatal") {
+          olumcul = step.error;
+          rsStopRef.current = true;
+          return;
+        }
+
+        if (step.kind === "retryable") {
+          // Blok üretilememesi geçici: kayıt damgalanmadı, kilidi bırakıldı,
+          // kuyruk onu tekrar alacak. Ham hata metnini basmıyoruz.
           tekrar++;
           setRsMsg(t.rsRetrying(tekrar));
+        } else {
+          // unavailable: 60 sn tavanı aşıldı ya da gövde okunamadı.
+          // ESKİ DAVRANIŞ BURADA SESSİZCE return EDİYORDU — kullanıcı
+          // kuyruk bitti sanıyordu, oysa kayıt deneme hakkı yakmıştı.
+          asim++;
+          setRsMsg(t.rsTimedOut(asim));
         }
-        if ((data.remaining ?? 0) === 0) return;
+
+        if (++ardisik >= ARDISIK_HATA_SINIRI) return;
       }
     };
 
@@ -422,7 +463,12 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     } finally {
       // finally: ağ hatası da olsa düğme "işleniyor"da takılı kalmasın.
       setRsBusy(false);
-      setRsMsg(kesildi ? t.rsInterrupted(done) : t.rsDone(done, tekrar));
+      setRsMsg(
+        olumcul ? t.rsFatal(olumcul)
+        : kesildi ? t.rsInterrupted(done)
+        : asim ? `${t.rsDone(done, tekrar)} ${t.rsTimedOut(asim)}`
+        : t.rsDone(done, tekrar),
+      );
       fetchRescore();
     }
   };

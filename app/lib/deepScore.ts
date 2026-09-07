@@ -37,6 +37,19 @@ export const DEEP_SCORE_STALE_LOCK_MS = 5 * 60 * 1000;
  */
 export const DEEP_SCORE_MAX_ATTEMPTS = 3;
 
+/* Zaman bütçesi ve yanıt sınıflandırması SAF mantıktır ve İSTEMCİ de kullanır
+   (AdminPanel). Bu dosya prisma import ettiği için o kod ./rescoreStep'te
+   duruyor — buradan import edilse Prisma tarayıcı paketine girerdi. */
+export {
+  DEEP_SCORE_REQUEST_CAP_MS,
+  DEEP_SCORE_RESERVE_MS,
+  DEEP_SCORE_GEMINI_MAX_ATTEMPTS,
+  geminiBudgetMs,
+  remainingGeminiBudgetMs,
+  classifyRescoreResponse,
+  type RescoreStep,
+} from "./rescoreStep";
+
 export interface RescoreTarget {
   id: string;
   customerName: string;
@@ -132,7 +145,13 @@ export async function claimNextEvaluation(range?: { from?: Date; to?: Date }): P
         agent: { select: { name: true, team: { select: { name: true } } } },
       },
     });
-    if (!row) continue;
+    if (!row) {
+      // Kaydı kaptık ama okuyamadık (arada silinmiş olabilir). Kilidi
+      // bırakmazsak 5 dk boyunca kilitli kalır — hem de boşuna bir deneme
+      // hakkı yakılmış olarak. Serbest bırak, sıradakine geç.
+      await releaseEvaluationLock(candidate.id).catch(() => {});
+      continue;
+    }
 
     return {
       id: row.id,
