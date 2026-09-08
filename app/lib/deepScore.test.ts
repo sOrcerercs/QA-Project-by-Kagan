@@ -204,3 +204,28 @@ describe("remainingGeminiBudgetMs — geçen süreyi düşer", () => {
     expect(remainingGeminiBudgetMs(-10_000, 60_000, 8_000)).toBe(52_000);
   });
 });
+
+/* ───────────────────────────────────────────────────────────────
+   refine damgası ayrı bir alan.
+
+   `deepScoredAt` iki farklı olguyu birden taşıyordu: "düşünmeli
+   puanlandı" VE "kuyruk buna dokunmasın". refine düşünme KAPALI
+   çalışıyor (thinkingBudget: 0, gerekçesi rotada yazılı) ama kaydı
+   deepScoredAt ile damgalıyordu — etkisi doğru, anlamı yalan.
+
+   deepScore.ts'in kendi ilkesi bunu yasaklıyor: "eski kayıtları
+   'düşünmeli üretildi' diye damgalamak yalan olurdu ve ileride
+   'hangileri gerçekten düşünmeli?' sorusuna yanlış cevap verirdi."
+   ─────────────────────────────────────────────────────────────── */
+describe("pendingWhere — elle refine edilmiş kayıtlar", () => {
+  it("refine edilmiş kaydı kuyruğa ALMAZ", () => {
+    const w = pendingWhere() as { refinedAt: unknown };
+    expect(w.refinedAt).toBeNull();
+  });
+
+  it("düşünmeli damgası ile refine damgası AYRI koşullar", () => {
+    const w = pendingWhere() as Record<string, unknown>;
+    expect(w).toHaveProperty("deepScoredAt", null);
+    expect(w).toHaveProperty("refinedAt", null);
+  });
+});
