@@ -126,6 +126,19 @@ ${evaluation.transcript}`;
     }
 
     const extracted = extractReportJson(reportText);
+
+    // Blok üretilmediyse kayda DOKUNMA. reportJsonFields boş bloğu yazmaz
+    // (sectionScores/weakCriteria/reportData atlanır) ama report ve score
+    // yazılırdı: kayıt yeni skorun yanında ESKİ kriterleri gösterirdi ve
+    // deepScoredAt damgası kuyruğun onu bir daha almasını da engellerdi.
+    // rescore/next'te bu koruma baştan vardı; burada eksikti.
+    if (!extracted.reportData) {
+      return NextResponse.json(
+        { error: "AI zorunlu JSON bloğunu üretmedi; kayıt değiştirilmedi. Tekrar deneyin." },
+        { status: 502 },
+      );
+    }
+
     const { cleanReport: cleanRefineReport, scoreRaw: rawScore } = extracted;
     const score = rawScore !== null && rawScore >= 0 && rawScore <= 100 ? rawScore : evaluation.score;
 
@@ -135,7 +148,10 @@ ${evaluation.transcript}`;
         report: cleanRefineReport,
         score,
         ...reportJsonFields(extracted),
-        // Bu route düşünme AÇIK çalışıyor; panel bu kaydı tekrar sıraya almasın.
+        // DİKKAT: bu route'ta düşünme KAPALI (yukarıdaki thinkingBudget: 0 ve
+        // gerekçesi). Damga, kullanıcının elle yaptığı refine'ın kuyruk
+        // tarafından ezilmemesi için atılıyor — "düşünmeli üretildi" demek
+        // değil. Eski yorum re-classify'dan kopyalanmıştı ve yanlıştı.
         deepScoredAt: new Date(),
         deepScoreLockedAt: null,
       },
