@@ -88,8 +88,25 @@ describe("reportJsonFields", () => {
     expect(fields).toEqual({});
   });
 
-  it("boş weakCriteria dizisini yazmaz", () => {
+  /**
+   * null ile [] AYNI ŞEY DEĞİL:
+   *   null → blok hiç ayrıştırılamadı; kolona dokunulmamalı, yoksa
+   *          iyi veri silinir.
+   *   []   → blok ayrıştırıldı ve gerçekten hiçbir madde kırılmadı
+   *          (kusursuz arama); kolon BOŞALTILMALI.
+   *
+   * Eskiden ikisi de yazılmıyordu. Sonucu: kusursuz bir yeniden
+   * değerlendirmeden sonra kayıt "skor 100" ile "C3=FAIL" yan yana
+   * duruyordu — aritmetik olarak imkânsız bir kart.
+   * Gerçek örnek: cmtrrdp4l000z7wjhd17w9zb5.
+   */
+  it("boş weakCriteria dizisini YAZAR — kusursuz aramada eski maddeler kalmasın", () => {
     const fields = reportJsonFields({ sectionScores: null, weakCriteria: [], reportData: { a: 1 } });
+    expect(fields).toEqual({ weakCriteria: [], reportData: { a: 1 } });
+  });
+
+  it("null weakCriteria'yı yazmaz — blok okunamadıysa mevcut veri korunur", () => {
+    const fields = reportJsonFields({ sectionScores: null, weakCriteria: null, reportData: { a: 1 } });
     expect(fields).toEqual({ reportData: { a: 1 } });
   });
 });

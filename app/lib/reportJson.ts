@@ -185,7 +185,13 @@ export function extractReportJson(reportText: string): ExtractedReport {
 export function reportJsonFields(extracted: Pick<ExtractedReport, "sectionScores" | "weakCriteria" | "reportData">) {
   return {
     ...(extracted.sectionScores && { sectionScores: extracted.sectionScores }),
-    ...(extracted.weakCriteria && extracted.weakCriteria.length > 0 && { weakCriteria: extracted.weakCriteria }),
+    // Array.isArray, `length > 0` DEĞİL. null ile [] farklı anlam taşıyor:
+    //   null → blok ayrıştırılamadı; kolona dokunma, iyi veri silinmesin.
+    //   []   → blok ayrıştırıldı, gerçekten kırılan madde yok; kolonu BOŞALT.
+    // `length > 0` ikisini aynı kefeye koyuyordu ve kusursuz bir yeniden
+    // değerlendirmeden sonra eski maddeler yeni skorun yanında kalıyordu
+    // (skor 100 + C3=FAIL gibi imkânsız kartlar).
+    ...(Array.isArray(extracted.weakCriteria) && { weakCriteria: extracted.weakCriteria }),
     ...(extracted.reportData && { reportData: extracted.reportData as Prisma.InputJsonValue }),
   };
 }
