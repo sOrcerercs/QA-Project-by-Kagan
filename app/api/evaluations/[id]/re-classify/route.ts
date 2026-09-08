@@ -111,6 +111,19 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
     const reportText = await callGemini("Sen bir satış koçusun.", fullPrompt);
 
     const extracted = extractReportJson(reportText);
+
+    // Blok üretilmediyse kayda DOKUNMA. reportJsonFields boş bloğu yazmaz
+    // (sectionScores/weakCriteria/reportData atlanır) ama report ve score
+    // yazılırdı: kayıt yeni skorun yanında ESKİ kriterleri gösterirdi ve
+    // deepScoredAt damgası kuyruğun onu bir daha almasını da engellerdi.
+    // rescore/next'te bu koruma baştan vardı; burada eksikti.
+    if (!extracted.reportData) {
+      return NextResponse.json(
+        { error: "AI zorunlu JSON bloğunu üretmedi; kayıt değiştirilmedi. Tekrar deneyin." },
+        { status: 502 },
+      );
+    }
+
     const { cleanReport, scoreRaw: rawScore } = extracted;
     const score = rawScore !== null && rawScore >= 0 && rawScore <= 100 ? rawScore : evaluation.score;
 
