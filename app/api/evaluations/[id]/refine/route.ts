@@ -148,11 +148,16 @@ ${evaluation.transcript}`;
         report: cleanRefineReport,
         score,
         ...reportJsonFields(extracted),
-        // DİKKAT: bu route'ta düşünme KAPALI (yukarıdaki thinkingBudget: 0 ve
-        // gerekçesi). Damga, kullanıcının elle yaptığı refine'ın kuyruk
-        // tarafından ezilmemesi için atılıyor — "düşünmeli üretildi" demek
-        // değil. Eski yorum re-classify'dan kopyalanmıştı ve yanlıştı.
-        deepScoredAt: new Date(),
+        // Bu route'ta düşünme KAPALI (yukarıdaki thinkingBudget: 0 ve
+        // gerekçesi). Bu yüzden deepScoredAt DEĞİL, refinedAt damgalanıyor —
+        // ikisi farklı olgu. refinedAt: "yönetici elle düzeltti, kuyruk
+        // dokunmasın". deepScoredAt: "düşünme açık üretildi"; burada yazılsa
+        // veriye yalan olurdu (şemadaki tanımına bak).
+        //
+        // Kuyruk koruması pendingWhere'de (refinedAt: null). deepScoredAt'e
+        // DOKUNULMUYOR: kayıt daha önce gerçekten düşünmeli puanlandıysa o
+        // damga doğru ve kalmalı.
+        refinedAt: new Date(),
         deepScoreLockedAt: null,
       },
     });

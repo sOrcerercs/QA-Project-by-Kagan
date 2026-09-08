@@ -107,6 +107,10 @@ export function pendingWhere(range?: { from?: Date; to?: Date }): Record<string,
   if (range?.to) callDate.lt = range.to;
   return {
     deepScoredAt: null,
+    // Elle refine edilmiş kayıt kuyruğa girmez: yeniden puanlama yöneticinin
+    // cerrahi düzeltmesini siler. Ayrı alan, çünkü refine düşünme KAPALI
+    // çalışıyor — deepScoredAt ile damgalamak veriye yalan yazmak olurdu.
+    refinedAt: null,
     deepScoreAttempts: { lt: DEEP_SCORE_MAX_ATTEMPTS },
     callDate,
   };

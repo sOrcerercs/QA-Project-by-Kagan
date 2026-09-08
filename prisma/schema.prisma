@@ -136,6 +136,11 @@ model Evaluation {
   deepScoreLockedAt DateTime?
   // Kaç kez denendi. Vercel tavanına sürekli takılan kayıt kuyruğu tıkamasın.
   deepScoreAttempts Int       @default(0)
+  // Yönetici notuyla ELLE düzeltilmiş kaydın damgası (bkz. [id]/refine).
+  // Kuyruk buna dokunmaz — yeniden puanlama cerrahi düzeltmeyi siler.
+  // deepScoredAt'ten AYRI: refine düşünme KAPALI çalışıyor, o damga
+  // "düşünme AÇIK üretildi" demek ve burada yazılsa veriye yalan olurdu.
+  refinedAt         DateTime?
   callDate        DateTime  @default(now())
   createdAt       DateTime  @default(now())
 
@@ -162,6 +167,7 @@ model Evaluation {
   objectionAt      DateTime?
 
   @@index([deepScoredAt, callDate])
+  @@index([refinedAt, callDate])
 }
 
 model SyncLog {
