@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseInboxFileName } from "./drive";
+import { parseInboxFileName, isDriveConfigured, normalizePrivateKey } from "./drive";
 
 describe("parseInboxFileName", () => {
   it("sözleşmeye uyan adı ayrıştırır", () => {
@@ -54,5 +54,37 @@ describe("parseInboxFileName", () => {
     expect(
       parseInboxFileName("2026-09-10T14-59__mavican@estenove.com__1rLPJ3jAAAAAAAAAA"),
     ).toBeNull();
+  });
+});
+
+describe("normalizePrivateKey", () => {
+  it("kaçışlı \\n'leri gerçek satır sonuna çevirir", () => {
+    const out = normalizePrivateKey("-----BEGIN PRIVATE KEY-----\\nAAA\\n-----END PRIVATE KEY-----\\n");
+    expect(out).toBe("-----BEGIN PRIVATE KEY-----\nAAA\n-----END PRIVATE KEY-----\n");
+  });
+
+  it("zaten gerçek satır sonu varsa bozmaz", () => {
+    const real = "-----BEGIN PRIVATE KEY-----\nAAA\n-----END PRIVATE KEY-----\n";
+    expect(normalizePrivateKey(real)).toBe(real);
+  });
+
+  it("çevreleyen çift tırnakları atar", () => {
+    expect(normalizePrivateKey('"abc"')).toBe("abc");
+  });
+});
+
+describe("isDriveConfigured", () => {
+  it("üç env değişkeni de varsa true", () => {
+    process.env.GOOGLE_DRIVE_SA_EMAIL = "a@b.iam.gserviceaccount.com";
+    process.env.GOOGLE_DRIVE_SA_PRIVATE_KEY = "k";
+    process.env.GOOGLE_DRIVE_INBOX_FOLDER_ID = "f";
+    expect(isDriveConfigured()).toBe(true);
+  });
+
+  it("biri eksikse false", () => {
+    process.env.GOOGLE_DRIVE_SA_EMAIL = "a@b.iam.gserviceaccount.com";
+    process.env.GOOGLE_DRIVE_SA_PRIVATE_KEY = "k";
+    delete process.env.GOOGLE_DRIVE_INBOX_FOLDER_ID;
+    expect(isDriveConfigured()).toBe(false);
   });
 });
