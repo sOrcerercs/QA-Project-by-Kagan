@@ -73,8 +73,9 @@ export async function claimNextDriveTranscript(): Promise<DriveClaim | null> {
     });
     if (!candidate) return null;
 
+    // Başka işlem bu arada satırı emekli edebilir; uygunluk koşulunu yeniden kontrol et.
     const claimed = await prisma.driveTranscript.updateMany({
-      where: { id: candidate.id, status: "PENDING", ...serbest },
+      where: { id: candidate.id, ...pendingDriveWhere(), ...serbest },
       data: { lockedAt: new Date(), attempts: { increment: 1 } },
     });
     if (claimed.count !== 1) continue; // başkası kaptı
