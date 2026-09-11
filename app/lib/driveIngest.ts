@@ -119,10 +119,34 @@ export async function markDriveImported(id: string, evaluationId: string): Promi
 /**
  * Başarısız ama tekrar denenebilir. Durum PENDING kalır; hakkı tükendiğinde
  * pendingDriveWhere() satırı kendiliğinden kuyruktan düşürür.
+ *
+ * `lockedAt` BİLİNÇLİ OLARAK temizlenmiyor: temizlenirse claimNextDriveTranscript
+ * (startedAt: "asc" sıralı) aynı satırı bir sonraki turda hemen tekrar seçer —
+ * hızlı bir hata (ör. /api/analyze'ın eksik prompt için 404'ü) üç denemeyi bir
+ * saniyeden kısa sürede tüketir ve geçici bir kesinti bütün kuyruğu emekli edebilir.
+ * Kilidi tutarak zaten var olan DRIVE_STALE_LOCK_MS kuralını bedava bir geri
+ * çekilme (backoff) süresi olarak kullanıyoruz: satır başarısız denemeden yaklaşık
+ * beş dakika sonra yeniden alınabilir hâle gelir.
  */
 export async function markDriveRetryable(id: string, error: string): Promise<void> {
   await prisma.driveTranscript.update({
     where: { id },
-    data: { error: error.slice(0, 500), lockedAt: null },
+    data: { error: error.slice(0, 500) },
   });
+}
+
+/**
+ * Üç denemesini de tüketmiş (attempts >= DRIVE_MAX_ATTEMPTS) ama durumu hâlâ
+ * PENDING olan satırlar: pendingDriveWhere()'e göre "beklemede" değiller,
+ * SKIPPED/IMPORTED da değiller — panelin üç sayacından hiçbirine girmiyorlar
+ * ve görünmez oluyorlar. requeueExhausted bu satırları BİLİNÇLİ bir insan
+ * eylemiyle sıfırlar; otomatik yeniden deneme YOK — bir satır üç kez
+ * başarısız olduysa bir daha denemeye değip değmediğine insan karar verir.
+ */
+export async function requeueExhausted(): Promise<number> {
+  const { count } = await prisma.driveTranscript.updateMany({
+    where: { status: "PENDING", attempts: { gte: DRIVE_MAX_ATTEMPTS } },
+    data: { attempts: 0, lockedAt: null, error: null },
+  });
+  return count;
 }

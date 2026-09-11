@@ -58,6 +58,9 @@ const ADMIN_T = {
     meetQueueTitle: "Kuyruk", meetDrain: "Kuyruğu Çevir", meetStop: "Durdur",
     meetPendingCount: (n: number) => `${n} transkript işlenmeyi bekliyor`,
     meetQueueEmpty: "Kuyrukta bekleyen transkript yok.",
+    meetExhaustedCount: (n: number) => `${n} satır 3 denemede de tamamlanamadı — kuyruktan düştü`,
+    meetRequeue: "Sıkışanları Yeniden Kuyruğa Al", meetRequeuing: "Kuyruğa alınıyor...",
+    meetRequeueDone: (n: number) => `${n} satır yeniden kuyruğa alındı.`,
     meetLastRecord: (d: string) => `Son kayıt: ${d}`, meetNoRecordYet: "Henüz kayıt gelmedi.",
     meetSkipReasons: "Elenen Sebepler",
     meetDriveEmailError: "Drive e-postası bağlanamadı.",
@@ -129,6 +132,9 @@ const ADMIN_T = {
     meetQueueTitle: "Queue", meetDrain: "Drain Queue", meetStop: "Stop",
     meetPendingCount: (n: number) => `${n} transcript${n !== 1 ? "s" : ""} waiting to be processed`,
     meetQueueEmpty: "Nothing waiting in the queue.",
+    meetExhaustedCount: (n: number) => `${n} row${n !== 1 ? "s" : ""} failed all 3 attempts — stuck outside the queue`,
+    meetRequeue: "Requeue Stuck Rows", meetRequeuing: "Requeuing...",
+    meetRequeueDone: (n: number) => `${n} row${n !== 1 ? "s" : ""} requeued.`,
     meetLastRecord: (d: string) => `Last record: ${d}`, meetNoRecordYet: "No records yet.",
     meetSkipReasons: "Skip Reasons",
     meetDriveEmailError: "Could not link Drive email.",
@@ -202,6 +208,7 @@ type MeetStatus = {
   pending: number;
   skipped: number;
   imported: number;
+  exhausted: number;
   unassignedCount: number;
   sonKayit: string | null;
   elenenSebepler: { skipReason: string | null; _count: number }[];
@@ -275,6 +282,8 @@ function AdminSettingsPageInner() {
   const [meetStatus, setMeetStatus] = useState<MeetStatus | null>(null);
   const [meetRunning, setMeetRunning] = useState(false);
   const [meetPending, setMeetPending] = useState(0);
+  const [meetRequeuing, setMeetRequeuing] = useState(false);
+  const [meetRequeueMsg, setMeetRequeueMsg] = useState("");
   const meetStopRef = useRef(false);
 
   // Reclassify tab state
@@ -409,6 +418,25 @@ function AdminSettingsPageInner() {
       await meetDurumunuYenile();
     }
   }
+
+  // Hakkı tükenmiş (PENDING + attempts >= 3) satırlar hiçbir sayaca girmiyor
+  // ve kuyruğa kendiliğinden dönmüyor — bilinçli bir insan eylemi gerekiyor.
+  const handleMeetRequeue = async () => {
+    const tMsg = ADMIN_T[lang];
+    setMeetRequeuing(true);
+    setMeetRequeueMsg("");
+    try {
+      const res = await fetch("/api/calls/ingest-meet/requeue", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setMeetRequeueMsg(tMsg.meetRequeueDone(data.requeued ?? 0));
+      else setMeetRequeueMsg(data.error || tMsg.errorOccurred);
+    } catch {
+      setMeetRequeueMsg(tMsg.errorOccurred);
+    } finally {
+      setMeetRequeuing(false);
+      await meetDurumunuYenile();
+    }
+  };
 
   const handleKrikoSync = async () => {
     const tMsg = ADMIN_T[lang];
@@ -1561,6 +1589,25 @@ function AdminSettingsPageInner() {
               <p className="text-xs text-on-surface-variant">
                 {meetStatus?.sonKayit ? t.meetLastRecord(formatDateTime(meetStatus.sonKayit, t.locale)) : t.meetNoRecordYet}
               </p>
+              {/* Sıkışmış (hakkı tükenmiş) satırlar — pending/skipped/imported'ın
+                  hiçbirine girmiyor, bu yüzden görsel olarak ayrık: bu bir
+                  "çalışıyor" durumu değil, bir "takıldı" durumu. */}
+              {!!meetStatus?.exhausted && (
+                <div className="rounded-2xl p-3 border border-error/30 bg-error/10">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-xs font-bold text-error">{t.meetExhaustedCount(meetStatus.exhausted)}</span>
+                    <button
+                      onClick={handleMeetRequeue}
+                      disabled={meetRequeuing}
+                      className="text-xs border border-outline-variant rounded-xl px-4 py-2 flex items-center gap-2 disabled:opacity-60"
+                    >
+                      <MIcon name="sync" className={`text-sm ${meetRequeuing ? "animate-spin" : ""}`} />
+                      {meetRequeuing ? t.meetRequeuing : t.meetRequeue}
+                    </button>
+                  </div>
+                  {meetRequeueMsg && <p className="text-xs text-on-surface-variant mt-2">{meetRequeueMsg}</p>}
+                </div>
+              )}
               {meetStatus && meetStatus.elenenSebepler.length > 0 && (
                 <div className="pt-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">{t.meetSkipReasons}</p>

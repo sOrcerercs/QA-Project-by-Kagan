@@ -9,7 +9,7 @@ import { getUserFromToken } from "@/app/lib/auth";
 import { checkIngestAuth, isIngestConfigured } from "@/app/lib/ingestAuth";
 import { parseIngestPayload } from "@/app/lib/ingestPayload";
 import { parseMeetTranscript } from "@/app/lib/meetTranscript";
-import { pendingDriveWhere } from "@/app/lib/driveIngest";
+import { pendingDriveWhere, DRIVE_MAX_ATTEMPTS } from "@/app/lib/driveIngest";
 
 export async function POST(req: NextRequest) {
   const yetki = checkIngestAuth(req.headers.get("authorization"));
@@ -73,10 +73,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
-  const [pending, skipped, imported, unassignedCount, sonKayit] = await Promise.all([
+  const [pending, skipped, imported, exhausted, unassignedCount, sonKayit] = await Promise.all([
     prisma.driveTranscript.count({ where: pendingDriveWhere() }),
     prisma.driveTranscript.count({ where: { status: "SKIPPED" } }),
     prisma.driveTranscript.count({ where: { status: "IMPORTED" } }),
+    // pending + skipped + imported dışında kalan dördüncü küme: PENDING ama
+    // hakkı tükenmiş. pendingDriveWhere() bunu "beklemede" saymadığı için
+    // ayrı sayılmazsa panelden tamamen kaybolur (bkz. requeueExhausted).
+    prisma.driveTranscript.count({ where: { status: "PENDING", attempts: { gte: DRIVE_MAX_ATTEMPTS } } }),
     prisma.evaluation.count({ where: { unassigned: true, source: "GOOGLE_MEET" } }),
     prisma.driveTranscript.findFirst({
       orderBy: { discoveredAt: "desc" },
@@ -92,7 +96,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     configured: isIngestConfigured(),
-    pending, skipped, imported, unassignedCount,
+    pending, skipped, imported, exhausted, unassignedCount,
     sonKayit: sonKayit?.discoveredAt ?? null,
     elenenSebepler,
   });

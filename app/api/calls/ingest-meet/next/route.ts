@@ -15,23 +15,12 @@ import {
   markDriveImported,
   markDriveRetryable,
   pendingDriveWhere,
+  DRIVE_ANALYZE_ESTIMATE_MS,
 } from "@/app/lib/driveIngest";
+import { DEEP_SCORE_REQUEST_CAP_MS, DEEP_SCORE_RESERVE_MS } from "@/app/lib/rescoreStep";
 import { shouldForceFirstCall } from "@/app/lib/evaluationRules";
 import { isDuplicateCallError } from "@/app/lib/prismaErrors";
 import { formatDuration } from "@/app/lib/kriko";
-
-const UNASSIGNED_EMAIL = "unassigned@estenove.local";
-const UNASSIGNED_NAME = "Atanmamış";
-
-async function getOrCreateUnassignedUser() {
-  let user = await prisma.user.findUnique({ where: { email: UNASSIGNED_EMAIL } });
-  if (!user) {
-    user = await prisma.user.create({
-      data: { name: UNASSIGNED_NAME, email: UNASSIGNED_EMAIL, passwordHash: "DISABLED", role: "AGENT" },
-    });
-  }
-  return user;
-}
 
 export async function POST(req: NextRequest) {
   const user = await getUserFromToken(req);
@@ -42,10 +31,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function processOneDriveTranscript(req: NextRequest) {
+  const requestStart = Date.now();
   const kalan = () => prisma.driveTranscript.count({ where: pendingDriveWhere() });
 
   const row = await claimNextDriveTranscript();
-  if (!row) return NextResponse.json({ processed: false, remaining: 0 });
+  if (!row) return NextResponse.json({ processed: false, remaining: await kalan() });
 
   try {
     // Danışman kimliği driveEmail'den KESİN geliyor; isim eşleştirme yok.
@@ -54,19 +44,33 @@ export async function processOneDriveTranscript(req: NextRequest) {
       select: { id: true, name: true },
     });
 
+    // Danışman driveEmail'den çözülemediğinde rol ataması için dayanak
+    // kalmıyor. Eskiden katılımcı sırasına (attendees[0]) dayanan bir TAHMİN
+    // yapılıp kayıt "unassigned" olarak içeri alınıyordu; ama reassign
+    // ucu unassigned'ı koşulsuz temizlediğinden, admin çağrıyı doğru
+    // danışmana bağladığı an tahmine dayalı Agent/Customer ayrımı
+    // doğrulanmış bir puanla ayırt edilemez hâle geliyor ve o danışmanın
+    // OKR'sine karışıyordu. Bunun yerine ASLA TAHMİN ETMİYORUZ: satır
+    // SKIPPED'e düşer, admin driveEmail'i bağlar, Fix 1'in requeue'su
+    // satırı kuyruğa geri getirir.
+    if (!agent) {
+      await markDriveSkipped(row.id, "agent_unresolved");
+      const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
+      await prisma.notification.createMany({
+        data: admins.map(a => ({
+          userId: a.id,
+          type: "UNASSIGNED_CALL",
+          message: `Google Meet'ten gelen bir çağrının danışmanı eşleşmedi (${row.agentEmail}). Drive e-postası bağlanmayı bekliyor.`,
+        })),
+      });
+      return NextResponse.json({
+        processed: true, status: "skipped", reason: "agent_unresolved", remaining: await kalan(),
+      });
+    }
+
     const parsed = parseMeetTranscript(row.transcript);
 
-    // Danışman driveEmail'den çözülemediğinde rol ataması için dayanak
-    // kalmıyor. SKIPPED yapmıyoruz — çağrı gerçek, atılması veri kaybı olur.
-    // Bunun yerine Meet'in katılımcı sırasına dayanıyoruz: gözlemlenen
-    // kayıtlarda toplantıyı düzenleyen (danışman) ilk sırada geliyor.
-    //
-    // BU BİR TAHMİN ve öyle işaretleniyor: kayıt unassigned düşer, admine
-    // bildirim gider ve error alanına tahmin notu yazılır.
-    const agentKnown = agent !== null;
-    const agentNameForRoles = agent?.name ?? parsed.attendees[0] ?? "";
-
-    const verdict = classifyMeetTranscript(parsed, agentNameForRoles);
+    const verdict = classifyMeetTranscript(parsed, agent.name);
     if (!verdict.ok) {
       await markDriveSkipped(row.id, verdict.reason);
       return NextResponse.json({
@@ -74,10 +78,13 @@ export async function processOneDriveTranscript(req: NextRequest) {
       });
     }
 
-    const unassignedUser = agent ? null : await getOrCreateUnassignedUser();
-    const agentId = agent?.id ?? unassignedUser!.id;
-    const forceFirstCall = await shouldForceFirstCall(agent?.id);
-    const duration = formatDuration(parsed.durationSec ?? 0);
+    const agentId = agent.id;
+    const forceFirstCall = await shouldForceFirstCall(agent.id);
+    // durationSec bilinmiyorsa (transkriptte "Meeting ended after" satırı yok)
+    // formatDuration(0) uydurma bir "0:00" üretirdi ve bu, puanlama
+    // rubriğine çağrının süresiymiş gibi geçerdi. Bilinmiyorsa dürüstçe
+    // "Belirtilmedi" geç — kod tabanının bu yol için zaten kullandığı kural.
+    const duration = parsed.durationSec != null ? formatDuration(parsed.durationSec) : "Belirtilmedi";
 
     const host = req.headers.get("host") ?? "localhost:3000";
     const baseUrl =
@@ -86,14 +93,43 @@ export async function processOneDriveTranscript(req: NextRequest) {
 
     const formData = new FormData();
     formData.append("transcript", verdict.text);
-    formData.append("agentName", agent?.name ?? verdict.roles.agentAttendee);
+    formData.append("agentName", agent.name);
     formData.append("customerName", verdict.roles.customerAttendee);
     formData.append("callDuration", duration);
     formData.append("callType", forceFirstCall ? "FIRST_CALL" : "AUTO");
     // Adları YAPISAL olarak biliyoruz; LLM'e çıkarttırmıyoruz.
     formData.append("extractNames", "false");
 
-    const res = await fetch(`${baseUrl}/api/analyze`, { method: "POST", body: formData });
+    // /api/analyze kendi Gemini çağrısını (callGemini) sınırlamıyor: kütüphane
+    // varsayılanı 429'da 5 denemeye kadar bekleyebiliyor ve bu tek satırı 60 sn
+    // Hobby tavanının üstüne taşıyabiliyor. Tavan aşılınca platform isteği
+    // SESSİZCE keser, catch hiç çalışmaz, kilit 5 dk boyunca tutulur ve bir
+    // deneme hakkı boşuna yanar. Bu yüzden zaman aşımını BURADAN, kalan
+    // bütçeden türeterek koyuyoruz — sabit bir sayı yazmıyoruz ve satırın
+    // tüm-istek tahmininin (DRIVE_ANALYZE_ESTIMATE_MS) kesinlikle altında
+    // tutuyoruz.
+    const kalanButce = DEEP_SCORE_REQUEST_CAP_MS - DEEP_SCORE_RESERVE_MS - (Date.now() - requestStart);
+    const analyzeTimeoutMs = Math.max(1_000, Math.min(kalanButce, DRIVE_ANALYZE_ESTIMATE_MS - 1_000));
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), analyzeTimeoutMs);
+
+    let res: Response;
+    try {
+      res = await fetch(`${baseUrl}/api/analyze`, {
+        method: "POST", body: formData, signal: controller.signal,
+      });
+    } catch (fetchErr) {
+      if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
+        await markDriveRetryable(row.id, `analyze ${analyzeTimeoutMs}ms icinde zaman asimina ugradi`);
+        return NextResponse.json({
+          processed: true, status: "failed", reason: "analyze_timeout", remaining: await kalan(),
+        });
+      }
+      throw fetchErr;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       await markDriveRetryable(row.id, `analyze ${res.status}: ${errText.slice(0, 200)}`);
@@ -118,7 +154,7 @@ export async function processOneDriveTranscript(req: NextRequest) {
           callDate: row.startedAt,
           externalCallId: `gm_${row.meetFolderId}`,
           externalAgentName: row.agentEmail,
-          unassigned: !agent,
+          unassigned: false,
           source: "GOOGLE_MEET",
           recordingUrl: `https://drive.google.com/drive/folders/${row.meetFolderId}`,
           weakCriteria: data.weakCriteria ?? null,
@@ -139,48 +175,32 @@ export async function processOneDriveTranscript(req: NextRequest) {
 
     await markDriveImported(row.id, evaluation.id);
 
-    if (!agentKnown) {
-      // Rol ataması tahmine dayandı; izini bırak ki sonradan denetlenebilsin.
-      await prisma.driveTranscript.update({
-        where: { id: row.id },
-        data: { error: `rol_tahmini: agentEmail=${row.agentEmail} eslesmedi, ilk katilimci danisman sayildi` },
+    // Danışman driveEmail'den KESİN çözüldüğü için (bkz. yukarıdaki
+    // agent_unresolved dalı) buraya varan her satırda agent her zaman var —
+    // "atanmamış" yolu artık yok.
+    const withTeam = await prisma.user.findUnique({
+      where: { id: agent.id }, select: { teamId: true },
+    });
+    const notifyIds: string[] = [agent.id];
+    if (withTeam?.teamId) {
+      const team = await prisma.team.findUnique({
+        where: { id: withTeam.teamId }, select: { leaderId: true },
       });
+      if (team?.leaderId) notifyIds.push(team.leaderId);
     }
-
-    if (agent) {
-      const withTeam = await prisma.user.findUnique({
-        where: { id: agent.id }, select: { teamId: true },
-      });
-      const notifyIds: string[] = [agent.id];
-      if (withTeam?.teamId) {
-        const team = await prisma.team.findUnique({
-          where: { id: withTeam.teamId }, select: { leaderId: true },
-        });
-        if (team?.leaderId) notifyIds.push(team.leaderId);
-      }
-      await prisma.notification.createMany({
-        data: notifyIds.map(uid => ({
-          userId: uid,
-          type: "EVALUATION",
-          message: `${verdict.roles.customerAttendee} için değerlendirme tamamlandı. Skor: %${data.score || 0}`,
-          referenceId: evaluation.id,
-        })),
-        skipDuplicates: true,
-      });
-    } else {
-      const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
-      await prisma.notification.createMany({
-        data: admins.map(a => ({
-          userId: a.id,
-          type: "UNASSIGNED_CALL",
-          message: `Google Meet'ten gelen bir çağrının danışmanı eşleşmedi (${row.agentEmail}). Lütfen manuel atama yapın.`,
-        })),
-      });
-    }
+    await prisma.notification.createMany({
+      data: notifyIds.map(uid => ({
+        userId: uid,
+        type: "EVALUATION",
+        message: `${verdict.roles.customerAttendee} için değerlendirme tamamlandı. Skor: %${data.score || 0}`,
+        referenceId: evaluation.id,
+      })),
+      skipDuplicates: true,
+    });
 
     return NextResponse.json({
       processed: true,
-      status: agent ? "imported" : "unassigned",
+      status: "imported",
       evaluationId: evaluation.id,
       remaining: await kalan(),
     });

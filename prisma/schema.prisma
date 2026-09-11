@@ -149,7 +149,7 @@ model Evaluation {
   externalAgentName String?                   // kriko'dan gelen ham agent adı (eşleşmeyenler için)
   recordingUrl    String?                     // audio URL (Kriko ekleyince doldurulacak)
   unassigned      Boolean   @default(false)   // agent eşleşmedi → admin atayacak
-  source          String    @default("MANUAL") // MANUAL | KRIKO | FIREFLIES
+  source          String    @default("MANUAL") // MANUAL | KRIKO | FIREFLIES | GOOGLE_MEET
 
   // Takip alanları
   agentRead       Boolean   @default(false)

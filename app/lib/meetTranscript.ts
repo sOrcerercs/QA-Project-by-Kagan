@@ -1,4 +1,4 @@
-import { matchAgentName } from "./agentMatch";
+import { matchAgentName, normalizeAgentName } from "./agentMatch";
 
 // Google Meet transkript Doc'unun düz metin hâlini ayrıştırır.
 //
@@ -168,13 +168,25 @@ export function formatBlockRange(startSec: number, endSec: number): string {
  *
  * allowPartial AÇIK: DB'de resmî tam adlar var — "Makbule Sinem Bulur"
  * katılımcı listesinde "Sinem Bulur" olarak geçiyor ve eşleşmesi gerekiyor.
+ * Ama bu katman ham String.includes kullanıyor: müşterinin adı danışmanın
+ * DB adının rastgele bir alt dizesi olabilir — "Mavi Can" katılımcısı
+ * "Mavican Tekuz" danışmanının içinde "mavi" VE "can" olarak geçtiği için
+ * eşleşirdi. Bu yüzden matchAgentName'in bulduğu her adayı KELİME SINIRI
+ * doğrulamasından geçiriyoruz: katılımcı adının normalize edilmiş her
+ * parçası, aday adında TAM KELİME olarak geçmeli. agentMatch'in kendi
+ * normalizasyonunu (Türkçe I, x/ks katlaması) kullanıyoruz ki iki taraf
+ * aynı dili konuşsun.
  */
 export function resolveMeetRoles(attendees: string[], agentName: string): MeetRoles | null {
   if (attendees.length !== 2) return null;
   const candidates = [{ id: "agent", name: agentName }];
-  const hits = attendees.filter(
-    a => matchAgentName(a, candidates, { allowSingleWord: false }) !== null,
-  );
+  const candidateParts = normalizeAgentName(agentName).split(/\s+/).filter(Boolean);
+  const hits = attendees.filter(a => {
+    const match = matchAgentName(a, candidates, { allowSingleWord: false });
+    if (!match) return false;
+    const attendeeParts = normalizeAgentName(a).split(/\s+/).filter(Boolean);
+    return attendeeParts.every(p => candidateParts.includes(p));
+  });
   if (hits.length !== 1) return null;
   const agentAttendee = hits[0];
   const customerAttendee = attendees.find(a => a !== agentAttendee)!;

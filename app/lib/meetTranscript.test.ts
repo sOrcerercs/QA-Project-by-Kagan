@@ -145,6 +145,27 @@ describe("resolveMeetRoles", () => {
     expect(resolveMeetRoles(["Mavican Tekuz"], "Mavican Tekuz")).toBeNull();
     expect(resolveMeetRoles(["Mavican Tekuz", "A B", "C D"], "Mavican Tekuz")).toBeNull();
   });
+
+  describe("kelime sınırı doğrulaması (partial katmanın ham substring'ini eler)", () => {
+    it("MÜŞTERİ 'Mavi Can', danışman 'Mavican Tekuz' ile EŞLEŞMEZ", () => {
+      // "mavican tekuz" hem "mavi" hem "can" alt dizesini içeriyor — kelime
+      // sınırı olmadan partial katman "Mavi Can" katılımcısını yanlışlıkla
+      // danışman sayardı. Gerçek "Mavican Tekuz" katılımcı listesinde YOK —
+      // yalnızca ona benzeyen bir müşteri var — bu yüzden hiçbir aday
+      // eşleşmemeli ve sonuç null (agent_role_ambiguous) olmalı.
+      expect(resolveMeetRoles(["Mavi Can", "Bambaşka Biri"], "Mavican Tekuz")).toBeNull();
+    });
+
+    it("'Sinem Bulur' hâlâ 'Makbule Sinem Bulur' ile eşleşir", () => {
+      const r = resolveMeetRoles(["Sinem Bulur", "John Doe"], "Makbule Sinem Bulur");
+      expect(r!.agentAttendee).toBe("Sinem Bulur");
+    });
+
+    it("'Aleksandra Boyko' hâlâ 'Alexandra Boyko' ile eşleşir", () => {
+      const r = resolveMeetRoles(["Aleksandra Boyko", "Jane Roe"], "Alexandra Boyko");
+      expect(r!.agentAttendee).toBe("Aleksandra Boyko");
+    });
+  });
 });
 
 describe("buildMeetTranscriptText", () => {
