@@ -39,6 +39,11 @@ model User {
   id            String         @id @default(cuid())
   name          String
   email         String         @unique
+  // Google hesabı e-postası. DB e-postasıyla AYNI DEĞİL: 11 danışmanın
+  // yalnızca 3'ü birebir eşleşiyor (ölçüm 2026-09-11). Bulanık eşleştirme
+  // bilinçli olarak yapılmıyor — "damla@novemedical.com" gibi sadece-ilk-ad
+  // + farklı-alan-adı vakası "damla" ile başlayan herkese uyar.
+  driveEmail    String?   @unique
   passwordHash  String
   role          Role           @default(AGENT)
   teamId        String?
@@ -238,4 +243,30 @@ model KnownIssue {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   createdById String?
+}
+
+/// Faz 1'in yazdığı sahne tablosu. Evaluation'a score=0 taşımacı satır
+/// yazmamak için var: o satırlar OKR sorgularına ve trend raporlarına
+/// karışır, puanlanmamışı puanlanmış gösterirdi.
+model DriveTranscript {
+  id            String    @id @default(cuid())
+  /// Çağrının GERÇEK kimliği. Apps Script tekrar gönderirse upsert bunun üzerinden.
+  meetFolderId  String    @unique
+  /// Transkript Doc'unun Drive ID'si. İzlenebilirlik için, zorunlu değil.
+  sourceFileId  String?
+  agentEmail    String
+  startedAt     DateTime
+  customerName  String?
+  durationSec   Int?
+  transcript    String
+  status        String    @default("PENDING")   // PENDING | IMPORTED | SKIPPED
+  skipReason    String?
+  attempts      Int       @default(0)
+  lockedAt      DateTime?
+  evaluationId  String?
+  error         String?
+  discoveredAt  DateTime  @default(now())
+  importedAt    DateTime?
+
+  @@index([status, startedAt])
 }
