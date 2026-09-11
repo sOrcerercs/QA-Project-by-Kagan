@@ -50,6 +50,11 @@ const DRIVE_FILES_ENDPOINT = "https://www.googleapis.com/drive/v3/files";
 const SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 /** Drive tek sayfada en fazla 1000 döner; kutu büyürse sayfalanır. */
 const PAGE_SIZE = 1000;
+/** OAuth token tarafında 5 dakika güvenlik marjı; Vercel'ın 60sn tavanı altında N dosya işlemek için. */
+const TOKEN_CACHE_MARGIN_MS = 5 * 60 * 1000;
+
+let cachedToken: string | null = null;
+let cachedTokenExpiresAtMs: number | null = null;
 
 export interface DriveFile {
   id: string;
@@ -65,17 +70,39 @@ export function isDriveConfigured(): boolean {
 }
 
 /**
+ * Token süresi bitişi zamanı kontrol eder.
+ *
+ * Margin'li: token, şu andan margin sonra bitiyorsa "süresi bitti" sayılır.
+ * Böylece token bir istekte asla süresi dolmaz.
+ */
+export function isTokenFresh(expiresAtMs: number | null, nowMs: number = Date.now()): boolean {
+  if (expiresAtMs === null) return false;
+  return expiresAtMs > nowMs + TOKEN_CACHE_MARGIN_MS;
+}
+
+/**
  * Env'den gelen özel anahtarı PEM'e çevirir.
  *
  * .env dosyaları satır sonu taşıyamadığı için anahtar `\n` kaçışlarıyla
  * yazılır; importPKCS8 gerçek satır sonu bekler. Vercel arayüzünden
  * yapıştırıldığında kaçışsız gelebiliyor — iki hâli de kabul ediyoruz.
+ *
+ * Satır sonları (newline) PEM biçiminin parçasıdır ve muhafaza edilmelidir.
+ * Sadece yapıştırma artefaktlarından yatay boşluk (boşluk, sekme) trimlenmiştir;
+ * importPKCS8 başındaki whitespace'i tolere etmez.
  */
 export function normalizePrivateKey(raw: string): string {
-  return raw.replace(/^"|"$/g, "").replace(/\\n/g, "\n");
+  return raw.replace(/^[ \t]+|[ \t]+$/g, "").replace(/^"|"$/g, "").replace(/\\n/g, "\n");
 }
 
 export async function getDriveAccessToken(): Promise<string> {
+  // Vercel Hobby 60sn tavanı altında N dosya indirme için token'ı yeniden kullanır:
+  // OAuth round trip'i (JWT sign + HTTP POST) her istekte yapmak yerine,
+  // süresi bitmemiş token'ı cache'ten döner.
+  if (isTokenFresh(cachedTokenExpiresAtMs) && cachedToken) {
+    return cachedToken;
+  }
+
   const email = process.env.GOOGLE_DRIVE_SA_EMAIL;
   const key = process.env.GOOGLE_DRIVE_SA_PRIVATE_KEY;
   if (!email || !key) throw new Error("GOOGLE_DRIVE_SA_EMAIL / GOOGLE_DRIVE_SA_PRIVATE_KEY eksik.");
@@ -105,7 +132,13 @@ export async function getDriveAccessToken(): Promise<string> {
   }
   const json = await res.json();
   if (!json.access_token) throw new Error("Drive token yanıtında access_token yok.");
-  return json.access_token as string;
+
+  const token = json.access_token as string;
+  const expiresInSeconds = (json.expires_in as number) ?? 3600;
+  cachedToken = token;
+  cachedTokenExpiresAtMs = Date.now() + expiresInSeconds * 1000;
+
+  return token;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseInboxFileName, isDriveConfigured, normalizePrivateKey } from "./drive";
+import { parseInboxFileName, isDriveConfigured, normalizePrivateKey, isTokenFresh } from "./drive";
 
 describe("parseInboxFileName", () => {
   it("sözleşmeye uyan adı ayrıştırır", () => {
@@ -71,6 +71,19 @@ describe("normalizePrivateKey", () => {
   it("çevreleyen çift tırnakları atar", () => {
     expect(normalizePrivateKey('"abc"')).toBe("abc");
   });
+
+  it("başındaki yatay boşluk kaldırır ama satır sonu tutmaz", () => {
+    // Yapıştırma artefaktından baştaki boşluk kaldırılmalı,
+    // PEM'nin başında -----BEGIN eksikse importPKCS8 başarısız olur.
+    const withLeadingSpace = "  -----BEGIN PRIVATE KEY-----\nAAA\n-----END PRIVATE KEY-----\n";
+    const expected = "-----BEGIN PRIVATE KEY-----\nAAA\n-----END PRIVATE KEY-----\n";
+    expect(normalizePrivateKey(withLeadingSpace)).toBe(expected);
+  });
+
+  it("tırnak öncesinde yatay boşluk kaldırır", () => {
+    const withSpaceBeforeQuote = '  "abc"';
+    expect(normalizePrivateKey(withSpaceBeforeQuote)).toBe("abc");
+  });
 });
 
 describe("isDriveConfigured", () => {
@@ -86,5 +99,35 @@ describe("isDriveConfigured", () => {
     process.env.GOOGLE_DRIVE_SA_PRIVATE_KEY = "k";
     delete process.env.GOOGLE_DRIVE_INBOX_FOLDER_ID;
     expect(isDriveConfigured()).toBe(false);
+  });
+});
+
+describe("isTokenFresh", () => {
+  it("null expires_at ise false", () => {
+    expect(isTokenFresh(null, 1000)).toBe(false);
+  });
+
+  it("şu andan sonra süresi bitiyorsa true", () => {
+    const now = 1000;
+    const futureExpiry = now + 10 * 60 * 1000; // 10 dakika sonra
+    expect(isTokenFresh(futureExpiry, now)).toBe(true);
+  });
+
+  it("şu andan 5 dakika içinde süresi bitiyorsa false (margin)", () => {
+    const now = 1000;
+    const soonExpiry = now + 3 * 60 * 1000; // 3 dakika sonra (margin'ın altında)
+    expect(isTokenFresh(soonExpiry, now)).toBe(false);
+  });
+
+  it("margin sınırında (exactly 5 min later) false", () => {
+    const now = 1000;
+    const atMargin = now + 5 * 60 * 1000; // Tam 5 dakika sonra
+    expect(isTokenFresh(atMargin, now)).toBe(false);
+  });
+
+  it("margin sınırından bir ms sonra true", () => {
+    const now = 1000;
+    const afterMargin = now + 5 * 60 * 1000 + 1; // Tam 5 dakika + 1ms
+    expect(isTokenFresh(afterMargin, now)).toBe(true);
   });
 });
