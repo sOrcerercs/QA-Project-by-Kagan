@@ -239,3 +239,62 @@ describe("classifyMeetTranscript", () => {
     expect(r).toEqual({ ok: false, reason: "too_short_text" });
   });
 });
+
+// Ayrıştırıcı bugüne kadar yalnızca sentetik bir örneğe karşı sınanmıştı;
+// bu projenin kayıtlı 1 numaralı riskiydi. Gerçek export alındı ve
+// sentetikten farklı çıktı: markdown YOK, blok damgaları çıplak, dosyada
+// BOM var, satır sonları CRLF, bitiş satırında emoji var.
+describe("gerçek Meet export'u ile ayrıştırıcı doğrulaması", () => {
+  const real = readFileSync(
+    join(__dirname, "__fixtures__/meet-transcript-real.txt"),
+    "utf8",
+  );
+
+  it("katılımcıları doğru okuyor", () => {
+    const p = parseMeetTranscript(real);
+    expect(p.attendees).toEqual(["Mavican Tekuz", "Mohammed Alkhalid"]);
+  });
+
+  it("süreyi doğru hesaplıyor (bitiş satırındaki emoji'yi yok sayıyor)", () => {
+    const p = parseMeetTranscript(real);
+    expect(p.durationSec).toBe(1501);
+  });
+
+  it("hiçbir konuşmacı katılımcı listesi dışında değil", () => {
+    const p = parseMeetTranscript(real);
+    const attendeeSet = new Set(p.attendees);
+    for (const u of p.utterances) {
+      expect(attendeeSet.has(u.speaker)).toBe(true);
+    }
+  });
+
+  it("ilk konuşma 0–300 blok aralığında, son konuşma 1200–1501 aralığında", () => {
+    const p = parseMeetTranscript(real);
+    expect(p.utterances.length).toBeGreaterThan(0);
+    const first = p.utterances[0];
+    expect(first.blockStartSec).toBe(0);
+    expect(first.blockEndSec).toBe(300);
+    const last = p.utterances[p.utterances.length - 1];
+    expect(last.blockStartSec).toBe(1200);
+    expect(last.blockEndSec).toBe(1501);
+  });
+
+  it("danışman rolünü doğru belirliyor", () => {
+    const p = parseMeetTranscript(real);
+    const r = classifyMeetTranscript(p, "Mavican Tekuz");
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.roles.agentAttendee).toBe("Mavican Tekuz");
+      expect(r.roles.customerAttendee).toBe("Mohammed Alkhalid");
+    }
+  });
+
+  it("transkript metni doğru biçimlendirilmiş", () => {
+    const p = parseMeetTranscript(real);
+    const r = classifyMeetTranscript(p, "Mavican Tekuz");
+    if (r.ok) {
+      const lines = r.text.split("\n");
+      expect(lines[0]).toMatch(/^Agent \[00:00–05:00\]:/);
+    }
+  });
+});
