@@ -1,3 +1,5 @@
+import { matchAgentName } from "./agentMatch";
+
 // Google Meet transkript Doc'unun düz metin hâlini ayrıştırır.
 //
 // Meet satır başına zaman damgası VERMEZ; 5 dakikalık blok başlıkları verir.
@@ -124,4 +126,102 @@ export function parseMeetTranscript(raw: string): ParsedMeetTranscript {
   }
 
   return { attendees, utterances, durationSec };
+}
+
+/** Süre eşiği — Kriko ve Fireflies'ın uyguladığı 2 dakikanın aynısı. */
+const MIN_DURATION_SEC = 120;
+/** Metin eşiği — Kriko ve Fireflies'ın uyguladığı 50 karakterin aynısı. */
+const MIN_TEXT_LENGTH = 50;
+
+export type MeetSkipReason =
+  | "attendee_count"
+  | "agent_role_ambiguous"
+  | "too_short"
+  | "too_short_text";
+
+export interface MeetRoles {
+  agentAttendee: string;
+  customerAttendee: string;
+}
+
+/** Saniye → `MM:SS`. 60 dakikayı aşan çağrıda dakika büyür (`65:00`). */
+function formatClock(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = Math.round(totalSec % 60);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/** `00:00–05:00` — Kriko'nun kullandığı aralık biçiminin aynısı (en tire). */
+export function formatBlockRange(startSec: number, endSec: number): string {
+  return `${formatClock(startSec)}–${formatClock(endSec)}`;
+}
+
+/**
+ * Hangi katılımcının danışman olduğunu bulur.
+ *
+ * Danışmanın KİM olduğu driveEmail'den kesin biliniyor; burada yalnızca
+ * katılımcı listesindeki hangi ADIN o kişi olduğu aranıyor.
+ *
+ * allowSingleWord KAPALI: açık olsa "Livia" adlı bir MÜŞTERİ, "Livia Goga"
+ * danışmanıyla eşleşip Agent rolünü kapabilirdi. Rolleri ters yazmak
+ * transkriptin tamamını bozar.
+ *
+ * allowPartial AÇIK: DB'de resmî tam adlar var — "Makbule Sinem Bulur"
+ * katılımcı listesinde "Sinem Bulur" olarak geçiyor ve eşleşmesi gerekiyor.
+ */
+export function resolveMeetRoles(attendees: string[], agentName: string): MeetRoles | null {
+  if (attendees.length !== 2) return null;
+  const candidates = [{ id: "agent", name: agentName }];
+  const hits = attendees.filter(
+    a => matchAgentName(a, candidates, { allowSingleWord: false }) !== null,
+  );
+  if (hits.length !== 1) return null;
+  const agentAttendee = hits[0];
+  const customerAttendee = attendees.find(a => a !== agentAttendee)!;
+  return { agentAttendee, customerAttendee };
+}
+
+/**
+ * `/api/analyze`'a gidecek metni kurar.
+ *
+ * Biçim Kriko ile BİREBİR aynı (`Agent [MM:SS–MM:SS]: ...`), yalnızca
+ * çözünürlük daha kaba. Aynı şekil olduğu için prompt değişmiyor ve iki
+ * kaynak tek dil konuşuyor.
+ */
+export function buildMeetTranscriptText(
+  utterances: MeetUtterance[],
+  roles: MeetRoles,
+): string {
+  return utterances
+    .map(u => {
+      const role = u.speaker === roles.agentAttendee ? "Agent" : "Customer";
+      return `${role} [${formatBlockRange(u.blockStartSec, u.blockEndSec)}]: ${u.text}`;
+    })
+    .join("\n");
+}
+
+/**
+ * Programın ikinci kapısı. Script zaten "consultation" filtresi uyguluyor;
+ * bu katman ekip toplantısı, test kaydı ve yarım transkripti eler.
+ * Her ret GÖRÜNÜR bir sebep döndürür — sessiz atlama yok.
+ */
+export function classifyMeetTranscript(
+  parsed: ParsedMeetTranscript,
+  agentName: string,
+): { ok: true; roles: MeetRoles; text: string } | { ok: false; reason: MeetSkipReason } {
+  if (parsed.attendees.length !== 2) return { ok: false, reason: "attendee_count" };
+
+  const roles = resolveMeetRoles(parsed.attendees, agentName);
+  if (!roles) return { ok: false, reason: "agent_role_ambiguous" };
+
+  // Süre bilinmiyorsa eşik UYGULANMAZ: Fireflies'ta resolveDurationMinutes
+  // null döndüğünde içerik kontrollerine güveniliyordu, aynı davranış.
+  if (parsed.durationSec != null && parsed.durationSec < MIN_DURATION_SEC) {
+    return { ok: false, reason: "too_short" };
+  }
+
+  const text = buildMeetTranscriptText(parsed.utterances, roles);
+  if (text.trim().length < MIN_TEXT_LENGTH) return { ok: false, reason: "too_short_text" };
+
+  return { ok: true, roles, text };
 }
