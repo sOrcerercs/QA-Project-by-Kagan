@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       where: { id: mevcut.id },
       data: {
         sourceFileId: p.value.sourceFileId,
+        recordingFileId: p.value.recordingFileId,
         agentEmail: p.value.agentEmail,
         startedAt: p.value.startedAt,
         transcript: p.value.transcript,
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
     data: {
       meetFolderId: p.value.meetFolderId,
       sourceFileId: p.value.sourceFileId,
+      recordingFileId: p.value.recordingFileId,
       agentEmail: p.value.agentEmail,
       startedAt: p.value.startedAt,
       transcript: p.value.transcript,

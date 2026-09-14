@@ -93,3 +93,34 @@ describe("parseIngestPayload", () => {
     if (r.ok) expect(r.value.agentEmail).toBe("mavican@estenove.com");
   });
 });
+
+describe("recordingFileId", () => {
+  const gecerli = {
+    meetFolderId: "1zAxq1whbOOX2_8VP9wRMSEdhA",
+    agentEmail: "damla@novemedical.com",
+    startedAt: "2026-09-10T17:33:00+03:00",
+    transcript: "Attendees\nA, B\nTranscript\nA: merhaba",
+  };
+
+  it("yoksa null olur — kayıt opsiyonel", () => {
+    const r = parseIngestPayload(gecerli);
+    expect(r.ok && r.value.recordingFileId).toBe(null);
+  });
+
+  it("verilirse taşınır", () => {
+    const r = parseIngestPayload({ ...gecerli, recordingFileId: "1_S696Z5UxB6hwxs43aCyLjhUjx6j6aFV" });
+    expect(r.ok && r.value.recordingFileId).toBe("1_S696Z5UxB6hwxs43aCyLjhUjx6j6aFV");
+  });
+
+  it("boş dizge null sayılır", () => {
+    const r = parseIngestPayload({ ...gecerli, recordingFileId: "   " });
+    expect(r.ok && r.value.recordingFileId).toBe(null);
+  });
+
+  it("bozuk id REDDEDİLİR — sessizce düşürülmez", () => {
+    // Script önce gönderip sonra taşıdığı için ret, dosyanın taşınmamasına
+    // ve sorunun görünür kalmasına yol açar; sessizce atmak kaydı kaybederdi.
+    const r = parseIngestPayload({ ...gecerli, recordingFileId: "kisa" });
+    expect(r).toEqual({ ok: false, error: "recordingFileId_format" });
+  });
+});
