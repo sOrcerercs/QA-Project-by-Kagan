@@ -3,6 +3,7 @@ import { extractReportJson } from "@/app/lib/reportJson";
 import prisma from "@/app/lib/prisma";
 import { detectCallType } from "@/app/lib/callTypeDetector";
 import { callGemini, SCORING_THINKING_BUDGET } from "@/app/lib/gemini";
+import { isGeminiQuotaError, QUOTA_ERROR_CODE } from "@/app/lib/geminiQuota";
 
 // Düşünme açık olduğu için bu çağrılar ~40-60 sn sürebiliyor. Bu route'u
 // çağıran senkron/cron yolları zaten maxDuration = 300 kullanıyor;
@@ -125,6 +126,20 @@ Yukarıdaki transkripti kurallara göre değerlendir ve ZORUNLU ÇIKTI FORMATIND
     });
 
   } catch (error: any) {
+    // KOTA DOLU, sunucu hatası değil. Genel 500'e çevirmek gerçek sebebi
+    // yalnızca logda bırakıyordu: panelde "sunucu hatası" yazıyor, kullanıcı
+    // koda bakmadan neyin yanlış olduğunu ÖĞRENEMİYORDU. Ayırt edilebilir
+    // bir kodla 503 dönüyoruz; çağıran taraflar buna bakıp döngüyü durduruyor.
+    if (isGeminiQuotaError(error)) {
+      console.error("[analyze] Gemini kotası dolu:", error.message);
+      return NextResponse.json(
+        {
+          error: "Google AI kotası dolu — analiz yapılamıyor. AI Studio'da aylık harcama tavanını yükseltin (https://ai.studio/spend).",
+          code: QUOTA_ERROR_CODE,
+        },
+        { status: 503 },
+      );
+    }
     console.error("[analyze] Unexpected error:", error);
     return NextResponse.json({ error: "Analiz sırasında sunucu hatası oluştu." }, { status: 500 });
   }

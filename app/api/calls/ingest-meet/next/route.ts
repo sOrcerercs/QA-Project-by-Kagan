@@ -14,6 +14,7 @@ import {
   markDriveSkipped,
   markDriveImported,
   markDriveRetryable,
+  refundDriveAttempt,
   pendingDriveWhere,
   DRIVE_ANALYZE_ESTIMATE_MS,
 } from "@/app/lib/driveIngest";
@@ -21,6 +22,7 @@ import { DEEP_SCORE_REQUEST_CAP_MS, DEEP_SCORE_RESERVE_MS } from "@/app/lib/resc
 import { shouldForceFirstCall } from "@/app/lib/evaluationRules";
 import { isDuplicateCallError } from "@/app/lib/prismaErrors";
 import { formatDuration } from "@/app/lib/kriko";
+import { QUOTA_ERROR_CODE } from "@/app/lib/geminiQuota";
 
 export async function POST(req: NextRequest) {
   const user = await getUserFromToken(req);
@@ -132,6 +134,26 @@ export async function processOneDriveTranscript(req: NextRequest) {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
+
+      // KOTA DOLU: satırın suçu yok, kota açılınca sorunsuz işlenecek.
+      // Hakkı yakmak onu üç koşuda kuyruktan kalıcı düşürürdü. `processed`
+      // false dönüyoruz ki paneldeki döngü "sıradakine geç" demesin —
+      // sıradaki de aynı duvara çarpacak.
+      let kotaDolu = false;
+      try { kotaDolu = JSON.parse(errText)?.code === QUOTA_ERROR_CODE; } catch { /* gövde JSON değil */ }
+      if (kotaDolu) {
+        await refundDriveAttempt(row.id, "Google AI kotası dolu — analiz yapılamıyor.");
+        return NextResponse.json(
+          {
+            processed: false, status: "blocked", reason: QUOTA_ERROR_CODE,
+            error: "Google AI kotası dolu — analiz yapılamıyor. AI Studio'da aylık harcama tavanını yükseltin (https://ai.studio/spend).",
+            code: QUOTA_ERROR_CODE,
+            remaining: await kalan(),
+          },
+          { status: 503 },
+        );
+      }
+
       await markDriveRetryable(row.id, `analyze ${res.status}: ${errText.slice(0, 200)}`);
       return NextResponse.json({
         processed: true, status: "failed", reason: `analyze_${res.status}`, remaining: await kalan(),

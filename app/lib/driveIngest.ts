@@ -207,3 +207,21 @@ export function checkDriveEmailAssignment(params: {
   }
   return { ok: true, bindEmail: emailOwnerUserId !== chosenUserId };
 }
+
+/**
+ * Sahne satırının deneme hakkını geri verir — bkz. deepScore'daki kardeşi.
+ *
+ * Kota dolduğunda satır işlenemez ama SUÇU YOK. Hakkı yakmak, kota açıldığında
+ * satırın zaten emekli olmuş olması demekti; kullanıcı bunu ancak "sıkışan"
+ * sayacında görüp elle kuyruğa geri koyarak fark ederdi.
+ */
+export async function refundDriveAttempt(id: string, error: string): Promise<void> {
+  await prisma.driveTranscript.update({
+    where: { id },
+    data: { lockedAt: null, error: error.slice(0, 500) },
+  });
+  await prisma.driveTranscript.updateMany({
+    where: { id, attempts: { gt: 0 } },
+    data: { attempts: { decrement: 1 } },
+  });
+}

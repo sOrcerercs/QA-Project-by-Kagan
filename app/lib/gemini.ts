@@ -24,6 +24,8 @@ const GEMINI_MODEL = "gemini-2.5-flash";
  */
 export const SCORING_THINKING_BUDGET = 16384;
 
+import { isQuotaExhausted, GeminiQuotaError } from "./geminiQuota";
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function callGemini(
@@ -61,6 +63,9 @@ export async function callGemini(
 
   let response: Response | undefined;
   let lastNetErr: unknown;
+  // Gövde yalnızca BİR KEZ okunabilir; 429'un geçici mi kalıcı mı olduğunu
+  // anlamak için döngü içinde okuyoruz ve son hatayı burada saklıyoruz.
+  let lastErrText = "";
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const ac = opts.timeoutMs != null ? new AbortController() : undefined;
     const timer = ac ? setTimeout(() => ac.abort(), opts.timeoutMs) : undefined;
@@ -82,6 +87,18 @@ export async function callGemini(
     }
     if (timer) clearTimeout(timer);
     if (response.ok) break;
+
+    lastErrText = await response.text().catch(() => "");
+
+    // KALICI kota (aylık harcama tavanı, faturalandırma): beklemek işe
+    // yaramaz. Eskiden buraya da 429 diye girip 5 kez ~15 sn bekleniyordu;
+    // sonuç 62 saniyelik bir istek ve çağırana "zaman aşımı" olarak dönen,
+    // gerçek sebebi gizlenmiş bir hataydı. Şimdi hemen ve AYIRT EDİLEBİLİR
+    // şekilde patlıyoruz.
+    if (isQuotaExhausted(response.status, lastErrText)) {
+      throw new GeminiQuotaError(lastErrText.slice(0, 300));
+    }
+
     if (response.status === 429 && attempt < maxAttempts - 1) {
       const retryAfter = response.headers.get("retry-after");
       const wait = retryAfter ? (parseInt(retryAfter, 10) + 3) * 1000 : 15000;
@@ -95,8 +112,8 @@ export async function callGemini(
     throw new Error(`Google AI API isteği başarısız: ${lastNetErr instanceof Error ? lastNetErr.message : "ağ/timeout hatası"}`);
   }
   if (!response.ok) {
-    const errText = await response.text().catch(() => "");
-    throw new Error(`Google AI API hatası: ${response.status} — ${errText.slice(0, 200)}`);
+    // Gövde yukarıda okundu (response.text() tekrar çağrılamaz).
+    throw new Error(`Google AI API hatası: ${response.status} — ${lastErrText.slice(0, 200)}`);
   }
 
   const data = await response.json();
