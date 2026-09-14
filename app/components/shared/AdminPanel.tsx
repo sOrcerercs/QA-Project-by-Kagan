@@ -152,6 +152,9 @@ const PANEL_T = {
     meetRowLoading: "Transkript yükleniyor...",
     meetRowNoCustomer: "müşteri henüz çözülmedi",
     meetRowGoEval: "Değerlendirmeye git",
+    meetRowAssign: "Danışmana Ata", meetRowAssigning: "Atanıyor...",
+    meetRowAssignHint: (e: string) => `${e} adresi seçtiğin danışmana kalıcı olarak bağlanır; bu hesaptan gelen sonraki çağrılar da ona gider.`,
+    meetRowAssignDone: (n: string) => `${n} atandı, satır kuyruğa geri kondu.`,
     meetDriveEmailError: "Drive e-postası bağlanamadı.",
     statFetched: "Çekilen", statAnalyzable: "Analiz", statImport: "Import",
     statUnassigned: "Atanmamış", statFailed: "Başarısız",
@@ -278,6 +281,9 @@ const PANEL_T = {
     meetRowLoading: "Loading transcript...",
     meetRowNoCustomer: "customer not resolved yet",
     meetRowGoEval: "Go to evaluation",
+    meetRowAssign: "Assign Consultant", meetRowAssigning: "Assigning...",
+    meetRowAssignHint: (e: string) => `${e} will be permanently linked to the chosen consultant; future calls from this account go to them too.`,
+    meetRowAssignDone: (n: string) => `Assigned to ${n}; row put back in the queue.`,
     meetDriveEmailError: "Could not link Drive email.",
     statFetched: "Fetched", statAnalyzable: "Analyzed", statImport: "Imported",
     statUnassigned: "Unassigned", statFailed: "Failed",
@@ -353,6 +359,17 @@ type MeetRow = {
 
 /** Tek satır çekildiğinde metin de gelir. */
 type MeetRowDetail = MeetRow & { transcript: string };
+
+/** Elle atama seçicisinin kullandığı alanlar. `users` state'i any[] —
+    bu dosyanın eski borcu; yeni kod en azından kendi kullandığı şekli
+    açıkça yazsın. */
+type AtanabilirDanisman = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  team?: { name?: string | null } | null;
+};
 
 interface Props {
   user: { id: string; name: string; role: string; email: string };
@@ -580,6 +597,9 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const [meetRowsLoading, setMeetRowsLoading] = useState(false);
   const [meetOpenRowId, setMeetOpenRowId] = useState<string | null>(null);
   const [meetRowDetail, setMeetRowDetail] = useState<MeetRowDetail | null>(null);
+  const [meetAssignSel, setMeetAssignSel] = useState<Record<string, string>>({});
+  const [meetAssigningId, setMeetAssigningId] = useState<string | null>(null);
+  const [meetAssignMsg, setMeetAssignMsg] = useState<Record<string, string>>({});
   const meetStopRef = useRef(false);
 
   /* ── recent calls ── */
@@ -1057,6 +1077,34 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     } catch {
       // Detay gelmezse satır açık kalır ve "yükleniyor" yazar; kapatıp
       // tekrar açmak yeniden dener.
+    }
+  };
+
+  // Elle danışman atama. Kimlik çözümü kapalı devre olduğu için eşleşmeyen
+  // satır tahmin edilmeden eleniyor; bu, o kararın insan tarafı.
+  const meetSatiriAta = async (id: string) => {
+    const agentId = meetAssignSel[id];
+    if (!agentId) return;
+    setMeetAssigningId(id);
+    try {
+      const res = await fetch("/api/calls/ingest-meet/rows", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, agentId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setMeetAssignMsg((m) => ({
+        ...m,
+        [id]: res.ok ? t.meetRowAssignDone(data.agentName ?? "") : (data.error ?? t.errorOccurred),
+      }));
+      if (res.ok) {
+        setMeetOpenRowId(null);
+        setMeetRowDetail(null);
+        await meetDurumunuYenile();
+      }
+    } catch {
+      setMeetAssignMsg((m) => ({ ...m, [id]: t.errorOccurred }));
+    } finally {
+      setMeetAssigningId(null);
     }
   };
 
@@ -1834,6 +1882,42 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                             <a href={`/evaluation/${r.evaluationId}`} style={{ fontSize: 12, color: "var(--accent)" }}>
                               {t.meetRowGoEval}
                             </a>
+                          )}
+                          {r.state !== "imported" && (
+                            <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px dashed var(--border)" }}>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                <select
+                                  className={styles.formSelect}
+                                  style={{ flex: 1, minWidth: 180 }}
+                                  value={meetAssignSel[r.id] ?? ""}
+                                  onChange={(e) => setMeetAssignSel({ ...meetAssignSel, [r.id]: e.target.value })}
+                                >
+                                  <option value="">{t.selectAgent}</option>
+                                  {(users as AtanabilirDanisman[])
+                                    .filter((u) => u.role !== "ADMIN" && u.email !== "unassigned@estenove.local")
+                                    .map((u) => (
+                                      <option key={u.id} value={u.id}>
+                                        {u.name}{u.team?.name ? ` · ${u.team.name}` : ""}
+                                      </option>
+                                    ))}
+                                </select>
+                                <button
+                                  onClick={() => meetSatiriAta(r.id)}
+                                  disabled={!meetAssignSel[r.id] || meetAssigningId === r.id}
+                                  className={`${styles.btn} ${styles.btnPrimary}`}
+                                  style={{ borderRadius: 9, padding: "8px 14px", opacity: (!meetAssignSel[r.id] || meetAssigningId === r.id) ? 0.4 : 1 }}
+                                >
+                                  <Icon name="check" size={13} />
+                                  {meetAssigningId === r.id ? t.meetRowAssigning : t.meetRowAssign}
+                                </button>
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 6 }}>
+                                {t.meetRowAssignHint(r.agentEmail)}
+                              </div>
+                              {meetAssignMsg[r.id] && (
+                                <div style={{ fontSize: 11.5, marginTop: 6, color: "var(--fg-dim)" }}>{meetAssignMsg[r.id]}</div>
+                              )}
+                            </div>
                           )}
                           {meetRowDetail && meetRowDetail.id === r.id ? (
                             <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 12, lineHeight: 1.55, margin: "8px 0 0", maxHeight: 420, overflowY: "auto", color: "var(--fg-dim)" }}>
