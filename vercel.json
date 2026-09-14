@@ -5,7 +5,7 @@
       "schedule": "0 3 * * *"
     },
     {
-      "path": "/api/cron/sync-drive",
+      "path": "/api/cron/sync-fireflies",
       "schedule": "0 4 * * *"
     }
   ]

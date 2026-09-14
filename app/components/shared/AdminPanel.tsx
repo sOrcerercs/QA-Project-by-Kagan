@@ -122,8 +122,15 @@ const PANEL_T = {
     syncDone: (imp: number, una: number, ski: number) => `✅ Tamamlandı: ${imp} import, ${una} atanmamış, ${ski} atlandı.`,
     syncFailed2: (n: number) => ` ❌ ${n} başarısız.`,
     syncErrors: "Hatalar: ",
-    krikoUnassigned: "Kriko — Atanmamış Çağrılar", meetUnassigned: "Google Meet — Atanmamış Çağrılar",
+    ffSyncStarted: "Senkronizasyon başlatıldı, lütfen bekleyin...",
+    krikoUnassigned: "Kriko — Atanmamış Çağrılar",
+    ffUnassigned: "Fireflies — Atanmamış Çağrılar",
+    meetUnassigned: "Google Meet — Atanmamış Çağrılar",
     selectAgent: "— Danışman seç —", assign: "Ata", transcript: "Transkript",
+    ffNotConfigured: "Fireflies API yapılandırılmamış",
+    ffActive: (n: number) => n > 0 ? `Fireflies API aktif — Otomatik senkron her 4 saatte bir çalışır · ${n} atanmamış çağrı` : "Fireflies API aktif — Otomatik senkron her 4 saatte bir çalışır",
+    ffNotConfiguredHint: "Lütfen .env.local içine FIREFLIES_API_KEY ekleyin.",
+    ffFilter: "Filtre: süre ≥ 2 dk, en az 50 karakter transkript.",
     meetNotConfigured: "Google Meet alma yapılandırılmamış",
     meetActive: (n: number) => n > 0 ? `Google Meet aktif — Apps Script transkript gönderdikçe kuyruğa düşer · ${n} atanmamış çağrı` : "Google Meet aktif — Apps Script transkript gönderdikçe kuyruğa düşer",
     meetNotConfiguredHint: "Lütfen .env.local içine MEET_INGEST_SECRET ekleyin.",
@@ -241,8 +248,15 @@ const PANEL_T = {
     syncDone: (imp: number, una: number, ski: number) => `✅ Done: ${imp} imported, ${una} unassigned, ${ski} skipped.`,
     syncFailed2: (n: number) => ` ❌ ${n} failed.`,
     syncErrors: "Errors: ",
-    krikoUnassigned: "Kriko — Unassigned Calls", meetUnassigned: "Google Meet — Unassigned Calls",
+    ffSyncStarted: "Sync started, please wait...",
+    krikoUnassigned: "Kriko — Unassigned Calls",
+    ffUnassigned: "Fireflies — Unassigned Calls",
+    meetUnassigned: "Google Meet — Unassigned Calls",
     selectAgent: "— Select agent —", assign: "Assign", transcript: "Transcript",
+    ffNotConfigured: "Fireflies API not configured",
+    ffActive: (n: number) => n > 0 ? `Fireflies API active — Auto sync runs every 4 hours · ${n} unassigned call${n !== 1 ? "s" : ""}` : "Fireflies API active — Auto sync runs every 4 hours",
+    ffNotConfiguredHint: "Please add FIREFLIES_API_KEY to .env.local.",
+    ffFilter: "Filter: duration ≥ 2 min, transcript ≥ 50 chars.",
     meetNotConfigured: "Google Meet ingest not configured",
     meetActive: (n: number) => n > 0 ? `Google Meet active — queued as Apps Script sends transcripts · ${n} unassigned call${n !== 1 ? "s" : ""}` : "Google Meet active — queued as Apps Script sends transcripts",
     meetNotConfiguredHint: "Please add MEET_INGEST_SECRET to .env.local.",
@@ -543,6 +557,17 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [expandedUnassignedId, setExpandedUnassignedId] = useState<string | null>(null);
 
+  /* ── fireflies ── Meet akmaya başlayana kadar CANLI kalıyor; günlük cron
+     hâlâ çağrı import ediyor (14 Eylül ölçümü: 4 çağrı). ── */
+  const [firefliesStatus, setFirefliesStatus] = useState<any>(null);
+  const [firefliesSyncing, setFirefliesSyncing] = useState(false);
+  const [firefliesSyncDate, setFirefliesSyncDate] = useState("");
+  const [firefliesMsg, setFirefliesMsg] = useState("");
+  const [firefliesLastResult, setFirefliesLastResult] = useState<any>(null);
+  const [ffProgress, setFfProgress] = useState(0);
+  const [ffSecondsLeft, setFfSecondsLeft] = useState(0);
+  const ffTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   /* ── google meet (itme modeli — keşif yok, kuyruk admin panelden çevrilir) ── */
   const [meetStatus, setMeetStatus] = useState<MeetStatus | null>(null);
   const [meetRunning, setMeetRunning] = useState(false);
@@ -612,6 +637,10 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     const res = await fetch("/api/calls/unassigned");
     if (res.ok) setUnassignedItems((await res.json()).items || []);
   };
+  const fetchFirefliesStatus = async () => {
+    const res = await fetch("/api/calls/sync-fireflies");
+    if (res.ok) setFirefliesStatus(await res.json());
+  };
   const meetDurumunuYenile = async () => {
     const res = await fetch("/api/calls/ingest-meet");
     if (res.ok) setMeetStatus(await res.json());
@@ -630,24 +659,24 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
     fetchUsers(); fetchTeams(); fetchPrompts();
     if (initialTab === "logs") fetchLogs();
     if (initialTab === "feedbacks") fetchFeedbacks();
-    if (initialTab === "sync") { fetchKrikoStatus(); meetDurumunuYenile(); fetchUnassigned(); }
-    if (initialTab === "syncHistory") { fetchKrikoStatus(); meetDurumunuYenile(); }
+    if (initialTab === "sync") { fetchKrikoStatus(); fetchFirefliesStatus(); meetDurumunuYenile(); fetchUnassigned(); }
+    if (initialTab === "syncHistory") { fetchKrikoStatus(); fetchFirefliesStatus(); meetDurumunuYenile(); }
     if (initialTab === "recentCalls") fetchRecentCalls();
   }, []);
 
   useEffect(() => {
-    if (!krikoSyncing && !meetRunning) return;
+    if (!krikoSyncing && !firefliesSyncing && !meetRunning) return;
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [krikoSyncing, meetRunning]);
+  }, [krikoSyncing, firefliesSyncing, meetRunning]);
 
   const handleTabChange = (tab: AdminTab) => {
     setActiveTab(tab);
     if (tab === "logs") fetchLogs();
     if (tab === "feedbacks") fetchFeedbacks();
-    if (tab === "sync") { fetchKrikoStatus(); meetDurumunuYenile(); fetchUnassigned(); }
-    if (tab === "syncHistory") { fetchKrikoStatus(); meetDurumunuYenile(); }
+    if (tab === "sync") { fetchKrikoStatus(); fetchFirefliesStatus(); meetDurumunuYenile(); fetchUnassigned(); }
+    if (tab === "syncHistory") { fetchKrikoStatus(); fetchFirefliesStatus(); meetDurumunuYenile(); }
     if (tab === "recentCalls") fetchRecentCalls();
   };
 
@@ -929,6 +958,30 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
         alert(e.error ?? t.meetDriveEmailError);
       }
     }
+  };
+
+  /* ── fireflies sync ── Meet akana kadar canlı ── */
+  /* ── fireflies sync ── */
+  const handleFirefliesSync = async () => {
+    setFirefliesSyncing(true); setFirefliesMsg(t.ffSyncStarted);
+    setFirefliesLastResult(null);
+    startSyncTimer(setFfProgress, setFfSecondsLeft, ffTimerRef);
+    const body: any = {}; if (firefliesSyncDate) body.date = firefliesSyncDate;
+    const res = await fetch("/api/calls/sync-fireflies", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    stopSyncTimer(setFfProgress, setFfSecondsLeft, ffTimerRef);
+    if (!res.ok) setFirefliesMsg(t.syncError + (data.error || t.syncFailed));
+    else {
+      setFirefliesLastResult(data);
+      let msg = t.syncDone(data.imported, data.unassigned, data.skipped);
+      if (data.failed > 0) msg += t.syncFailed2(data.failed);
+      if (data.errors?.length) msg += `\n${t.syncErrors}${data.errors.join(" | ")}`;
+      setFirefliesMsg(msg);
+      fetchFirefliesStatus();
+    }
+    setFirefliesSyncing(false);
   };
 
   /* ── google meet kuyruğu (itme modeli) ──
@@ -1563,6 +1616,93 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
             </div>
           )}
 
+          {/* ── FIREFLIES ── */}
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-faint)", marginTop: 24, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon name="mic" size={13} /> Fireflies
+          </div>
+
+          <div style={{ padding: "12px 16px", borderRadius: 10, border: "1px solid", borderColor: firefliesStatus?.configured === false ? "rgba(248,113,113,.3)" : "rgba(52,211,153,.3)", background: firefliesStatus?.configured === false ? "rgba(248,113,113,.08)" : "rgba(52,211,153,.08)", color: firefliesStatus?.configured === false ? "#f87171" : "#34d399" }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>{firefliesStatus?.configured === false ? t.ffNotConfigured : t.ffActive(firefliesStatus?.unassignedCount ?? 0)}</div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>{firefliesStatus?.configured === false ? t.ffNotConfiguredHint : t.ffFilter}</div>
+          </div>
+
+          <div className={styles.card} style={{ padding: 20 }}>
+            <div className={styles.sectHd}><h2>{t.manualSync}</h2></div>
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginTop: 14 }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <label className={styles.fbLabel}>{t.labelDate}</label>
+                <input type="date" className={styles.formInput} value={firefliesSyncDate} onChange={e => setFirefliesSyncDate(e.target.value)} />
+              </div>
+              <button onClick={handleFirefliesSync} disabled={firefliesSyncing || firefliesStatus?.configured === false} className={`${styles.btn} ${styles.btnPrimary}`} style={{ borderRadius: 9, opacity: (firefliesSyncing || firefliesStatus?.configured === false) ? 0.5 : 1 }}>
+                <Icon name={firefliesSyncing ? "refresh" : "cloud"} size={14} /><span>{firefliesSyncing ? t.syncing : t.syncNow}</span>
+              </button>
+            </div>
+            {firefliesSyncing && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                  <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>
+                    {ffSecondsLeft === 0 ? (lang === "tr" ? "Devam ediyor…" : "Still running…") : (lang === "tr" ? "İşleniyor…" : "Processing…")}
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>
+                    {ffSecondsLeft > 0 ? `${Math.floor(ffSecondsLeft / 60)}:${String(ffSecondsLeft % 60).padStart(2, "0")}` : "—"}
+                  </span>
+                </div>
+                <div style={{ width: "100%", height: 6, borderRadius: 3, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 3, background: "var(--accent)", width: `${ffProgress}%`, transition: "width 0.9s linear", animation: ffSecondsLeft === 0 ? "syncPulse 1.5s ease-in-out infinite" : "none" }} />
+                </div>
+              </div>
+            )}
+            {firefliesMsg && <p style={{ fontSize: 13, marginTop: 10, color: firefliesMsg.startsWith(t.syncError) ? "#f87171" : firefliesMsg.startsWith("✅") ? "#34d399" : "var(--fg-faint)" }}>{firefliesMsg}</p>}
+            {firefliesLastResult && syncResultGrid(firefliesLastResult)}
+          </div>
+
+          {unassignedItems.filter((i: any) => i.source === "FIREFLIES").length > 0 && (
+            <div className={styles.card} style={{ padding: 20 }}>
+              <div className={styles.sectHd}>
+                <h2>{t.ffUnassigned} <span style={{ fontSize: 11, background: "rgba(251,191,36,.15)", color: "#fbbf24", padding: "2px 7px", borderRadius: 5, marginLeft: 6 }}>{unassignedItems.filter((i: any) => i.source === "FIREFLIES").length}</span></h2>
+                <button onClick={fetchUnassigned} className={styles.btnSmall} style={{ display: "flex", alignItems: "center", gap: 5 }}><Icon name="refresh" size={12} />{t.refresh}</button>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+                {unassignedItems.filter((i: any) => i.source === "FIREFLIES").map((item: any) => {
+                  const isExpanded = expandedUnassignedId === item.id;
+                  return (
+                    <div key={item.id} style={{ borderRadius: 10, border: "0.5px solid var(--rule)", overflow: "hidden" }}>
+                      <button onClick={() => setExpandedUnassignedId(isExpanded ? null : item.id)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: "rgba(255,255,255,.02)", cursor: "pointer", border: "none", textAlign: "left" as const, gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const, flex: 1, minWidth: 0 }}>
+                          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>{item.customerName}</span>
+                          <span style={{ fontSize: 9.5, padding: "2px 6px", borderRadius: 4, background: "rgba(59,130,246,.12)", color: "#60a5fa", fontFamily: "'JetBrains Mono', monospace" }}>Fireflies: {item.externalAgentName || "—"}</span>
+                          <span style={{ fontSize: 11, color: "var(--fg-faint)" }}>{fmtDate(item.callDate)} · {item.callDuration} · %{item.score}</span>
+                        </div>
+                        <Icon name={isExpanded ? "chevronDown" : "chevron"} size={14} />
+                      </button>
+                      {isExpanded && (
+                        <div style={{ borderTop: "0.5px solid var(--rule)", padding: "14px 14px 14px", background: "rgba(0,0,0,.15)" }}>
+                          {item.transcript && (
+                            <div style={{ marginBottom: 12 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-faint)", marginBottom: 6 }}>{t.transcript}</div>
+                              <div style={{ background: "rgba(255,255,255,.03)", borderRadius: 8, padding: "10px 12px", maxHeight: 220, overflowY: "auto", border: "0.5px solid var(--rule)" }}>
+                                <pre style={{ fontSize: 11, color: "var(--fg-dim)", whiteSpace: "pre-wrap", fontFamily: "inherit", lineHeight: 1.6, margin: 0 }}>{item.transcript}</pre>
+                              </div>
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <select className={styles.formSelect} style={{ flex: 1 }} value={reassignSelections[item.id] || ""} onChange={e => setReassignSelections({ ...reassignSelections, [item.id]: e.target.value })}>
+                              <option value="">{t.selectAgent}</option>
+                              {users.filter((u: any) => u.role !== "ADMIN" && u.email !== "unassigned@estenove.local").map((u: any) => <option key={u.id} value={u.id}>{u.name}{u.team?.name ? ` · ${u.team.name}` : ""}</option>)}
+                            </select>
+                            <button onClick={() => handleReassign(item.id)} disabled={!reassignSelections[item.id]} className={`${styles.btn} ${styles.btnPrimary}`} style={{ borderRadius: 9, padding: "8px 14px", opacity: !reassignSelections[item.id] ? 0.3 : 1 }}>
+                              <Icon name="check" size={13} />{t.assign}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* ── GOOGLE MEET ── itme modeli: Apps Script POST'lar, admin kuyruğu çevirir */}
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-faint)", marginTop: 24, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
             <Icon name="mic" size={13} /> Google Meet
@@ -1765,11 +1905,11 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
       {/* ── SYNC HISTORY ── */}
       {activeTab === "syncHistory" && (() => {
         const krikoLogs = (krikoStatus?.logs ?? []).map((l: any) => ({ ...l, source: "KRIKO" }));
-        // Google Meet için SyncLog yazılmıyor (itme modeli, keşif yok) — bu
-        // liste yalnızca Kriko'yu besler. Fireflies rozeti aşağıda KALIYOR:
-        // geçmiş Fireflies SyncLog kayıtları var olmaya devam ediyor, yalnızca
-        // artık yeni satır eklenmiyor.
-        const allLogs = [...krikoLogs].sort(
+        // Google Meet için SyncLog YAZILMIYOR (itme modeli, keşif yok) — bu
+        // liste yalnızca Kriko ve Fireflies'ı besler. Fireflies, Meet akmaya
+        // başlayana kadar canlı: günlük cron hâlâ yeni SyncLog satırı yazıyor.
+        const firefliesLogs = (firefliesStatus?.logs ?? []).map((l: any) => ({ ...l, source: "FIREFLIES" }));
+        const allLogs = [...krikoLogs, ...firefliesLogs].sort(
           (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
         );
         return (
@@ -1777,7 +1917,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
             <div className={styles.card} style={{ padding: 20 }}>
               <div className={styles.sectHd}>
                 <h2>{t.allSyncLogs}</h2>
-                <button onClick={() => { fetchKrikoStatus(); }} className={styles.btnSmall} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <button onClick={() => { fetchKrikoStatus(); fetchFirefliesStatus(); }} className={styles.btnSmall} style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   <Icon name="refresh" size={12} />{t.refresh}
                 </button>
               </div>
