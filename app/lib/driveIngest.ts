@@ -150,3 +150,25 @@ export async function requeueExhausted(): Promise<number> {
   });
   return count;
 }
+
+/** Panelin bir satırı koyduğu kova. */
+export type DriveRowState = "pending" | "exhausted" | "skipped" | "imported";
+
+/**
+ * Bir sahne satırının panelde hangi kovaya düştüğünü söyler.
+ *
+ * NEDEN AYRI BİR FONKSİYON: "PENDING ama denemesi tükenmiş" satır, durum
+ * kolonuna bakan naif bir kontrole göre "beklemede" görünür; oysa kuyruk onu
+ * bir daha almaz (pendingDriveWhere attempts sınırını da süzüyor). Bu ayrımın
+ * tek bir yerde yaşaması gerekiyor, yoksa sayaçlar ile liste birbirinden
+ * ayrışır ve satır yine görünmez olur.
+ *
+ * ELEME NİHAİDİR: SKIPPED bir satırın deneme sayacı dolu olabilir (eleme
+ * kararı bir denemenin içinde verilir), ama o satır sıkışmış değil — elenmiş.
+ * Bu yüzden durum kontrolü attempts kontrolünden ÖNCE gelir.
+ */
+export function driveRowState(row: { status: string; attempts: number }): DriveRowState {
+  if (row.status === "SKIPPED") return "skipped";
+  if (row.status === "IMPORTED") return "imported";
+  return row.attempts >= DRIVE_MAX_ATTEMPTS ? "exhausted" : "pending";
+}

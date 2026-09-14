@@ -6,6 +6,7 @@ import {
   pendingDriveWhere,
   canFitAnotherRow,
   isStaleDriveLock,
+  driveRowState,
 } from "./driveIngest";
 
 describe("pendingDriveWhere", () => {
@@ -44,5 +45,30 @@ describe("isStaleDriveLock", () => {
   });
   it("tam sınırdaki kilit alınamaz", () => {
     expect(isStaleDriveLock(new Date(now.getTime() - DRIVE_STALE_LOCK_MS), now)).toBe(false);
+  });
+});
+
+describe("driveRowState", () => {
+  // Panelin dört kovası: beklemede / sıkışmış / elenmiş / alınmış.
+  // "PENDING ama hakkı tükenmiş" kovası ayrı olmazsa satır görünmez olur —
+  // bu, dal geneli incelemede Critical olarak bulunan hatanın ta kendisi.
+  it("taze PENDING beklemededir", () => {
+    expect(driveRowState({ status: "PENDING", attempts: 0 })).toBe("pending");
+  });
+  it("hakkı kalan PENDING hâlâ beklemededir", () => {
+    expect(driveRowState({ status: "PENDING", attempts: DRIVE_MAX_ATTEMPTS - 1 })).toBe("pending");
+  });
+  it("hakkı tükenen PENDING sıkışmıştır", () => {
+    expect(driveRowState({ status: "PENDING", attempts: DRIVE_MAX_ATTEMPTS })).toBe("exhausted");
+  });
+  it("sınırın üstü de sıkışmıştır", () => {
+    expect(driveRowState({ status: "PENDING", attempts: DRIVE_MAX_ATTEMPTS + 5 })).toBe("exhausted");
+  });
+  it("ELENEN satır, denemesi dolu olsa bile elenmiştir", () => {
+    // Eleme kararı nihaidir; deneme sayacına bakıp "sıkışmış" demek yanlış olur.
+    expect(driveRowState({ status: "SKIPPED", attempts: DRIVE_MAX_ATTEMPTS })).toBe("skipped");
+  });
+  it("alınan satır alınmıştır", () => {
+    expect(driveRowState({ status: "IMPORTED", attempts: 1 })).toBe("imported");
   });
 });

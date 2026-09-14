@@ -136,6 +136,15 @@ const PANEL_T = {
     meetRequeueDone: (n: number) => `${n} satır yeniden kuyruğa alındı.`,
     meetLastRecord: (d: string) => `Son kayıt: ${d}`, meetNoRecordYet: "Henüz kayıt gelmedi.",
     meetSkipReasons: "Elenen Sebepler",
+    meetRowsTitle: "Gelen Transkriptler", meetRowsRefresh: "Yenile",
+    meetRowsEmpty: "Bu süzgeçte kayıt yok.",
+    meetRowsAll: "Tümü", meetRowsPending: "Bekleyen", meetRowsExhausted: "Sıkışan",
+    meetRowsSkipped: "Elenen", meetRowsImported: "Alınan",
+    meetRowsTotal: (n: number) => `${n} kayıt`,
+    meetRowOpen: "Transkripti aç", meetRowClose: "Kapat",
+    meetRowLoading: "Transkript yükleniyor...",
+    meetRowNoCustomer: "müşteri henüz çözülmedi",
+    meetRowGoEval: "Değerlendirmeye git",
     meetDriveEmailError: "Drive e-postası bağlanamadı.",
     statFetched: "Çekilen", statAnalyzable: "Analiz", statImport: "Import",
     statUnassigned: "Atanmamış", statFailed: "Başarısız",
@@ -246,6 +255,15 @@ const PANEL_T = {
     meetRequeueDone: (n: number) => `${n} row${n !== 1 ? "s" : ""} requeued.`,
     meetLastRecord: (d: string) => `Last record: ${d}`, meetNoRecordYet: "No records yet.",
     meetSkipReasons: "Skip Reasons",
+    meetRowsTitle: "Incoming Transcripts", meetRowsRefresh: "Refresh",
+    meetRowsEmpty: "Nothing matches this filter.",
+    meetRowsAll: "All", meetRowsPending: "Pending", meetRowsExhausted: "Stuck",
+    meetRowsSkipped: "Skipped", meetRowsImported: "Imported",
+    meetRowsTotal: (n: number) => `${n} record${n !== 1 ? "s" : ""}`,
+    meetRowOpen: "Open transcript", meetRowClose: "Close",
+    meetRowLoading: "Loading transcript...",
+    meetRowNoCustomer: "customer not resolved yet",
+    meetRowGoEval: "Go to evaluation",
     meetDriveEmailError: "Could not link Drive email.",
     statFetched: "Fetched", statAnalyzable: "Analyzed", statImport: "Imported",
     statUnassigned: "Unassigned", statFailed: "Failed",
@@ -300,6 +318,27 @@ type MeetStatus = {
   sonKayit: string | null;
   elenenSebepler: { skipReason: string | null; _count: number }[];
 };
+
+/** GET /api/calls/ingest-meet/rows listesinin satır şekli — transkript YOK. */
+type MeetRow = {
+  id: string;
+  sourceFileId: string | null;
+  agentEmail: string;
+  startedAt: string;
+  customerName: string | null;
+  durationSec: number | null;
+  status: string;
+  skipReason: string | null;
+  attempts: number;
+  evaluationId: string | null;
+  error: string | null;
+  discoveredAt: string;
+  importedAt: string | null;
+  state: "pending" | "exhausted" | "skipped" | "imported";
+};
+
+/** Tek satır çekildiğinde metin de gelir. */
+type MeetRowDetail = MeetRow & { transcript: string };
 
 interface Props {
   user: { id: string; name: string; role: string; email: string };
@@ -510,6 +549,12 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const [meetPending, setMeetPending] = useState(0);
   const [meetRequeuing, setMeetRequeuing] = useState(false);
   const [meetRequeueMsg, setMeetRequeueMsg] = useState("");
+  const [meetRows, setMeetRows] = useState<MeetRow[]>([]);
+  const [meetRowsTotal, setMeetRowsTotal] = useState(0);
+  const [meetRowsFilter, setMeetRowsFilter] = useState<"" | MeetRow["state"]>("");
+  const [meetRowsLoading, setMeetRowsLoading] = useState(false);
+  const [meetOpenRowId, setMeetOpenRowId] = useState<string | null>(null);
+  const [meetRowDetail, setMeetRowDetail] = useState<MeetRowDetail | null>(null);
   const meetStopRef = useRef(false);
 
   /* ── recent calls ── */
@@ -570,6 +615,9 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const meetDurumunuYenile = async () => {
     const res = await fetch("/api/calls/ingest-meet");
     if (res.ok) setMeetStatus(await res.json());
+    // Sayaçlar ile liste aynı anda tazelenir; yoksa "3 bekliyor" yazarken
+    // listede iki satır görünür ve hangisinin doğru olduğu belirsiz kalır.
+    void meetSatirlariYukle();
   };
   const fetchRecentCalls = async () => {
     setRecentCallsLoading(true);
@@ -927,6 +975,38 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
 
   // Hakkı tükenmiş (PENDING + attempts >= 3) satırlar hiçbir sayaca girmiyor
   // ve kuyruğa kendiliğinden dönmüyor — bilinçli bir insan eylemi gerekiyor.
+  // Sahne tablosundaki satırları çeker. Metin TAŞIMAZ — liste hafif kalsın.
+  const meetSatirlariYukle = async (state: "" | MeetRow["state"] = meetRowsFilter) => {
+    setMeetRowsLoading(true);
+    try {
+      const qs = state ? `?state=${state}` : "";
+      const res = await fetch(`/api/calls/ingest-meet/rows${qs}`);
+      if (!res.ok) { setMeetRows([]); setMeetRowsTotal(0); return; }
+      const data = await res.json();
+      setMeetRows(data.rows ?? []);
+      setMeetRowsTotal(data.total ?? 0);
+    } catch {
+      // Ağ koptu: listeyi boşaltmak yanlış olur, elindeki veri son bilinen
+      // doğru hâl. Sessizce bırak, kullanıcı Yenile'ye basabilir.
+    } finally {
+      setMeetRowsLoading(false);
+    }
+  };
+
+  // Metin yalnızca tek satır için, tıklandığında çekilir.
+  const meetSatiriAc = async (id: string) => {
+    if (meetOpenRowId === id) { setMeetOpenRowId(null); setMeetRowDetail(null); return; }
+    setMeetOpenRowId(id);
+    setMeetRowDetail(null);
+    try {
+      const res = await fetch(`/api/calls/ingest-meet/rows?id=${encodeURIComponent(id)}`);
+      if (res.ok) setMeetRowDetail(await res.json());
+    } catch {
+      // Detay gelmezse satır açık kalır ve "yükleniyor" yazar; kapatıp
+      // tekrar açmak yeniden dener.
+    }
+  };
+
   const handleMeetRequeue = async () => {
     setMeetRequeuing(true);
     setMeetRequeueMsg("");
@@ -1537,6 +1617,96 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── GELEN TRANSKRİPTLER ── değerlendirmeye dönüşmeden önce ne geldiği
+              ve neyin neden elendiği burada görünür. Kota kapalıyken bile. */}
+          <div className={styles.card} style={{ padding: 20 }}>
+            <div className={styles.sectHd} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <h2>{t.meetRowsTitle}</h2>
+              <button onClick={() => meetSatirlariYukle()} disabled={meetRowsLoading} className={styles.btnSmall} style={{ opacity: meetRowsLoading ? 0.6 : 1 }}>
+                <Icon name="refresh" size={12} /><span>{t.meetRowsRefresh}</span>
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+              {([
+                ["", t.meetRowsAll],
+                ["pending", t.meetRowsPending],
+                ["exhausted", t.meetRowsExhausted],
+                ["skipped", t.meetRowsSkipped],
+                ["imported", t.meetRowsImported],
+              ] as const).map(([deger, etiket]) => (
+                <button
+                  key={deger || "all"}
+                  onClick={() => { setMeetRowsFilter(deger); setMeetOpenRowId(null); setMeetRowDetail(null); void meetSatirlariYukle(deger); }}
+                  className={styles.btnSmall}
+                  style={{ opacity: meetRowsFilter === deger ? 1 : 0.55, fontWeight: meetRowsFilter === deger ? 700 : 500 }}
+                >
+                  {etiket}
+                </button>
+              ))}
+              <span style={{ fontSize: 12, color: "var(--fg-faint)", alignSelf: "center", marginLeft: 4 }}>
+                {t.meetRowsTotal(meetRowsTotal)}
+              </span>
+            </div>
+
+            {meetRows.length === 0 ? (
+              <p style={{ fontSize: 13, marginTop: 14, color: "var(--fg-faint)" }}>{t.meetRowsEmpty}</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 14 }}>
+                {meetRows.map((r) => {
+                  const renk = r.state === "imported" ? "#34d399"
+                    : r.state === "exhausted" ? "#f87171"
+                    : r.state === "skipped" ? "#fbbf24" : "var(--fg-dim)";
+                  const acik = meetOpenRowId === r.id;
+                  return (
+                    <div key={r.id} style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                      <button
+                        onClick={() => meetSatiriAc(r.id)}
+                        style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+                      >
+                        <span style={{ fontSize: 11, fontWeight: 700, color: renk, minWidth: 66 }}>{r.state}</span>
+                        <span style={{ fontSize: 12.5, color: "var(--fg)" }}>{fmtDate(r.startedAt)}</span>
+                        <span style={{ fontSize: 12.5, color: "var(--fg-dim)" }}>{r.agentEmail}</span>
+                        <span style={{ fontSize: 12.5, color: r.customerName ? "var(--fg)" : "var(--fg-faint)", fontStyle: r.customerName ? "normal" : "italic" }}>
+                          {r.customerName ?? t.meetRowNoCustomer}
+                        </span>
+                        {r.durationSec != null && (
+                          <span style={{ fontSize: 12, color: "var(--fg-faint)" }}>
+                            {Math.floor(r.durationSec / 60)}:{String(r.durationSec % 60).padStart(2, "0")}
+                          </span>
+                        )}
+                        {r.skipReason && <span style={{ fontSize: 11.5, color: "#fbbf24" }}>{r.skipReason}</span>}
+                        <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-faint)" }}>
+                          {acik ? t.meetRowClose : t.meetRowOpen}
+                        </span>
+                      </button>
+
+                      {acik && (
+                        <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", background: "var(--bg-subtle)" }}>
+                          {r.error && (
+                            <div style={{ fontSize: 11.5, color: "#f87171", marginBottom: 8 }}>{r.error}</div>
+                          )}
+                          {r.evaluationId && (
+                            <a href={`/evaluation/${r.evaluationId}`} style={{ fontSize: 12, color: "var(--accent)" }}>
+                              {t.meetRowGoEval}
+                            </a>
+                          )}
+                          {meetRowDetail && meetRowDetail.id === r.id ? (
+                            <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 12, lineHeight: 1.55, margin: "8px 0 0", maxHeight: 420, overflowY: "auto", color: "var(--fg-dim)" }}>
+                              {meetRowDetail.transcript}
+                            </pre>
+                          ) : (
+                            <p style={{ fontSize: 12, color: "var(--fg-faint)", margin: "8px 0 0" }}>{t.meetRowLoading}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
