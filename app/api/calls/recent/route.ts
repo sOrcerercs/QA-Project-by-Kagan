@@ -4,7 +4,7 @@ import { getUserFromToken } from "@/app/lib/auth";
 
 const TAKE = 25;
 
-async function getSourceData(source: "KRIKO" | "FIREFLIES") {
+async function getSourceData(source: "KRIKO" | "GOOGLE_MEET" | "FIREFLIES") {
   const [items, total, dupes] = await Promise.all([
     prisma.evaluation.findMany({
       where: { source },
@@ -58,10 +58,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
   }
 
-  const [kriko, fireflies] = await Promise.all([
+  // FIREFLIES kalıyor: 1868 geçmiş kayıt hâlâ bu uçtan okunuyor (alma yolu
+  // kaldırıldı, veri kalıcı).
+  const [kriko, googleMeet, fireflies] = await Promise.all([
     getSourceData("KRIKO"),
+    getSourceData("GOOGLE_MEET"),
     getSourceData("FIREFLIES"),
   ]);
 
-  return NextResponse.json({ kriko, fireflies });
+  return NextResponse.json({ kriko, googleMeet, fireflies });
 }
