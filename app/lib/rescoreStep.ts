@@ -4,6 +4,8 @@
  * istemci (AdminPanel) de aynı sınıflandırmayı kullanıyor.
  */
 
+import { QUOTA_ERROR_CODE } from "./geminiQuota";
+
 /**
  * Platformun tek istek için verdiği tavan (ms). Vercel Hobby'de 60 sn.
  * Rotalardaki `maxDuration = 300` bu tavanı BÜYÜTMEZ — plan neyse o geçerli.
@@ -89,6 +91,13 @@ export function classifyRescoreResponse(status: number, payload: unknown): Resco
 
   const p = payload as Record<string, unknown>;
   const err = typeof p.error === "string" && p.error.length > 0 ? p.error : null;
+
+  // Kota dolu: tekrar denemek işe yaramaz, döngü boşuna deneme hakkı yakar.
+  // Durum KODUNA değil, sunucunun gönderdiği ayırt edici alana bakıyoruz —
+  // hata metni değişse de (Google'ın cümlesi, çeviri) karar bozulmasın.
+  if (p.code === QUOTA_ERROR_CODE) {
+    return { kind: "fatal", error: err ?? "Google AI kotası dolu." };
+  }
 
   if (isFatalStatus) return { kind: "fatal", error: err ?? `HTTP ${status}` };
   if (p.processed === true) return { kind: "processed" };

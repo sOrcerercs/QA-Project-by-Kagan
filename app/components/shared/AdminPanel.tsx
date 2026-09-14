@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { classifyRescoreResponse } from "@/app/lib/rescoreStep";
+import { QUOTA_ERROR_CODE } from "@/app/lib/geminiQuota";
 import styles from "@/app/components/LandingPage.module.css";
 import { canEditQa } from "@/app/lib/qaPermissions";
 
@@ -591,6 +592,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const [meetPending, setMeetPending] = useState(0);
   const [meetRequeuing, setMeetRequeuing] = useState(false);
   const [meetRequeueMsg, setMeetRequeueMsg] = useState("");
+  const [meetQueueMsg, setMeetQueueMsg] = useState("");
   const [meetRows, setMeetRows] = useState<MeetRow[]>([]);
   const [meetRowsTotal, setMeetRowsTotal] = useState(0);
   const [meetRowsFilter, setMeetRowsFilter] = useState<"" | MeetRow["state"]>("");
@@ -1010,6 +1012,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
      döngüsünün (yukarıda) çözdüğü aynı üç arıza burada da geçerli. */
   async function meetKuyrugunuCevir() {
     meetStopRef.current = false;
+    setMeetQueueMsg("");
     setMeetRunning(true);
     const ARDISIK_HATA_SINIRI = 3;
     let ardisik = 0;
@@ -1027,6 +1030,13 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
 
         // Platform kestiyse gövde JSON değildir → null döner.
         const body = await res.json().catch(() => null);
+
+        // KOTA DOLU: sıradaki satır da aynı duvara çarpacak. Tekrar denemek
+        // yalnızca zaman yakar; sebebi GÖSTERİP duruyoruz.
+        if (body?.code === QUOTA_ERROR_CODE) {
+          setMeetQueueMsg(body.error ?? "Google AI kotası dolu.");
+          break;
+        }
 
         if (!res.ok || !body) {
           ardisik++;
@@ -1778,6 +1788,11 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                 <button onClick={() => { meetStopRef.current = true; }} className={styles.btnSmall}>{t.rsStop}</button>
               )}
             </div>
+            {meetQueueMsg && (
+              <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(248,113,113,.35)", background: "rgba(248,113,113,.08)", color: "#f87171", fontSize: 12.5 }}>
+                {meetQueueMsg}
+              </div>
+            )}
             <p style={{ fontSize: 12, marginTop: 10, color: "var(--fg-faint)" }}>
               {meetStatus?.sonKayit ? t.meetLastRecord(fmtDate(meetStatus.sonKayit)) : t.meetNoRecordYet}
             </p>

@@ -9,6 +9,7 @@
 // Günde bir cron ve 60 sn tavanla bu TÜM GÜNÜ KAPATMAZ; ~2-4 satır alır.
 // Geri kalanı paneldeki döngü alır.
 import { NextRequest, NextResponse } from "next/server";
+import { QUOTA_ERROR_CODE } from "@/app/lib/geminiQuota";
 
 // DİKKAT: 300 bir DİLEK, garanti değil. Hobby'de gerçek tavan 60 sn.
 export const maxDuration = 300;
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
   }
 
   let alinan = 0, atlanan = 0, basarisiz = 0;
+  let engel: string | null = null;
 
   while (canFitAnotherRow(Date.now() - t0)) {
     const res = await processOneDriveTranscript(req);
@@ -39,7 +41,19 @@ export async function GET(req: NextRequest) {
     // boş" sanıp break etmek, tek bir bozuk satırın cron'u erken bitirmesine
     // yol açar. Hata ile boş kuyruk AYRI ele alınır; satırın attempts sayacı
     // zaten 3 denemeden sonra onu kuyruktan düşürür.
-    if (!res.ok) { basarisiz++; continue; }
+    if (!res.ok) {
+      // ...ama KOTA bunun istisnası: satır emekli olmuyor (hakkı iade
+      // ediliyor), dolayısıyla döngü aynı satırı tekrar tekrar kapıp bırakır.
+      // Ölçüldü: 27 saniyede 17 boş tur. Sıradaki satır da aynı duvara
+      // çarpacağı için tüm koşuyu burada bitiriyoruz.
+      const govde = await res.json().catch(() => null);
+      if (govde?.code === QUOTA_ERROR_CODE) {
+        engel = govde.error ?? "Google AI kotası dolu.";
+        break;
+      }
+      basarisiz++;
+      continue;
+    }
 
     const body = await res.json();
     if (!body.processed) break;                      // kuyruk gerçekten boş
@@ -51,6 +65,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     success: true,
     alinan, atlanan, basarisiz,
+    ...(engel ? { engel } : {}),
     sureMs: Date.now() - t0,
   });
 }

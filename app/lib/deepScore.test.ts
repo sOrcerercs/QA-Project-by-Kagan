@@ -204,3 +204,23 @@ describe("remainingGeminiBudgetMs — geçen süreyi düşer", () => {
     expect(remainingGeminiBudgetMs(-10_000, 60_000, 8_000)).toBe(52_000);
   });
 });
+
+describe("classifyRescoreResponse — kota", () => {
+  // Kota dolduğunda tekrar denemek İŞE YARAMAZ. Eskiden 500 + error dizgisi
+  // "retryable" sayılıyordu: döngü 3 işçi × 3 tur dönüp ~9 deneme hakkı
+  // yakıyor, kullanıcı da sebebi hiç görmüyordu.
+  it("kota kodu ölümcüldür, tekrar denenmez", () => {
+    expect(classifyRescoreResponse(503, { error: "Google AI kotası dolu", code: "quota_exhausted" }))
+      .toEqual({ kind: "fatal", error: "Google AI kotası dolu" });
+  });
+
+  it("kota kodu, durum kodundan bağımsız ölümcüldür", () => {
+    // Uç 500 dönse bile kod kararı belirler; METNE bakmıyoruz.
+    expect(classifyRescoreResponse(500, { error: "dolu", code: "quota_exhausted" }).kind).toBe("fatal");
+  });
+
+  it("kodsuz hata hâlâ tekrar denenebilir", () => {
+    expect(classifyRescoreResponse(500, { error: "model bloğu üretmedi" }))
+      .toEqual({ kind: "retryable", error: "model bloğu üretmedi" });
+  });
+});

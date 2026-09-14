@@ -23,7 +23,9 @@ import {
   pendingWhere,
   remainingGeminiBudgetMs,
   DEEP_SCORE_GEMINI_MAX_ATTEMPTS,
+  refundEvaluationAttempt,
 } from "@/app/lib/deepScore";
+import { isGeminiQuotaError, QUOTA_ERROR_CODE } from "@/app/lib/geminiQuota";
 import { parseTrDay } from "../route";
 
 export async function POST(req: NextRequest) {
@@ -125,6 +127,21 @@ export async function POST(req: NextRequest) {
       customerName: target.customerName,
     });
   } catch (e: unknown) {
+    // KOTA DOLU: hata bu kayda ait değil. Kilidi bırak, yakılan deneme
+    // hakkını GERİ VER ve istemciye ölümcül olduğunu söyle — döngü durur.
+    // Eskiden bu 500 + hata dizgisiydi, "retryable" sayılıyordu ve 3 işçi
+    // × 3 ardışık tur ≈ 9 hak yakıp birkaç kaydı kuyruktan düşürüyordu.
+    if (isGeminiQuotaError(e)) {
+      await refundEvaluationAttempt(target.id).catch(() => {});
+      return NextResponse.json(
+        {
+          processed: false, remaining: await kalan(), evaluationId: target.id,
+          error: "Google AI kotası dolu — analiz yapılamıyor. AI Studio'da aylık harcama tavanını yükseltin (https://ai.studio/spend).",
+          code: QUOTA_ERROR_CODE,
+        },
+        { status: 503 },
+      );
+    }
     // Damgalanmaz, kilit bırakılır — deneme hakkı varsa yeniden alınır.
     // .catch: kayıt arada silinmişse (P2025) release patlar ve ASIL hatayı
     // gizleyip yanıtsız 500'e çevirirdi.

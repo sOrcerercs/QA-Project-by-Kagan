@@ -183,3 +183,26 @@ export async function markDeepScored(id: string): Promise<void> {
     data: { deepScoredAt: new Date(), deepScoreLockedAt: null },
   });
 }
+
+/**
+ * Kaydın suçu olmayan bir hatadan sonra kilidi bırakır VE kapma sırasında
+ * yakılan deneme hakkını geri verir.
+ *
+ * NEDEN: `claimNextEvaluation` kaydı kaparken `deepScoreAttempts`'i artırıyor
+ * ve bu DOĞRU — platform süreci öldürdüğünde `catch` hiç çalışmadığı için
+ * sayaç tek korumadır. Ama bazı hatalar kayda ait değil: Gemini kotası
+ * dolduğunda aynı kayıt, kota açılınca sorunsuz işlenecek. Hakkı yakmak
+ * üç koşuda kaydı kuyruktan KALICI olarak düşürürdü — hiç denenmemişken.
+ */
+export async function refundEvaluationAttempt(id: string): Promise<void> {
+  await prisma.evaluation.update({
+    where: { id },
+    data: { deepScoreLockedAt: null },
+  });
+  // Ayrı cümle: sayaç zaten 0 ise azaltma yapılmamalı, ama kilit yine de
+  // bırakılmalı. Tek updateMany'de birleştirmek sayaç 0'ken kilidi tutardı.
+  await prisma.evaluation.updateMany({
+    where: { id, deepScoreAttempts: { gt: 0 } },
+    data: { deepScoreAttempts: { decrement: 1 } },
+  });
+}
