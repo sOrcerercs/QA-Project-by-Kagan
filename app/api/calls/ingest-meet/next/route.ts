@@ -23,6 +23,7 @@ import { shouldForceFirstCall } from "@/app/lib/evaluationRules";
 import { isDuplicateCallError } from "@/app/lib/prismaErrors";
 import { formatDuration } from "@/app/lib/kriko";
 import { QUOTA_ERROR_CODE } from "@/app/lib/geminiQuota";
+import { driveViewUrl } from "@/app/lib/driveFile";
 
 export async function POST(req: NextRequest) {
   const user = await getUserFromToken(req);
@@ -178,7 +179,11 @@ export async function processOneDriveTranscript(req: NextRequest) {
           externalAgentName: row.agentEmail,
           unassigned: false,
           source: "GOOGLE_MEET",
-          recordingUrl: `https://drive.google.com/drive/folders/${row.meetFolderId}`,
+          // Kaydın KENDİ dosyasına bağlanıyor. Eskiden klasör bağlantısı
+          // kuruluyordu, ama Düzen B'de meetFolderId bir DOSYA kimliği
+          // (klasör yok) ve o bağlantı 404 veriyordu. Kayıt yoksa null:
+          // ölü bir bağlantı yazmaktansa hiç yazmamak dürüst.
+          recordingUrl: row.recordingFileId ? driveViewUrl(row.recordingFileId) : null,
           weakCriteria: data.weakCriteria ?? null,
           sectionScores: data.sectionScores ?? null,
           reportData: data.reportData ?? null,

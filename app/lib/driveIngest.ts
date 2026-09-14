@@ -55,6 +55,8 @@ export interface DriveClaim {
   agentEmail: string;
   startedAt: Date;
   transcript: string;
+  /** Görüşme kaydının Drive dosya kimliği; her çağrıda olmayabilir. */
+  recordingFileId: string | null;
 }
 
 /**
@@ -84,7 +86,7 @@ export async function claimNextDriveTranscript(): Promise<DriveClaim | null> {
       where: { id: candidate.id },
       select: {
         id: true, meetFolderId: true, agentEmail: true,
-        startedAt: true, transcript: true,
+        startedAt: true, transcript: true, recordingFileId: true,
       },
     });
     if (!row) {

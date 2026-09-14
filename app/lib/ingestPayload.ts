@@ -17,13 +17,16 @@ export interface IngestPayload {
   startedAt: Date;
   transcript: string;
   sourceFileId: string | null;
+  /** Görüşmenin video/ses kaydının Drive dosya kimliği. Her çağrıda olmayabilir. */
+  recordingFileId: string | null;
 }
 
 export type PayloadError =
   | "meetFolderId_missing" | "meetFolderId_format"
   | "agentEmail_missing"   | "agentEmail_format"
   | "startedAt_missing"    | "startedAt_format" | "startedAt_no_offset"
-  | "transcript_missing";
+  | "transcript_missing"
+  | "recordingFileId_format";
 
 function metin(v: unknown): string | null {
   return typeof v === "string" ? v : null;
@@ -62,5 +65,17 @@ export function parseIngestPayload(
 
   const sourceFileId = metin(b.sourceFileId)?.trim() || null;
 
-  return { ok: true, value: { meetFolderId, agentEmail, startedAt, transcript, sourceFileId } };
+  // Kayıt OPSİYONEL (her görüşmede video olmuyor), ama verilmişse geçerli
+  // olmak zorunda. Bozuk bir id'yi sessizce atmak, kaydın neden açılmadığını
+  // sorduğunda hiçbir iz bırakmazdı. Script önce gönderip sonra taşıdığı
+  // için ret, dosyaların yerinde kalması demek — kayıp değil, görünür hata.
+  const recordingFileId = metin(b.recordingFileId)?.trim() || null;
+  if (recordingFileId && !FOLDER_ID_RE.test(recordingFileId)) {
+    return { ok: false, error: "recordingFileId_format" };
+  }
+
+  return {
+    ok: true,
+    value: { meetFolderId, agentEmail, startedAt, transcript, sourceFileId, recordingFileId },
+  };
 }

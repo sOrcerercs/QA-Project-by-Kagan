@@ -805,20 +805,27 @@ export default function EvaluationDetailPage({
           ))}
         </div>
 
-        {evaluation.source === "KRIKO" && evaluation.recordingUrl && (
-          <div className="bg-surface-container border border-outline-variant rounded-2xl p-4 mb-4">
-            <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-3">
-              <MIcon name="mic" className="text-primary text-sm" />
-              Çağrı Kaydı
+        {(() => {
+          // İki kaynak, iki vekil uç — ikisi de sunucuda kimlik tutuyor ve
+          // uygulamanın oturumuyla korunuyor. Meet kaydı mp4; <audio> onun
+          // ses parçasını çalar (görüntü isteniyorsa tek kelime: <video>).
+          const kayitUcu =
+            evaluation.source === "KRIKO" ? `/api/evaluations/${evaluation.id}/audio`
+            : evaluation.source === "GOOGLE_MEET" ? `/api/evaluations/${evaluation.id}/recording`
+            : null;
+          if (!kayitUcu || !evaluation.recordingUrl) return null;
+          return (
+            <div className="bg-surface-container border border-outline-variant rounded-2xl p-4 mb-4">
+              <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-3">
+                <MIcon name="mic" className="text-primary text-sm" />
+                Çağrı Kaydı
+              </div>
+              {/* preload="none": kayıtlar 90-429 MB, sayfa açılır açılmaz
+                  indirmeye başlamak kabul edilemez. */}
+              <audio controls preload="none" className="w-full" src={kayitUcu} />
             </div>
-            <audio
-              controls
-              preload="none"
-              className="w-full"
-              src={`/api/evaluations/${evaluation.id}/audio`}
-            />
-          </div>
-        )}
+          );
+        })()}
 
         {/* Skor ve çağrı tipi artık değerlendirme kartının başlığında gösteriliyor;
             burada tekrar edilmiyor. Bu satırda yalnızca aksiyon düğmeleri var. */}

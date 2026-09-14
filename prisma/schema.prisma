@@ -254,6 +254,8 @@ model DriveTranscript {
   meetFolderId  String    @unique
   /// Transkript Doc'unun Drive ID'si. İzlenebilirlik için, zorunlu değil.
   sourceFileId  String?
+  // Görüşmenin video/ses kaydının Drive dosya kimliği. Her çağrıda olmuyor.
+  recordingFileId String?
   agentEmail    String
   startedAt     DateTime
   customerName  String?
