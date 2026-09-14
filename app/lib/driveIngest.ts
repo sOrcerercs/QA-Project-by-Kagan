@@ -172,3 +172,38 @@ export function driveRowState(row: { status: string; attempts: number }): DriveR
   if (row.status === "IMPORTED") return "imported";
   return row.attempts >= DRIVE_MAX_ATTEMPTS ? "exhausted" : "pending";
 }
+
+export type DriveAssignVerdict =
+  | { ok: true; bindEmail: boolean }
+  | { ok: false; reason: "email_taken_by_other" | "user_bound_to_other_email" };
+
+/**
+ * Bir sahne satırını elle bir danışmana bağlamak güvenli mi?
+ *
+ * Elle atama, `driveEmail` kolonuna yazarak çalışır: o Google hesabından
+ * gelen BÜTÜN gelecek çağrılar da o danışmana gider. Yani bu tek satırlık
+ * bir düzeltme değil, kalıcı bir eşleme kurar — iki durumda reddedilmeli:
+ *
+ * 1. E-posta başka bir danışmana bağlıysa: sessizce almak, o kişinin bütün
+ *    Meet çağrılarını yeni kişiye kaydırır ve OKR'sini boşaltır.
+ * 2. Seçilen danışmanın zaten BAŞKA bir Drive e-postası varsa: üzerine
+ *    yazmak, eski hesaptan gelen çağrıları kör eder.
+ *
+ * İki sorun birdense (1) raporlanır: başkasının verisini etkileyen o.
+ */
+export function checkDriveEmailAssignment(params: {
+  rowAgentEmail: string;
+  chosenUserId: string;
+  chosenUserDriveEmail: string | null;
+  emailOwnerUserId: string | null;
+}): DriveAssignVerdict {
+  const { rowAgentEmail, chosenUserId, chosenUserDriveEmail, emailOwnerUserId } = params;
+
+  if (emailOwnerUserId && emailOwnerUserId !== chosenUserId) {
+    return { ok: false, reason: "email_taken_by_other" };
+  }
+  if (chosenUserDriveEmail && chosenUserDriveEmail !== rowAgentEmail) {
+    return { ok: false, reason: "user_bound_to_other_email" };
+  }
+  return { ok: true, bindEmail: emailOwnerUserId !== chosenUserId };
+}

@@ -7,6 +7,7 @@ import {
   canFitAnotherRow,
   isStaleDriveLock,
   driveRowState,
+  checkDriveEmailAssignment,
 } from "./driveIngest";
 
 describe("pendingDriveWhere", () => {
@@ -70,5 +71,47 @@ describe("driveRowState", () => {
   });
   it("alınan satır alınmıştır", () => {
     expect(driveRowState({ status: "IMPORTED", attempts: 1 })).toBe("imported");
+  });
+});
+
+describe("checkDriveEmailAssignment", () => {
+  const rowAgentEmail = "damla@novemedical.com";
+
+  it("e-posta zaten seçilen kişiye bağlıysa iş yok", () => {
+    expect(checkDriveEmailAssignment({
+      rowAgentEmail, chosenUserId: "u1",
+      chosenUserDriveEmail: rowAgentEmail, emailOwnerUserId: "u1",
+    })).toEqual({ ok: true, bindEmail: false });
+  });
+
+  it("e-posta boştaysa bağlanır", () => {
+    expect(checkDriveEmailAssignment({
+      rowAgentEmail, chosenUserId: "u1",
+      chosenUserDriveEmail: null, emailOwnerUserId: null,
+    })).toEqual({ ok: true, bindEmail: true });
+  });
+
+  it("e-posta BAŞKASINA bağlıysa reddedilir", () => {
+    // Sessizce çalmak, o kişinin bütün Meet çağrılarını yeni kişiye kaydırır.
+    expect(checkDriveEmailAssignment({
+      rowAgentEmail, chosenUserId: "u1",
+      chosenUserDriveEmail: null, emailOwnerUserId: "u2",
+    })).toEqual({ ok: false, reason: "email_taken_by_other" });
+  });
+
+  it("seçilen kişinin BAŞKA bir Drive e-postası varsa reddedilir", () => {
+    // Üzerine yazmak, o kişinin eski hesabından gelen çağrıları kör eder.
+    expect(checkDriveEmailAssignment({
+      rowAgentEmail, chosenUserId: "u1",
+      chosenUserDriveEmail: "eski@estenove.com", emailOwnerUserId: null,
+    })).toEqual({ ok: false, reason: "user_bound_to_other_email" });
+  });
+
+  it("başkasına bağlılık, kişinin kendi e-postasından ÖNCE bakılır", () => {
+    // İki sorun birdense daha tehlikeli olanı raporla.
+    expect(checkDriveEmailAssignment({
+      rowAgentEmail, chosenUserId: "u1",
+      chosenUserDriveEmail: "eski@estenove.com", emailOwnerUserId: "u2",
+    })).toEqual({ ok: false, reason: "email_taken_by_other" });
   });
 });

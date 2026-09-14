@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
-import { driveRowState, DRIVE_MAX_ATTEMPTS, type DriveRowState } from "@/app/lib/driveIngest";
+import { driveRowState, checkDriveEmailAssignment, DRIVE_MAX_ATTEMPTS, type DriveRowState } from "@/app/lib/driveIngest";
 
 const VARSAYILAN_LIMIT = 50;
 const AZAMI_LIMIT = 200;
@@ -89,5 +89,83 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     total,
     rows: rows.map((r) => ({ ...r, state: driveRowState(r) as DriveRowState })),
+  });
+}
+
+/**
+ * Elle danışman atama.
+ *
+ * Kimlik çözümü BİLEREK kapalı devre: driveEmail bir danışmana bağlı
+ * değilse satır tahmin edilmeden elenir (bkz. ingest-meet/next). Bu uç,
+ * o kararın insan tarafındaki karşılığı — admin hangi danışman olduğunu
+ * söyler, eşleme kurulur ve satır kuyruğa geri konur.
+ *
+ * Eşlemeyi KALICI kuruyoruz (User.driveEmail): aynı Google hesabından gelen
+ * sonraki çağrılar bir daha elle atama istemesin. Bu yüzden üzerine yazma
+ * koruması var — bkz. checkDriveEmailAssignment.
+ */
+export async function POST(req: NextRequest) {
+  const user = await getUserFromToken(req);
+  if (!user || user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Yetkisiz." }, { status: 403 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const id = typeof body?.id === "string" ? body.id : null;
+  const agentId = typeof body?.agentId === "string" ? body.agentId : null;
+  if (!id || !agentId) {
+    return NextResponse.json({ error: "id ve agentId zorunlu." }, { status: 400 });
+  }
+
+  const row = await prisma.driveTranscript.findUnique({
+    where: { id },
+    select: { id: true, agentEmail: true, status: true, evaluationId: true },
+  });
+  if (!row) return NextResponse.json({ error: "Kayıt bulunamadı." }, { status: 404 });
+
+  // Alınmış satırı elle atamak yanlış kapı: değerlendirme zaten oluşmuş,
+  // danışmanı değiştirmek o kaydın üzerinden yapılır.
+  if (row.status === "IMPORTED") {
+    return NextResponse.json(
+      { error: "Bu çağrı zaten değerlendirmeye dönüşmüş; danışmanı değerlendirme sayfasından değiştir." },
+      { status: 409 },
+    );
+  }
+
+  const [agent, emailOwner] = await Promise.all([
+    prisma.user.findUnique({ where: { id: agentId }, select: { id: true, name: true, driveEmail: true } }),
+    prisma.user.findUnique({ where: { driveEmail: row.agentEmail }, select: { id: true, name: true } }),
+  ]);
+  if (!agent) return NextResponse.json({ error: "Danışman bulunamadı." }, { status: 404 });
+
+  const verdict = checkDriveEmailAssignment({
+    rowAgentEmail: row.agentEmail,
+    chosenUserId: agent.id,
+    chosenUserDriveEmail: agent.driveEmail,
+    emailOwnerUserId: emailOwner?.id ?? null,
+  });
+
+  if (!verdict.ok) {
+    const mesaj = verdict.reason === "email_taken_by_other"
+      ? `${row.agentEmail} adresi zaten ${emailOwner?.name ?? "başka bir danışmana"} bağlı.`
+      : `${agent.name} zaten ${agent.driveEmail} adresine bağlı. Önce o bağlantıyı kaldır.`;
+    return NextResponse.json({ error: mesaj, reason: verdict.reason }, { status: 409 });
+  }
+
+  if (verdict.bindEmail) {
+    await prisma.user.update({ where: { id: agent.id }, data: { driveEmail: row.agentEmail } });
+  }
+
+  // Satırı kuyruğa geri koy: eleme sebebi, deneme sayacı ve kilit sıfırlanır.
+  await prisma.driveTranscript.update({
+    where: { id: row.id },
+    data: { status: "PENDING", skipReason: null, attempts: 0, lockedAt: null, error: null },
+  });
+
+  return NextResponse.json({
+    ok: true,
+    agentName: agent.name,
+    bound: verdict.bindEmail,
+    driveEmail: row.agentEmail,
   });
 }
