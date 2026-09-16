@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
+import { isoWeekKey, weekStart, weekEnd } from "@/app/lib/isoWeek";
 
 type Range = "4w" | "3m" | "6m" | "all";
 
@@ -18,27 +19,6 @@ function getRangeStart(range: Range): Date | null {
   return null;
 }
 
-function getISOWeekKey(date: Date): string {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
-}
-
-function getWeekStart(date: Date): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function getWeekEnd(weekStart: Date): Date {
-  const d = new Date(weekStart);
-  d.setDate(d.getDate() + 6);
-  return d;
-}
 
 const avg = (arr: number[]) =>
   arr.length === 0 ? 0 : Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
@@ -111,13 +91,13 @@ export async function GET(req: NextRequest) {
   >();
 
   for (const e of evaluations) {
-    const key = getISOWeekKey(e.callDate);
+    const key = isoWeekKey(e.callDate);
     const raw = e.sectionScores as Record<string, unknown>;
     const numA = typeof raw?.A === "number" ? raw.A : 0;
     const numB = typeof raw?.B === "number" ? raw.B : 0;
     const numC = typeof raw?.C === "number" ? raw.C : 0;
     if (!weekMap.has(key)) {
-      weekMap.set(key, { weekStart: getWeekStart(e.callDate), A: [], B: [], C: [], criteriaMap: new Map() });
+      weekMap.set(key, { weekStart: weekStart(e.callDate), A: [], B: [], C: [], criteriaMap: new Map() });
     }
     const bucket = weekMap.get(key)!;
     bucket.A.push(numA);
@@ -153,8 +133,8 @@ export async function GET(req: NextRequest) {
   }));
 
   const weakCriteriaTrend = sortedEntries.map(([, v], idx) => {
-    const weekEnd = getWeekEnd(v.weekStart);
-    const dateRange = `${v.weekStart.toLocaleDateString(locale, dateOpts)}–${weekEnd.toLocaleDateString(locale, dateOpts)}`;
+    const weekEndDate = weekEnd(v.weekStart);
+    const dateRange = `${v.weekStart.toLocaleDateString(locale, dateOpts)}–${weekEndDate.toLocaleDateString(locale, dateOpts)}`;
     const topCriteria = Array.from(v.criteriaMap.entries())
       .map(([id, c]) => ({
         id,
