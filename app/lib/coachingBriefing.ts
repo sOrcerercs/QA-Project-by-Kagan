@@ -145,7 +145,7 @@ export function selectRecurringWeakness(
       return row ? { e, row } : null;
     })
     .filter((x): x is { e: BriefingEval; row: WeakRow } => x !== null)
-    .sort((a, b) => a.row.score - b.row.score)
+    .sort((a, b) => (a.row.score !== b.row.score ? a.row.score - b.row.score : a.e.id < b.e.id ? -1 : 1))
     .map(({ e, row }) => ({
       evaluationId: e.id,
       reason: "RECURRING_WEAKNESS" as const,

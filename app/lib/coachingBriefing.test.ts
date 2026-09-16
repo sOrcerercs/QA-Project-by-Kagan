@@ -122,4 +122,17 @@ describe("selectRecurringWeakness", () => {
     const out = selectRecurringWeakness(week, history, 4);
     expect(out[0].reasonData.criterionId).toBe("A1");
   });
+
+  it("eşit kriter skorunda id'ye göre belirlenimci sıralar", () => {
+    const history = [
+      ev({ id: "h1", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 40 }]) }),
+      ev({ id: "h2", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 45 }]) }),
+    ];
+    const wA = ev({ id: "wA", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 30 }]) });
+    const wB = ev({ id: "wB", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 30 }]) });
+    const first = selectRecurringWeakness([wB, wA], history, 4);
+    const second = selectRecurringWeakness([wA, wB], history, 4);
+    expect(first.map((c) => c.evaluationId)).toEqual(["wA", "wB"]);
+    expect(first.map((c) => c.evaluationId)).toEqual(second.map((c) => c.evaluationId));
+  });
 });
