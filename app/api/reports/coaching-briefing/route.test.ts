@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const findMany = vi.fn();
+const userFindMany = vi.fn();
 const getUserFromToken = vi.fn();
 const resolveScopedAgentIds = vi.fn();
 
 vi.mock("@/app/lib/prisma", () => ({
-  default: { evaluation: { findMany: (...a: unknown[]) => findMany(...a) } },
+  default: {
+    evaluation: { findMany: (...a: unknown[]) => findMany(...a) },
+    user: { findMany: (...a: unknown[]) => userFindMany(...a) },
+  },
 }));
 vi.mock("@/app/lib/auth", () => ({ getUserFromToken: (...a: unknown[]) => getUserFromToken(...a) }));
 vi.mock("@/app/lib/reportScope", () => ({
+  REPORTABLE_ROLES: ["AGENT", "TEAM_LEADER"],
   resolveScopedAgentIds: (...a: unknown[]) => resolveScopedAgentIds(...a),
 }));
 
@@ -22,11 +27,13 @@ const BASE = "https://x.test/api/reports/coaching-briefing";
 
 beforeEach(() => {
   findMany.mockReset();
+  userFindMany.mockReset();
   getUserFromToken.mockReset();
   resolveScopedAgentIds.mockReset();
   getUserFromToken.mockResolvedValue({ id: "tl1", name: "Lider", email: "l@x", role: "TEAM_LEADER" });
   resolveScopedAgentIds.mockResolvedValue({ scopedAgentIds: ["a1"] });
   findMany.mockResolvedValue([]);
+  userFindMany.mockResolvedValue([{ id: "a1", name: "Ayşe" }]);
 });
 
 describe("GET /api/reports/coaching-briefing", () => {
@@ -76,6 +83,40 @@ describe("GET /api/reports/coaching-briefing", () => {
     expect(body.agents).toHaveLength(1);
     expect(body.agents[0].agentName).toBe("Ayşe");
     expect(body.agents[0].picks.length).toBeGreaterThan(0);
+  });
+
+  it("kadroda olup hiç çağrısı olmayan danışman da listede görünür", async () => {
+    resolveScopedAgentIds.mockResolvedValue({ scopedAgentIds: ["a1", "a2"] });
+    userFindMany.mockResolvedValue([
+      { id: "a1", name: "Ayşe" },
+      { id: "a2", name: "Burak" },
+    ]);
+    findMany.mockResolvedValue([
+      {
+        id: "e1", customerName: "Ali", callDate: new Date("2026-09-16T09:00:00.000Z"),
+        score: 60, weakCriteria: null, reportData: null, coachingDone: false, agentId: "a1",
+        agent: { name: "Ayşe" },
+      },
+    ]);
+    const res = await GET(req(`${BASE}?week=2026-W38`));
+    const body = await res.json();
+    const burak = body.agents.find((a: { agentId: string }) => a.agentId === "a2");
+    expect(burak).toMatchObject({ agentName: "Burak", callCount: 0, averageScore: null, picks: [] });
+  });
+
+  it("kadro sorgusu kapsam dışına çıkmaz", async () => {
+    resolveScopedAgentIds.mockResolvedValue({ scopedAgentIds: ["a1", "a2"] });
+    await GET(req(`${BASE}?week=2026-W38`));
+    expect(userFindMany.mock.calls[0][0].where).toEqual({ id: { in: ["a1", "a2"] } });
+  });
+
+  it("ADMIN kapsamında kadro aktif AGENT ve TEAM_LEADER'lardan kurulur", async () => {
+    resolveScopedAgentIds.mockResolvedValue({ scopedAgentIds: null });
+    await GET(req(`${BASE}?week=2026-W38`));
+    expect(userFindMany.mock.calls[0][0].where).toEqual({
+      role: { in: ["AGENT", "TEAM_LEADER"] },
+      isActive: true,
+    });
   });
 
   it("veritabanı patlarsa 500 döner", async () => {

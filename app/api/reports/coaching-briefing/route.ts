@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/lib/prisma";
 import { getUserFromToken } from "@/app/lib/auth";
-import { resolveScopedAgentIds } from "@/app/lib/reportScope";
+import { resolveScopedAgentIds, REPORTABLE_ROLES } from "@/app/lib/reportScope";
 import { parseWeekKey, weekStart, weekEnd, isoWeekKey } from "@/app/lib/isoWeek";
 import { buildBriefing, type BriefingEval, type AgentBriefing } from "@/app/lib/coachingBriefing";
 
@@ -67,7 +67,19 @@ export async function GET(req: NextRequest) {
       orderBy: { callDate: "desc" },
     });
 
+    // Kadro satırlardan DEĞİL, kullanıcı tablosundan tohumlanır. Dört haftadır
+    // hiç çağrı yapmamış danışman 1-1'de konuşulacak en yüksek sinyalli kişidir;
+    // satırlardan kurulsa ekranda hiç görünmezdi. Spec'in "sıfır çağrı hata
+    // değil, boş ekran değil" kuralı ancak böyle uçtan uca sağlanıyor.
+    const roster = await prisma.user.findMany({
+      where: scopedAgentIds
+        ? { id: { in: scopedAgentIds } }
+        : { role: { in: [...REPORTABLE_ROLES] }, isActive: true },
+      select: { id: true, name: true },
+    });
+
     const perAgent = new Map<string, { name: string; all: BriefingEval[] }>();
+    for (const m of roster) perAgent.set(m.id, { name: m.name, all: [] });
     for (const r of rows) {
       const entry = perAgent.get(r.agentId) ?? { name: r.agent.name, all: [] };
       entry.all.push({
