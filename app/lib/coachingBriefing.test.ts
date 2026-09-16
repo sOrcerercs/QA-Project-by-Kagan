@@ -40,9 +40,22 @@ describe("evaluationLoss", () => {
     expect(evaluationLoss(ev({ score: 62, reportData: null }))).toBe(38);
   });
 
-  it("blok var ama hiç kırık madde yoksa 100 - score'a düşer", () => {
+  it("boş blok da bloksuz kayıt gibi 100 - score'a düşer", () => {
+    // Tasarım gereği buildReportCard'da boş blockFaults, üst seviye weakCriteria'ya düşüyor.
+    // İkisi de null sonuç veriyor, bu ikiye ayrı test açmamız gereksiz olsa da
+    // bloktaki faultSource seçimini doğrulamak için ayrı tutulur.
     const e = ev({ score: 95, reportData: { weakCriteria: [] } });
     expect(evaluationLoss(e)).toBe(5);
+  });
+
+  it("blok yoksa eski weakCriteria kolonundan kayıp türetir", () => {
+    const e = ev({
+      score: 62,
+      reportData: null,
+      weakCriteria: [{ id: "A3", label: "Medikal", earned: 0.5, weight: 1.5 }],
+    });
+    // 100 - 62 = 38 yedeğine DÜŞMEZ; kayıp eski kolondan gelir.
+    expect(evaluationLoss(e)).toBeCloseTo(1.0, 5);
   });
 
   it("kusursuz çağrıda sıfır döner", () => {
