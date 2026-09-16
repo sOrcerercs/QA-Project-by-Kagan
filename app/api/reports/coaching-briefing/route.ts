@@ -21,7 +21,7 @@ import type { Lang } from "@/app/lib/i18n";
  * zaten 60 sn; tavanı yazmak sessiz zaman aşımını gürültülü hataya çevirir
  * (bkz. CLAUDE.md — bu kod tabanında bir kez gerçek regresyona sebep oldu).
  *
- * NOT: geçmiş satırlarında reportData ÇEKİLMEMEZLİK edilemez. isScorable()
+ * NOT: geçmiş satırlarında reportData çekmeden geçilemez. isScorable()
  * puanlanamayan çağrıyı reportData.scorable'dan okuyor ve buildBriefing
  * history'yi de bu filtreden geçiriyor; dar bir geçmiş sorgusu o filtreyi
  * sessizce etkisizleştirir ve ortalamayı yeniden bozardı.
