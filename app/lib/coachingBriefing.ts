@@ -268,3 +268,122 @@ export function pickEvidence(e: BriefingEval, reason: ReasonCode, reasonData: Re
     criterionLabel: fault.label,
   };
 }
+
+/** Üç seçiciden alınan en fazla satır. Pozitif garantisi bunun üstüne 1 ekleyebilir. */
+export const MAX_SELECTOR_PICKS = 3;
+
+export interface BriefingPick {
+  evaluationId: string;
+  customerName: string;
+  callDate: string;
+  score: number;
+  reason: ReasonCode;
+  reasonData: ReasonData;
+  evidence: BriefingEvidence[];
+  shouldHaveSaid: string | null;
+  criterionLabel: string | null;
+  coachingDone: boolean;
+}
+
+export interface AgentBriefing {
+  agentId: string;
+  agentName: string;
+  callCount: number;
+  /** Haftanın ortalaması; çağrı yoksa null. */
+  averageScore: number | null;
+  picks: BriefingPick[];
+}
+
+export interface BuildBriefingInput {
+  agentId: string;
+  agentName: string;
+  /** Brifing haftasındaki değerlendirmeler. */
+  week: BriefingEval[];
+  /** Geçmiş pencere — brifing haftası DAHİL (spec: 4 hafta). */
+  history: BriefingEval[];
+  windowWeeks: number;
+}
+
+/**
+ * Bir danışmanın haftalık brifingini kurar.
+ *
+ * Sıra: tekrar eden zayıflık → en büyük kayıp → sapma. Her seçiciden
+ * kullanılmamış ilk aday alınır; en fazla MAX_SELECTOR_PICKS satır.
+ * Sonra pozitif garantisi: listede hiç pozitif yoksa bir tane eklenir.
+ * Son olarak, danışmanın o hafta MAX_SELECTOR_PICKS'ten az çağrısı varsa
+ * geri kalanlar ONLY_CALL olarak eklenir — az çağrılı danışman boş ekran
+ * görmemeli (bkz. spec, "Az çağrı hâli").
+ */
+export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
+  const { agentId, agentName, week, history, windowWeeks } = input;
+
+  const base = {
+    agentId,
+    agentName,
+    callCount: week.length,
+    averageScore: week.length === 0
+      ? null
+      : Math.round(week.reduce((s, e) => s + e.score, 0) / week.length),
+  };
+  if (week.length === 0) return { ...base, picks: [] };
+
+  const byId = new Map(week.map((e) => [e.id, e]));
+  const used = new Set<string>();
+  const chosen: Candidate[] = [];
+
+  const selectors: Candidate[][] = [
+    selectRecurringWeakness(week, history, windowWeeks),
+    selectBiggestLoss(week),
+    selectStandout(week, history),
+  ];
+  for (const ranked of selectors) {
+    if (chosen.length >= MAX_SELECTOR_PICKS) break;
+    const next = ranked.find((c) => !used.has(c.evaluationId));
+    if (!next) continue;
+    used.add(next.evaluationId);
+    chosen.push(next);
+  }
+
+  // Pozitif garantisi: 1-1 sadece hata toplantısı olmasın.
+  if (!chosen.some((c) => isPositiveReason(c.reason))) {
+    const candidate = week
+      .filter((e) => !used.has(e.id))
+      .map((e) => ({ e, detail: pickEvidence(e, "GOOD_EXAMPLE", {}) }))
+      .filter(({ detail }) => detail.evidence.length > 0)
+      // Beraberlik id ile çözülür — hangi çağrının iyi örnek olacağı karar.
+      .sort((a, b) => (b.e.score !== a.e.score ? b.e.score - a.e.score : a.e.id < b.e.id ? -1 : 1))[0];
+    if (candidate) {
+      used.add(candidate.e.id);
+      chosen.push({ evaluationId: candidate.e.id, reason: "GOOD_EXAMPLE", reasonData: {} });
+    }
+  }
+
+  // Az çağrı hâli: 3'ten az çağrısı olan danışmanda kalanlar da listelensin.
+  // Çok çağrılı danışmanda bu adım hiç çalışmaz — seçim zaten anlamlı.
+  if (week.length <= MAX_SELECTOR_PICKS) {
+    for (const e of week) {
+      if (used.has(e.id)) continue;
+      used.add(e.id);
+      chosen.push({ evaluationId: e.id, reason: "ONLY_CALL", reasonData: { callCount: week.length } });
+    }
+  }
+
+  const picks: BriefingPick[] = chosen.map((c) => {
+    const e = byId.get(c.evaluationId)!;
+    const detail = pickEvidence(e, c.reason, c.reasonData);
+    return {
+      evaluationId: e.id,
+      customerName: e.customerName,
+      callDate: e.callDate,
+      score: e.score,
+      reason: c.reason,
+      reasonData: c.reasonData,
+      evidence: detail.evidence,
+      shouldHaveSaid: detail.shouldHaveSaid,
+      criterionLabel: detail.criterionLabel,
+      coachingDone: e.coachingDone,
+    };
+  });
+
+  return { ...base, picks };
+}

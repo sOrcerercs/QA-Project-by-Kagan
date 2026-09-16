@@ -5,6 +5,7 @@ import {
   selectBiggestLoss,
   selectStandout,
   pickEvidence,
+  buildBriefing,
   type BriefingEval,
 } from "./coachingBriefing";
 
@@ -290,5 +291,101 @@ describe("pickEvidence", () => {
   it("aranan kriter blokta yoksa en büyük kayba düşer", () => {
     const d = pickEvidence(ev({ reportData: blockWith }), "RECURRING_WEAKNESS", { criterionId: "ZZ" });
     expect(d.criterionLabel).toBe("Kapanış Disiplini");
+  });
+});
+
+const build = (week: BriefingEval[], history: BriefingEval[] = []) =>
+  buildBriefing({ agentId: "a1", agentName: "Ayşe Yıldız", week, history, windowWeeks: 4 });
+
+describe("buildBriefing", () => {
+  it("çağrı yoksa boş liste döner, hata değil", () => {
+    const b = build([]);
+    expect(b.picks).toEqual([]);
+    expect(b.callCount).toBe(0);
+    expect(b.averageScore).toBeNull();
+    expect(b.agentName).toBe("Ayşe Yıldız");
+  });
+
+  it("tek çağrıda o çağrıyı yine listeler", () => {
+    const b = build([ev({ id: "w1", score: 82 })]);
+    expect(b.picks).toHaveLength(1);
+    expect(b.picks[0].evaluationId).toBe("w1");
+    expect(b.callCount).toBe(1);
+    expect(b.averageScore).toBe(82);
+  });
+
+  it("üç ya da daha az çağrıda hepsini listeler", () => {
+    const week = [ev({ id: "w1", score: 90 }), ev({ id: "w2", score: 60 }), ev({ id: "w3", score: 75 })];
+    const b = build(week);
+    expect(new Set(b.picks.map((p) => p.evaluationId))).toEqual(new Set(["w1", "w2", "w3"]));
+  });
+
+  it("seçilmeyen çağrılar ONLY_CALL gerekçesiyle ve hafta sayısıyla gelir", () => {
+    const b = build([ev({ id: "w1", score: 100 }), ev({ id: "w2", score: 100 })]);
+    const only = b.picks.filter((p) => p.reason === "ONLY_CALL");
+    expect(only.length).toBeGreaterThan(0);
+    expect(only[0].reasonData.callCount).toBe(2);
+  });
+
+  it("aynı çağrıyı iki kez seçmez", () => {
+    const week = Array.from({ length: 10 }, (_, i) => ev({ id: `w${i}`, score: 90 - i * 5 }));
+    const history = Array.from({ length: 6 }, (_, i) => ev({ id: `h${i}`, score: 80 }));
+    const ids = build(week, history).picks.map((p) => p.evaluationId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("çok çağrıda seçiciden en fazla üç, artı pozitif garantisiyle en fazla dört satır verir", () => {
+    const week = Array.from({ length: 20 }, (_, i) =>
+      ev({ id: `w${i}`, score: 90 - i * 3, reportData: { passedCriteria: [{ id: "A1", label: "Kimlik", evidence: [{ speaker: "Danışman", timestamp: "00:05", text: "Merhaba" }] }] } })
+    );
+    const history = Array.from({ length: 6 }, (_, i) => ev({ id: `h${i}`, score: 80 }));
+    const b = build(week, history);
+    expect(b.picks.length).toBeGreaterThanOrEqual(3);
+    expect(b.picks.length).toBeLessThanOrEqual(4);
+  });
+
+  it("hepsi negatifse pozitif garantisi bir satır ekler", () => {
+    const good = { passedCriteria: [{ id: "A1", label: "Kimlik", evidence: [{ speaker: "Danışman", timestamp: "00:05", text: "Merhaba" }] }] };
+    const week = Array.from({ length: 8 }, (_, i) => ev({ id: `w${i}`, score: 40 + i, reportData: good }));
+    const history = Array.from({ length: 6 }, (_, i) => ev({ id: `h${i}`, score: 80 }));
+    const b = build(week, history);
+    expect(b.picks.some((p) => p.reason === "GOOD_EXAMPLE" || p.reason === "STANDOUT_UP")).toBe(true);
+  });
+
+  it("üç seçici de dolduğunda ve içinde pozitif varsa dördüncü satır eklenmez", () => {
+    // C3 geçmişte 6 kez zayıf → RECURRING_WEAKNESS ateşlenir.
+    const c3 = [{ id: "C3", label: "Kapanış", score: 40 }];
+    const history = Array.from({ length: 6 }, (_, i) => ev({ id: `h${i}`, score: 70, weakCriteria: c3 }));
+    const week = [
+      ev({ id: "w1", score: 98 }),                                                  // STANDOUT_UP (+28)
+      ev({ id: "w2", score: 40, weakCriteria: [{ id: "C3", label: "Kapanış", score: 20 }] }), // RECURRING
+      ev({ id: "w3", score: 55 }),                                                  // BIGGEST_LOSS
+      ev({ id: "w4", score: 60 }),
+      ev({ id: "w5", score: 62 }),
+    ];
+    const b = build(week, history);
+    expect(b.picks.map((p) => p.reason)).toEqual([
+      "RECURRING_WEAKNESS",
+      "BIGGEST_LOSS",
+      "STANDOUT_UP",
+    ]);
+    expect(b.picks.map((p) => p.evaluationId)).toEqual(["w2", "w3", "w1"]);
+    expect(b.picks).toHaveLength(3);
+  });
+
+  it("reportData null olan eski kayıtlarda çökmez", () => {
+    const week = Array.from({ length: 6 }, (_, i) => ev({ id: `w${i}`, score: 70 - i, reportData: null, weakCriteria: null }));
+    const b = build(week, week);
+    expect(b.picks.length).toBeGreaterThan(0);
+    expect(b.picks[0].evidence).toEqual([]);
+  });
+
+  it("her satır müşteri adı, tarih ve skoru taşır", () => {
+    const b = build([ev({ id: "w1", customerName: "Mehmet Kaya", callDate: "2026-09-15T09:00:00.000Z", score: 66 })]);
+    expect(b.picks[0]).toMatchObject({
+      customerName: "Mehmet Kaya",
+      callDate: "2026-09-15T09:00:00.000Z",
+      score: 66,
+    });
   });
 });
