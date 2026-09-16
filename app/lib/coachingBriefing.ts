@@ -75,3 +75,85 @@ export function evaluationLoss(e: BriefingEval): number {
   if (losses.length > 0) return losses.reduce((s, l) => s + l, 0);
   return Math.max(0, 100 - e.score);
 }
+
+/** Bir kriterin "tekrar ediyor" sayılması için gereken en az çağrı sayısı. */
+export const RECURRENCE_MIN_OCCURRENCES = 2;
+
+interface WeakRow {
+  id: string;
+  label: string;
+  score: number;
+}
+
+/** weakCriteria kolonunu tolere ederek satırlara çevirir. Bozuk giriş → []. */
+function weakRows(raw: unknown): WeakRow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WeakRow[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const d = r as Record<string, unknown>;
+    const id = typeof d.id === "string" ? d.id : null;
+    if (!id) continue;
+    out.push({
+      id,
+      label: typeof d.label === "string" ? d.label : id,
+      score: typeof d.score === "number" ? d.score : 0,
+    });
+  }
+  return out;
+}
+
+/**
+ * Geçmiş penceresinde en sık zayıf kalan kriteri bulur, o kriterin bu hafta
+ * en dibe vurduğu çağrıları sıralar.
+ *
+ * Beraberlik: önce tekrar sayısı, sonra ortalama kriter skoru (düşük kazanır),
+ * sonra id alfabetik. Sıralama belirlenimci olmalı, yoksa aynı veri iki farklı
+ * brifing üretir.
+ */
+export function selectRecurringWeakness(
+  week: BriefingEval[],
+  history: BriefingEval[],
+  windowWeeks: number
+): Candidate[] {
+  const stats = new Map<string, { label: string; count: number; total: number }>();
+  for (const e of history) {
+    for (const row of weakRows(e.weakCriteria)) {
+      const s = stats.get(row.id) ?? { label: row.label, count: 0, total: 0 };
+      s.count += 1;
+      s.total += row.score;
+      stats.set(row.id, s);
+    }
+  }
+
+  const ranked = [...stats.entries()]
+    .filter(([, s]) => s.count >= RECURRENCE_MIN_OCCURRENCES)
+    .sort((a, b) => {
+      if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+      const avgA = a[1].total / a[1].count;
+      const avgB = b[1].total / b[1].count;
+      if (avgA !== avgB) return avgA - avgB;
+      return a[0] < b[0] ? -1 : 1;
+    });
+
+  if (ranked.length === 0) return [];
+  const [criterionId, stat] = ranked[0];
+
+  return week
+    .map((e) => {
+      const row = weakRows(e.weakCriteria).find((r) => r.id === criterionId);
+      return row ? { e, row } : null;
+    })
+    .filter((x): x is { e: BriefingEval; row: WeakRow } => x !== null)
+    .sort((a, b) => a.row.score - b.row.score)
+    .map(({ e, row }) => ({
+      evaluationId: e.id,
+      reason: "RECURRING_WEAKNESS" as const,
+      reasonData: {
+        criterionId,
+        criterionLabel: row.label || stat.label,
+        occurrences: stat.count,
+        windowWeeks,
+      },
+    }));
+}
