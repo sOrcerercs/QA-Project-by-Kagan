@@ -1,0 +1,14 @@
+/* Yazdırma: gezinme ve düğmeler kâğıda çıkmaz, kart ortadan bölünmez. */
+@media print {
+  .noPrint {
+    display: none;
+  }
+}
+
+.agentCard {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 14px;
+  break-inside: avoid;
+}
