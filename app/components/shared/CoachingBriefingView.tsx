@@ -74,6 +74,14 @@ function PickRow({ pick, lang }: { pick: BriefingPick; lang: "tr" | "en" }) {
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
 
+  // Bayat düğme koruması. React aynı evaluationId key'iyle bu instance'ı
+  // koruduğu için, state yalnızca ilk render'da tohumlanır ve bir daha
+  // eşleşmezdi: aynı haftanın yeniden yüklenmesinden sonra ya da başka bir
+  // sekmede not yazıldıktan sonra düğme hâlâ görünür kalıyordu. Basılınca
+  // paylaşılan uç ({ done: true }, not yok) mevcut coachingNotes'u null'a
+  // çekerdi — CoachingTrackingView'in saydığı not silinirdi.
+  useEffect(() => { setDone(pick.coachingDone); }, [pick.coachingDone]);
+
   // Tek yönlü: brifingden yalnızca "yapıldı" işaretlenir. Geri alma ve not
   // yazma mevcut değerlendirme kartında; burada ikinci bir düzenleme yüzeyi
   // açmıyoruz.
