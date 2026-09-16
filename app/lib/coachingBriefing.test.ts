@@ -23,7 +23,7 @@ function ev(over: Partial<BriefingEval> = {}): BriefingEval {
 }
 
 describe("evaluationLoss", () => {
-  it("bloktaki kriter kayıplarını toplar", () => {
+  it("bloktaki kriter kayıplarını yüzdeye çevirir", () => {
     const e = ev({
       score: 70,
       reportData: {
@@ -33,15 +33,21 @@ describe("evaluationLoss", () => {
         ],
       },
     });
-    expect(evaluationLoss(e)).toBeCloseTo(3.0, 5);
+    // Elle türetme (buildReportCard `points` toplamı):
+    //   A3: max 1.5, loss 0.75 → earned 1.5 − 0.75 = 0.75
+    //   C3: max 3.0, loss 2.25 → earned 3.0 − 2.25 = 0.75
+    //   points = { earned 1.5, max 4.5 }
+    //   kayıp% = (4.5 − 1.5) / 4.5 × 100 = 66.666…  → 0.1 hassasiyetle 66.7
+    expect(evaluationLoss(e)).toBe(66.7);
   });
 
-  it("loss yoksa max - earned'dan türetir", () => {
+  it("loss yoksa max - earned'dan türetir ve yüzdeye çevirir", () => {
     const e = ev({
       score: 70,
       reportData: { weakCriteria: [{ id: "A3", label: "Medikal", earned: 0.5, weight: 1.5 }] },
     });
-    expect(evaluationLoss(e)).toBeCloseTo(1.0, 5);
+    // points = { earned 0.5, max 1.5 } → (1.5 − 0.5) / 1.5 × 100 = 66.666… → 66.7
+    expect(evaluationLoss(e)).toBe(66.7);
   });
 
   it("blok yoksa 100 - score'a düşer", () => {
@@ -63,7 +69,8 @@ describe("evaluationLoss", () => {
       weakCriteria: [{ id: "A3", label: "Medikal", earned: 0.5, weight: 1.5 }],
     });
     // 100 - 62 = 38 yedeğine DÜŞMEZ; kayıp eski kolondan gelir.
-    expect(evaluationLoss(e)).toBeCloseTo(1.0, 5);
+    // points = { earned 0.5, max 1.5 } → (1.5 − 0.5) / 1.5 × 100 = 66.666… → 66.7
+    expect(evaluationLoss(e)).toBe(66.7);
   });
 
   it("kusursuz çağrıda sıfır döner", () => {
