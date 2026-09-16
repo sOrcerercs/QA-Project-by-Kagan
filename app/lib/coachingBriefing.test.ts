@@ -168,3 +168,56 @@ describe("selectBiggestLoss", () => {
     expect(a.map((c) => c.evaluationId)).toEqual(b.map((c) => c.evaluationId));
   });
 });
+
+import { selectStandout } from "./coachingBriefing";
+
+describe("selectStandout", () => {
+  const history = [
+    ev({ id: "h1", score: 70 }),
+    ev({ id: "h2", score: 70 }),
+    ev({ id: "h3", score: 70 }),
+    ev({ id: "h4", score: 70 }),
+  ];
+
+  it("yukarı sapmayı STANDOUT_UP olarak işaretler", () => {
+    const week = [ev({ id: "w1", score: 88 })];
+    const out = selectStandout(week, history);
+    expect(out[0].reason).toBe("STANDOUT_UP");
+    expect(out[0].reasonData).toMatchObject({ deviation: 18, average: 70 });
+  });
+
+  it("aşağı sapmayı STANDOUT_DOWN olarak işaretler", () => {
+    const week = [ev({ id: "w1", score: 50 })];
+    const out = selectStandout(week, history);
+    expect(out[0].reason).toBe("STANDOUT_DOWN");
+    expect(out[0].reasonData.deviation).toBe(-20);
+  });
+
+  it("mutlak sapması büyük olanı öne alır", () => {
+    const week = [ev({ id: "w1", score: 78 }), ev({ id: "w2", score: 45 })];
+    expect(selectStandout(week, history).map((c) => c.evaluationId)).toEqual(["w2", "w1"]);
+  });
+
+  it("eşik altındaki sapmaları eler", () => {
+    const week = [ev({ id: "w1", score: 73 })];
+    expect(selectStandout(week, history)).toEqual([]);
+  });
+
+  it("geçmiş üç değerlendirmeden azsa ortalamaya güvenmez", () => {
+    const week = [ev({ id: "w1", score: 95 })];
+    expect(selectStandout(week, [ev({ id: "h1", score: 60 }), ev({ id: "h2", score: 60 })])).toEqual([]);
+  });
+
+  it("hepsi aynı skorsa boş döner", () => {
+    const week = [ev({ id: "w1", score: 70 })];
+    expect(selectStandout(week, history)).toEqual([]);
+  });
+
+  it("eşit mutlak sapmada id'ye göre belirlenimci sıralar", () => {
+    // 85 (+15) ve 55 (-15): mutlak sapma eşit, yön farklı.
+    const a = selectStandout([ev({ id: "wB", score: 85 }), ev({ id: "wA", score: 55 })], history);
+    const b = selectStandout([ev({ id: "wA", score: 55 }), ev({ id: "wB", score: 85 })], history);
+    expect(a.map((c) => c.evaluationId)).toEqual(["wA", "wB"]);
+    expect(a.map((c) => c.evaluationId)).toEqual(b.map((c) => c.evaluationId));
+  });
+});

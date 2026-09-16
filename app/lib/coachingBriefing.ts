@@ -171,3 +171,35 @@ export function selectBiggestLoss(week: BriefingEval[]): Candidate[] {
       reasonData: { loss: Math.round(loss * 100) / 100 },
     }));
 }
+
+/** Ortalamaya güvenmek için geçmişte gereken en az değerlendirme sayısı. */
+export const STANDOUT_MIN_HISTORY = 3;
+/** Sapmanın konuşmaya değer sayılması için gereken en az puan farkı. */
+export const STANDOUT_MIN_DEVIATION = 5;
+
+/**
+ * Danışmanın kendi 4 haftalık ortalamasından en çok sapan çağrıları sıralar.
+ * İki yönlü: yukarı sapma "burada ne farklı yaptı", aşağı sapma "burada ne oldu".
+ */
+export function selectStandout(week: BriefingEval[], history: BriefingEval[]): Candidate[] {
+  if (history.length < STANDOUT_MIN_HISTORY) return [];
+  const average = history.reduce((s, e) => s + e.score, 0) / history.length;
+
+  return week
+    .map((e) => ({ e, deviation: e.score - average }))
+    .filter(({ deviation }) => Math.abs(deviation) >= STANDOUT_MIN_DEVIATION)
+    // Beraberlik id ile çözülür — sıralama toplam olmalı.
+    .sort((a, b) =>
+      Math.abs(b.deviation) !== Math.abs(a.deviation)
+        ? Math.abs(b.deviation) - Math.abs(a.deviation)
+        : a.e.id < b.e.id ? -1 : 1
+    )
+    .map(({ e, deviation }) => ({
+      evaluationId: e.id,
+      reason: (deviation > 0 ? "STANDOUT_UP" : "STANDOUT_DOWN") as ReasonCode,
+      reasonData: {
+        deviation: Math.round(deviation * 10) / 10,
+        average: Math.round(average * 10) / 10,
+      },
+    }));
+}
