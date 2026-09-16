@@ -83,6 +83,18 @@ export function evaluationLoss(e: BriefingEval): number {
   return Math.max(0, 100 - e.score);
 }
 
+/**
+ * Puanlanamayan çağrı (telesekreter, yanlış numara) koçluk konusu değildir.
+ *
+ * reportJson.ts böyle bir çağrıyı `score: 0` ve kriteri olmayan blokla
+ * kaydediyor. Elenmezse brifingde iki negatif seçiciyi birden kazanır
+ * (kayıp 100, sapma ≈ −75) ve kanıtsız gelir; üstelik 4 haftalık ortalamayı
+ * aşağı çekip herkesin sapmasını kaydırır. Prod'da %1.4 (1132'de 16).
+ */
+export function isScorable(e: BriefingEval): boolean {
+  return buildReportCard({ reportData: e.reportData, weakCriteria: e.weakCriteria }).scorable;
+}
+
 /** Bir kriterin "tekrar ediyor" sayılması için gereken en az çağrı sayısı. */
 export const RECURRENCE_MIN_OCCURRENCES = 2;
 
@@ -322,7 +334,13 @@ export interface BuildBriefingInput {
  * görmemeli (bkz. spec, "Az çağrı hâli").
  */
 export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
-  const { agentId, agentName, week, history, windowWeeks } = input;
+  const { agentId, agentName, windowWeeks } = input;
+
+  // Puanlanamayan çağrılar en başta elenir: seçicilere, çağrı sayısına,
+  // ortalamaya ve geçmiş penceresine hiç girmezler. Tek yerde elemek
+  // seçicilerin her birine ayrı koşul eklemekten daha güvenli.
+  const week = input.week.filter(isScorable);
+  const history = input.history.filter(isScorable);
 
   const base = {
     agentId,

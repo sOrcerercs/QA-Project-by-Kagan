@@ -387,6 +387,35 @@ describe("buildBriefing", () => {
     expect(b.picks[0].evidence).toEqual([]);
   });
 
+  it("puanlanamayan çağrıyı hiç seçmez ve sayıya katmaz", () => {
+    // Telesekreter/yanlış numara: reportJson.ts bunu score 0 ve scorable:false
+    // ile kaydediyor. Elenmezse kayıp 100 ile BIGGEST_LOSS'u kesin kazanır.
+    const junk = ev({ id: "junk", score: 0, reportData: { scorable: false } });
+    const b = build([junk, ev({ id: "w1", score: 80 }), ev({ id: "w2", score: 90 })]);
+    expect(b.picks.map((p) => p.evaluationId)).not.toContain("junk");
+    expect(b.callCount).toBe(2);
+    // Ortalama yalnızca kalan ikiden: (80 + 90) / 2 = 85
+    expect(b.averageScore).toBe(85);
+  });
+
+  it("puanlanamayan çağrı geçmiş ortalamasını da bozmaz", () => {
+    // history: 3 × 70 puanlanabilir + 1 × 0 puanlanamaz.
+    //   elenince  → n=3, ortalama 70    → w2 (85) sapması +15
+    //   elenmezse → n=4, ortalama 52.5  → w2 (85) sapması +32.5
+    // BIGGEST_LOSS w1'i alıyor, STANDOUT w2'ye düşüyor; ortalama iki halde de
+    // farklı olduğu için bu iddia gerçekten ayırt ediyor.
+    const history = [
+      ev({ id: "h1", score: 70 }),
+      ev({ id: "h2", score: 70 }),
+      ev({ id: "h3", score: 70 }),
+      ev({ id: "hjunk", score: 0, reportData: { scorable: false } }),
+    ];
+    const b = build([ev({ id: "w1", score: 70 }), ev({ id: "w2", score: 85 })], history);
+    const standout = b.picks.find((p) => p.reason === "STANDOUT_UP");
+    expect(standout?.evaluationId).toBe("w2");
+    expect(standout?.reasonData).toMatchObject({ average: 70, deviation: 15 });
+  });
+
   it("her satır müşteri adı, tarih ve skoru taşır", () => {
     const b = build([ev({ id: "w1", customerName: "Mehmet Kaya", callDate: "2026-09-15T09:00:00.000Z", score: 66 })]);
     expect(b.picks[0]).toMatchObject({
