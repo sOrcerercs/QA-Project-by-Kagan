@@ -14,6 +14,20 @@ import type { Lang } from "@/app/lib/i18n";
  * fonksiyonlarda yapılıyor, burası yalnızca yetki ve veri toplama.
  */
 
+/**
+ * Depodaki en geniş okuma sorgularından biri: 4 hafta × kapsanan tüm
+ * danışmanlar × tam reportData JSONB. ADMIN kapsamında bu tüm organizasyon
+ * (~750 satır) ve bu predicate'i karşılayan indeks yok. Vercel Hobby tavanı
+ * zaten 60 sn; tavanı yazmak sessiz zaman aşımını gürültülü hataya çevirir
+ * (bkz. CLAUDE.md — bu kod tabanında bir kez gerçek regresyona sebep oldu).
+ *
+ * NOT: geçmiş satırlarında reportData ÇEKİLMEMEZLİK edilemez. isScorable()
+ * puanlanamayan çağrıyı reportData.scorable'dan okuyor ve buildBriefing
+ * history'yi de bu filtreden geçiriyor; dar bir geçmiş sorgusu o filtreyi
+ * sessizce etkisizleştirir ve ortalamayı yeniden bozardı.
+ */
+export const maxDuration = 60;
+
 /** Tekrar sinyalinin okunduğu geçmiş pencere; brifing haftası dahil. */
 const WINDOW_WEEKS = 4;
 
