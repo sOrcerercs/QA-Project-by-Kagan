@@ -157,3 +157,17 @@ export function selectRecurringWeakness(
       },
     }));
 }
+
+/** Haftanın en çok puan kaybedilen çağrılarını sıralar. Kayıpsızlar elenir. */
+export function selectBiggestLoss(week: BriefingEval[]): Candidate[] {
+  return week
+    .map((e) => ({ e, loss: evaluationLoss(e) }))
+    .filter(({ loss }) => loss > 0)
+    // Beraberlik id ile çözülür — sıralama toplam olmalı.
+    .sort((a, b) => (b.loss !== a.loss ? b.loss - a.loss : a.e.id < b.e.id ? -1 : 1))
+    .map(({ e, loss }) => ({
+      evaluationId: e.id,
+      reason: "BIGGEST_LOSS" as const,
+      reasonData: { loss: Math.round(loss * 100) / 100 },
+    }));
+}

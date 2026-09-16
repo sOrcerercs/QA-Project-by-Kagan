@@ -136,3 +136,35 @@ describe("selectRecurringWeakness", () => {
     expect(first.map((c) => c.evaluationId)).toEqual(second.map((c) => c.evaluationId));
   });
 });
+
+import { selectBiggestLoss } from "./coachingBriefing";
+
+describe("selectBiggestLoss", () => {
+  it("kaybı büyükten küçüğe sıralar", () => {
+    const week = [
+      ev({ id: "w1", score: 90 }),
+      ev({ id: "w2", score: 55 }),
+      ev({ id: "w3", score: 78 }),
+    ];
+    const out = selectBiggestLoss(week);
+    expect(out.map((c) => c.evaluationId)).toEqual(["w2", "w3", "w1"]);
+    expect(out[0].reason).toBe("BIGGEST_LOSS");
+    expect(out[0].reasonData.loss).toBe(45);
+  });
+
+  it("kusursuz çağrıları eler", () => {
+    const week = [ev({ id: "w1", score: 100 }), ev({ id: "w2", score: 70 })];
+    expect(selectBiggestLoss(week).map((c) => c.evaluationId)).toEqual(["w2"]);
+  });
+
+  it("boş haftada boş döner", () => {
+    expect(selectBiggestLoss([])).toEqual([]);
+  });
+
+  it("eşit kayıpta id'ye göre belirlenimci sıralar", () => {
+    const a = selectBiggestLoss([ev({ id: "wB", score: 70 }), ev({ id: "wA", score: 70 })]);
+    const b = selectBiggestLoss([ev({ id: "wA", score: 70 }), ev({ id: "wB", score: 70 })]);
+    expect(a.map((c) => c.evaluationId)).toEqual(["wA", "wB"]);
+    expect(a.map((c) => c.evaluationId)).toEqual(b.map((c) => c.evaluationId));
+  });
+});
