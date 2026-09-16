@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { evaluationLoss, selectRecurringWeakness, type BriefingEval } from "./coachingBriefing";
+import {
+  evaluationLoss,
+  selectRecurringWeakness,
+  selectBiggestLoss,
+  selectStandout,
+  pickEvidence,
+  type BriefingEval,
+} from "./coachingBriefing";
 
 function ev(over: Partial<BriefingEval> = {}): BriefingEval {
   return {
@@ -137,8 +144,6 @@ describe("selectRecurringWeakness", () => {
   });
 });
 
-import { selectBiggestLoss } from "./coachingBriefing";
-
 describe("selectBiggestLoss", () => {
   it("kaybı büyükten küçüğe sıralar", () => {
     const week = [
@@ -168,8 +173,6 @@ describe("selectBiggestLoss", () => {
     expect(a.map((c) => c.evaluationId)).toEqual(b.map((c) => c.evaluationId));
   });
 });
-
-import { selectStandout } from "./coachingBriefing";
 
 describe("selectStandout", () => {
   const history = [
@@ -219,5 +222,73 @@ describe("selectStandout", () => {
     const b = selectStandout([ev({ id: "wA", score: 55 }), ev({ id: "wB", score: 85 })], history);
     expect(a.map((c) => c.evaluationId)).toEqual(["wA", "wB"]);
     expect(a.map((c) => c.evaluationId)).toEqual(b.map((c) => c.evaluationId));
+  });
+});
+
+const blockWith = {
+  passedCriteria: [
+    {
+      id: "A1", label: "Kimlik ve İzin", earned: 3, weight: 3,
+      evidence: [{ speaker: "Danışman", timestamp: "00:11", text: "This is Billy from Estenove." }],
+    },
+  ],
+  weakCriteria: [
+    {
+      id: "A3", label: "Medikal Profil", loss: 0.75, weight: 1.5, score: 50,
+      whatHappened: "Takip sorusu sorulmadı.",
+      shouldHaveSaid: "Was it done in Turkey?",
+      evidence: [{ speaker: "Danışman", timestamp: "00:54", text: "Okay. Perfect." }],
+    },
+    {
+      id: "C3", label: "Kapanış Disiplini", loss: 2.25, weight: 3, score: 25,
+      shouldHaveSaid: "Yarın 14:00'te arıyorum, teyit ediyorum.",
+      evidence: [
+        { speaker: "Danışman", timestamp: "07:02", text: "Fotoğrafları alınca ararım." },
+        { speaker: "Danışan", timestamp: "07:09", text: "Tamam." },
+        { speaker: "Danışman", timestamp: "07:20", text: "Görüşürüz." },
+      ],
+    },
+  ],
+};
+
+describe("pickEvidence", () => {
+  it("tekrar eden zayıflıkta O kriterin kanıtını ve shouldHaveSaid'ini verir", () => {
+    const d = pickEvidence(ev({ reportData: blockWith }), "RECURRING_WEAKNESS", { criterionId: "A3" });
+    expect(d.criterionLabel).toBe("Medikal Profil");
+    expect(d.shouldHaveSaid).toBe("Was it done in Turkey?");
+    expect(d.evidence).toEqual([{ speakerLabel: "Danışman", ts: "00:54", text: "Okay. Perfect." }]);
+  });
+
+  it("en büyük kayıpta en çok puan kaybettiren maddeye bakar", () => {
+    const d = pickEvidence(ev({ reportData: blockWith }), "BIGGEST_LOSS", {});
+    expect(d.criterionLabel).toBe("Kapanış Disiplini");
+    expect(d.shouldHaveSaid).toBe("Yarın 14:00'te arıyorum, teyit ediyorum.");
+  });
+
+  it("kanıtı en fazla ikiyle sınırlar", () => {
+    const d = pickEvidence(ev({ reportData: blockWith }), "BIGGEST_LOSS", {});
+    expect(d.evidence).toHaveLength(2);
+  });
+
+  it("pozitif gerekçede iyi yapılan maddenin kanıtını verir, shouldHaveSaid vermez", () => {
+    const d = pickEvidence(ev({ reportData: blockWith }), "GOOD_EXAMPLE", {});
+    expect(d.criterionLabel).toBe("Kimlik ve İzin");
+    expect(d.shouldHaveSaid).toBeNull();
+    expect(d.evidence[0].text).toBe("This is Billy from Estenove.");
+  });
+
+  it("STANDOUT_UP de pozitif sayılır", () => {
+    const d = pickEvidence(ev({ reportData: blockWith }), "STANDOUT_UP", {});
+    expect(d.criterionLabel).toBe("Kimlik ve İzin");
+  });
+
+  it("blok yoksa boş detay döner, çökmez", () => {
+    const d = pickEvidence(ev({ reportData: null, weakCriteria: null }), "BIGGEST_LOSS", {});
+    expect(d).toEqual({ evidence: [], shouldHaveSaid: null, criterionLabel: null });
+  });
+
+  it("aranan kriter blokta yoksa en büyük kayba düşer", () => {
+    const d = pickEvidence(ev({ reportData: blockWith }), "RECURRING_WEAKNESS", { criterionId: "ZZ" });
+    expect(d.criterionLabel).toBe("Kapanış Disiplini");
   });
 });

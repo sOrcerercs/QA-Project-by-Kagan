@@ -203,3 +203,68 @@ export function selectStandout(week: BriefingEval[], history: BriefingEval[]): C
       },
     }));
 }
+
+/** Bir seçimde gösterilen en fazla kanıt sayısı. Kart zaten tamamını taşıyor. */
+export const MAX_EVIDENCE = 2;
+
+export interface BriefingEvidence {
+  speakerLabel: string | null;
+  ts: string | null;
+  text: string;
+}
+
+export interface PickDetail {
+  evidence: BriefingEvidence[];
+  shouldHaveSaid: string | null;
+  criterionLabel: string | null;
+}
+
+const POSITIVE_REASONS: ReasonCode[] = ["GOOD_EXAMPLE", "STANDOUT_UP"];
+
+/** Gerekçenin pozitif olup olmadığı. Kanıtın hangi listeden geleceğini belirler. */
+export function isPositiveReason(reason: ReasonCode): boolean {
+  return POSITIVE_REASONS.includes(reason);
+}
+
+const EMPTY: PickDetail = { evidence: [], shouldHaveSaid: null, criterionLabel: null };
+
+function toEvidence(list: { speakerLabel: string | null; ts: string | null; text: string }[]): BriefingEvidence[] {
+  return list
+    .filter((x) => x.text.trim() !== "")
+    .slice(0, MAX_EVIDENCE)
+    .map((x) => ({ speakerLabel: x.speakerLabel, ts: x.ts, text: x.text }));
+}
+
+/**
+ * Seçilen çağrıdan gerekçeye uygun kanıtı çıkarır.
+ *
+ * Pozitif gerekçelerde kanıt "doğru yapılanlar" listesinden, negatiflerde
+ * kırık maddeden gelir. RECURRING_WEAKNESS aranan kriteri bulamazsa en çok
+ * puan kaybettiren maddeye düşer — blok değişmiş ya da eski kayıt olabilir.
+ */
+export function pickEvidence(e: BriefingEval, reason: ReasonCode, reasonData: ReasonData): PickDetail {
+  const card = buildReportCard({ reportData: e.reportData, weakCriteria: e.weakCriteria });
+
+  if (isPositiveReason(reason)) {
+    const best = card.passed.find((p) => p.evidence.length > 0) ?? card.passed[0];
+    if (!best) return EMPTY;
+    return { evidence: toEvidence(best.evidence), shouldHaveSaid: null, criterionLabel: best.label };
+  }
+
+  const byId = reasonData.criterionId
+    ? card.faults.find((f) => f.id === reasonData.criterionId)
+    : undefined;
+  // Beraberlik kriter id'siyle çözülür — hangi maddenin kanıtı gösterileceği
+  // karar olduğu için sıralama toplam olmalı.
+  const byLoss = [...card.faults].sort(
+    (a, b) => ((b.loss ?? 0) !== (a.loss ?? 0) ? (b.loss ?? 0) - (a.loss ?? 0) : a.id < b.id ? -1 : 1)
+  )[0];
+  const fault = byId ?? byLoss;
+  if (!fault) return EMPTY;
+
+  return {
+    evidence: toEvidence(fault.evidence),
+    shouldHaveSaid: fault.shouldHaveSaid,
+    criterionLabel: fault.label,
+  };
+}
