@@ -204,6 +204,20 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // window.print() tüm uygulama kabuğunu basıyordu — kenar çubuğu, topbar,
+  // bildirim zili, mobil sekme çubuğu. Kabuğu gizleyen kural yalnızca bu
+  // öznitelik varken geçerli; diğer sayfaların yazdırma davranışı değişmez.
+  // (Kural LandingPage.module.css'te: topbar bir <header> değil, class'lı div.)
+  const handlePrint = () => {
+    document.documentElement.setAttribute("data-printing", "briefing");
+    const cleanup = () => {
+      document.documentElement.removeAttribute("data-printing");
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
+    window.print();
+  };
+
   const shiftWeek = (delta: number) => {
     if (!data) return;
     const d = new Date(data.weekStart);
@@ -222,7 +236,7 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
           <button onClick={() => shiftWeek(-1)}>{t.prev}</button>
           <button onClick={() => setWeek(null)}>{t.thisWeek}</button>
           <button onClick={() => shiftWeek(1)}>{t.next}</button>
-          <button onClick={() => window.print()}>{t.print}</button>
+          <button onClick={handlePrint}>{t.print}</button>
         </div>
       </div>
 

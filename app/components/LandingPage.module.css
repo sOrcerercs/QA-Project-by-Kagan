@@ -962,3 +962,33 @@
   .statGrid3 { grid-template-columns: 1fr 1fr; }
   .compareStatsRow { grid-template-columns: 1fr 1fr 1fr; }
 }
+
+/* ── Yazdırma: koçluk brifingi ─────────────────────────────────────────────
+   Yalnızca html[data-printing="briefing"] varken geçerli. Özniteliği
+   CoachingBriefingView'in yazdır düğmesi koyar, afterprint kaldırır; başka
+   hiçbir sayfanın yazdırma davranışı değişmez.
+
+   Kural globals.css'te eleman seçicisiyle (aside/nav/header) yazılamıyor:
+   topbar bir <header> değil, <div class={styles.tb}>. Sınıflar CSS module
+   olduğu için doğru yer bu dosya. */
+@media print {
+  html[data-printing="briefing"] .sb,
+  html[data-printing="briefing"] .tb,
+  html[data-printing="briefing"] .bottomBar,
+  html[data-printing="briefing"] .drawerBackdrop {
+    display: none !important;
+  }
+  /* .shell 240px + 1fr'lik bir grid; kenar çubuğu gizlenince içerik o 240px'lik
+     ilk sütuna düşerdi. Yazdırırken tek akışa indir. */
+  html[data-printing="briefing"] .shell {
+    display: block !important;
+    min-height: 0 !important;
+  }
+  /* overflow: hidden / overflow-y: auto çıktıyı tek sayfaya kırpıyor. */
+  html[data-printing="briefing"] .shellMain,
+  html[data-printing="briefing"] .shellContent {
+    overflow: visible !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+}
