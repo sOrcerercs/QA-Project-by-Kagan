@@ -380,28 +380,79 @@ describe("buildBriefing", () => {
   });
 
   it("aynı çağrıyı iki kez seçmez", () => {
+    // w0..w9 skorları 90, 85, …, 45; geçmiş 6 × 80 → ortalama 80.
+    //   kayıp (blok yok → 100 − skor): w9 en büyük (55) → BIGGEST_LOSS w9
+    //   sapma: w9 −35 (en büyük mutlak) ama w9 KULLANILDI → sıradaki w8 (−30)
+    //   pozitif garantisi: reportData null → hiçbir çağrıda kanıt yok, düşer
+    //   az çağrı hâli: 10 > 3 → çalışmaz
+    // Dedupsuz olsaydı w9 iki kez gelirdi; tam eşitlik bunu sabitliyor.
     const week = Array.from({ length: 10 }, (_, i) => ev({ id: `w${i}`, score: 90 - i * 5 }));
     const history = Array.from({ length: 6 }, (_, i) => ev({ id: `h${i}`, score: 80 }));
-    const ids = build(week, history).picks.map((p) => p.evaluationId);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it("çok çağrıda seçiciden en fazla üç, artı pozitif garantisiyle en fazla dört satır verir", () => {
-    const week = Array.from({ length: 20 }, (_, i) =>
-      ev({ id: `w${i}`, score: 90 - i * 3, reportData: { passedCriteria: [{ id: "A1", label: "Kimlik", evidence: [{ speaker: "Danışman", timestamp: "00:05", text: "Merhaba" }] }] } })
-    );
-    const history = Array.from({ length: 6 }, (_, i) => ev({ id: `h${i}`, score: 80 }));
     const b = build(week, history);
-    expect(b.picks.length).toBeGreaterThanOrEqual(3);
-    expect(b.picks.length).toBeLessThanOrEqual(4);
+    expect(b.picks.map((p) => p.reason)).toEqual(["BIGGEST_LOSS", "STANDOUT_DOWN"]);
+    expect(b.picks.map((p) => p.evaluationId)).toEqual(["w9", "w8"]);
+    expect(b.picks).toHaveLength(2);
   });
 
-  it("hepsi negatifse pozitif garantisi bir satır ekler", () => {
+  it("üç seçici de ateşlenip hiçbiri pozitif değilse dördüncü satır eklenir", () => {
+    // Geçmiş: 4 × skor 70, hepsinde C3 zayıf → ortalama 70, C3 occurrences 4.
+    // Hafta (hepsinde iyi örnek kanıtı olan blok, ağırlık yok → kayıp = 100 − skor):
+    //   w1 45 · C3 skor 10   w2 50 · C3 skor 30   w3 40   w4 55   w5 72
+    //
+    //   RECURRING  (C3, hafta içi kriter skoru artan): w1(10), w2(30)  → w1
+    //   BIGGEST_LOSS (kayıp azalan): w3 60, w1 55, w2 50, w4 45, w5 28 → w3
+    //   STANDOUT (|sapma| azalan, eşik 5): w3 −30, w1 −25, w2 −20, w4 −15
+    //     (w5 +2 eşiğin altında)                                       → w2
+    //   üçü de negatif → pozitif garantisi: kalanlar w4(55), w5(72),
+    //     skor azalan                                                  → w5
+    //   az çağrı hâli: 5 > 3 → çalışmaz
+    const good = {
+      passedCriteria: [
+        { id: "A1", label: "Kimlik", evidence: [{ speaker: "Danışman", timestamp: "00:05", text: "Merhaba" }] },
+      ],
+    };
+    const c3 = (score: number) => [{ id: "C3", label: "Kapanış", score }];
+    const history = Array.from({ length: 4 }, (_, i) =>
+      ev({ id: `h${i}`, score: 70, weakCriteria: c3(40) })
+    );
+    const week = [
+      ev({ id: "w1", score: 45, reportData: good, weakCriteria: c3(10) }),
+      ev({ id: "w2", score: 50, reportData: good, weakCriteria: c3(30) }),
+      ev({ id: "w3", score: 40, reportData: good }),
+      ev({ id: "w4", score: 55, reportData: good }),
+      ev({ id: "w5", score: 72, reportData: good }),
+    ];
+    const b = build(week, history);
+    expect(b.picks.map((p) => p.reason)).toEqual([
+      "RECURRING_WEAKNESS",
+      "BIGGEST_LOSS",
+      "STANDOUT_DOWN",
+      "GOOD_EXAMPLE",
+    ]);
+    expect(b.picks.map((p) => p.evaluationId)).toEqual(["w1", "w3", "w2", "w5"]);
+    expect(b.picks).toHaveLength(4);
+    expect(b.picks[0].reasonData).toMatchObject({
+      criterionId: "C3", criterionLabel: "Kapanış", occurrences: 4, windowWeeks: 4,
+    });
+    expect(b.picks[1].reasonData.loss).toBe(60);
+    expect(b.picks[2].reasonData).toMatchObject({ deviation: -20, average: 70 });
+  });
+
+  it("hepsi negatifse pozitif garantisi tam bir satır ekler", () => {
+    // w0..w7 skorları 40..47, hepsinde iyi örnek kanıtı; geçmiş 6 × 80.
+    //   RECURRING: geçmişte hiç weakCriteria yok                    → düşer
+    //   BIGGEST_LOSS: kayıp 60, 59, …, 53 → en büyüğü w0            → w0
+    //   STANDOUT: sapma −40 … −33, hepsi eşiğin üstünde; w0 kullanıldı → w1
+    //   pozitif yok → garanti: kalanlar w2..w7, skor azalan          → w7 (47)
     const good = { passedCriteria: [{ id: "A1", label: "Kimlik", evidence: [{ speaker: "Danışman", timestamp: "00:05", text: "Merhaba" }] }] };
     const week = Array.from({ length: 8 }, (_, i) => ev({ id: `w${i}`, score: 40 + i, reportData: good }));
     const history = Array.from({ length: 6 }, (_, i) => ev({ id: `h${i}`, score: 80 }));
     const b = build(week, history);
-    expect(b.picks.some((p) => p.reason === "GOOD_EXAMPLE" || p.reason === "STANDOUT_UP")).toBe(true);
+    expect(b.picks.map((p) => p.reason)).toEqual(["BIGGEST_LOSS", "STANDOUT_DOWN", "GOOD_EXAMPLE"]);
+    expect(b.picks.map((p) => p.evaluationId)).toEqual(["w0", "w1", "w7"]);
+    expect(b.picks).toHaveLength(3);
+    // Pozitif satır kanıtlı gelir — kanıtsız "iyi örnek" gösterilmez.
+    expect(b.picks[2].evidence).toEqual([{ speakerLabel: "Danışman", ts: "00:05", text: "Merhaba" }]);
   });
 
   it("üç seçici de dolduğunda ve içinde pozitif varsa dördüncü satır eklenmez", () => {
