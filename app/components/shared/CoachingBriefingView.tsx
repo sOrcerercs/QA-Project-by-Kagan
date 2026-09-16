@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { reasonBadge, reasonText } from "@/app/lib/coachingBriefingText";
 import type { AgentBriefing, BriefingPick } from "@/app/lib/coachingBriefing";
+import { isoWeekKey } from "@/app/lib/isoWeek";
 import styles from "./CoachingBriefingView.module.css";
 
 interface Payload {
@@ -168,18 +169,25 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
+  const reqId = useRef(0);
+
   const load = useCallback(async () => {
+    const myId = ++reqId.current;
     setLoading(true);
     setFailed(false);
     try {
       const qs = week ? `?week=${encodeURIComponent(week)}` : "";
       const res = await fetch(`/api/reports/coaching-briefing${qs}`);
       if (!res.ok) throw new Error(String(res.status));
-      setData(await res.json());
+      const json = await res.json();
+      // Daha yeni bir istek başladıysa bu yanıt bayattır; yazma.
+      if (myId !== reqId.current) return;
+      setData(json);
     } catch {
+      if (myId !== reqId.current) return;
       setFailed(true);
     } finally {
-      setLoading(false);
+      if (myId === reqId.current) setLoading(false);
     }
   }, [week]);
 
@@ -189,13 +197,7 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
     if (!data) return;
     const d = new Date(data.weekStart);
     d.setDate(d.getDate() + delta * 7);
-    const year = d.getFullYear();
-    // Sunucu anahtarı yeniden üretiyor; burada yalnızca tarihten anahtar kurulur.
-    const jan4 = new Date(year, 0, 4);
-    const firstMon = new Date(jan4);
-    firstMon.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-    const n = Math.round((d.getTime() - firstMon.getTime()) / (7 * 86400000)) + 1;
-    setWeek(`${year}-W${String(n).padStart(2, "0")}`);
+    setWeek(isoWeekKey(d));
   };
 
   return (
