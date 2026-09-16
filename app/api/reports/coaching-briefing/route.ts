@@ -4,6 +4,7 @@ import { getUserFromToken } from "@/app/lib/auth";
 import { resolveScopedAgentIds, REPORTABLE_ROLES } from "@/app/lib/reportScope";
 import { parseWeekKey, weekStart, weekEnd, isoWeekKey } from "@/app/lib/isoWeek";
 import { buildBriefing, type BriefingEval, type AgentBriefing } from "@/app/lib/coachingBriefing";
+import type { Lang } from "@/app/lib/i18n";
 
 /**
  * Haftalık koçluk brifingi.
@@ -26,6 +27,15 @@ export async function GET(req: NextRequest) {
   const weekParam = params.get("week");
   const range = weekParam ? parseWeekKey(weekParam) : { start: weekStart(new Date()), end: weekEnd(new Date()) };
   if (!range) return NextResponse.json({ error: "Geçersiz week. Beklenen biçim: YYYY-Www" }, { status: 400 });
+
+  // Kanıt etiketleri ve "ne demeliydi" satırı karttan dile duyarlı okunuyor;
+  // bu yüzden dil route sınırını geçmek zorunda. Geçersiz değer sessizce
+  // varsayılana DÜŞMEZ; 400 döner.
+  const langParam = params.get("lang");
+  if (langParam !== null && langParam !== "tr" && langParam !== "en") {
+    return NextResponse.json({ error: "Geçersiz lang. Beklenen: tr veya en" }, { status: 400 });
+  }
+  const lang: Lang = langParam ?? "tr";
 
   const requestedIds = (params.get("agentIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const { scopedAgentIds, error } = await resolveScopedAgentIds(user, requestedIds);
@@ -102,6 +112,7 @@ export async function GET(req: NextRequest) {
           week: all.filter((e) => new Date(e.callDate) >= range.start),
           history: all,
           windowWeeks: WINDOW_WEEKS,
+          lang,
         })
       )
       .sort((a, b) => a.agentName.localeCompare(b.agentName, "tr"));

@@ -259,6 +259,19 @@ const blockWith = {
   ],
 };
 
+/** Promptun hazır çevirisini taşıyan blok — "<alan>En" alanları. */
+const blockBilingual = {
+  weakCriteria: [
+    {
+      id: "C3", label: "Kapanış Disiplini", labelEn: "Closing Discipline",
+      loss: 2.25, weight: 3,
+      shouldHaveSaid: "Yarın 14:00'te arıyorum.",
+      shouldHaveSaidEn: "I will call you tomorrow at 2 pm.",
+      evidence: [{ speaker: "Danışman", timestamp: "07:02", text: "Fotoğrafları alınca ararım." }],
+    },
+  ],
+};
+
 describe("pickEvidence", () => {
   it("tekrar eden zayıflıkta O kriterin kanıtını ve shouldHaveSaid'ini verir", () => {
     const d = pickEvidence(ev({ reportData: blockWith }), "RECURRING_WEAKNESS", { criterionId: "A3" });
@@ -293,6 +306,18 @@ describe("pickEvidence", () => {
   it("blok yoksa boş detay döner, çökmez", () => {
     const d = pickEvidence(ev({ reportData: null, weakCriteria: null }), "BIGGEST_LOSS", {});
     expect(d).toEqual({ evidence: [], shouldHaveSaid: null, criterionLabel: null });
+  });
+
+  it("lang=en etiketi ve shouldHaveSaid'i İngilizce alanlardan okur", () => {
+    const tr = pickEvidence(ev({ reportData: blockBilingual }), "BIGGEST_LOSS", {});
+    expect(tr.criterionLabel).toBe("Kapanış Disiplini");
+    expect(tr.shouldHaveSaid).toBe("Yarın 14:00'te arıyorum.");
+
+    const en = pickEvidence(ev({ reportData: blockBilingual }), "BIGGEST_LOSS", {}, "en");
+    expect(en.criterionLabel).toBe("Closing Discipline");
+    expect(en.shouldHaveSaid).toBe("I will call you tomorrow at 2 pm.");
+    // Alıntı ASLA çevrilmez — tasarım gereği hep orijinal dilinde kalır.
+    expect(en.evidence[0].text).toBe("Fotoğrafları alınca ararım.");
   });
 
   it("aranan kriter blokta yoksa en büyük kayba düşer", () => {
@@ -414,6 +439,16 @@ describe("buildBriefing", () => {
     const standout = b.picks.find((p) => p.reason === "STANDOUT_UP");
     expect(standout?.evaluationId).toBe("w2");
     expect(standout?.reasonData).toMatchObject({ average: 70, deviation: 15 });
+  });
+
+  it("lang'i kanıt çıkarmaya kadar geçirir", () => {
+    const b = buildBriefing({
+      agentId: "a1", agentName: "Ayşe Yıldız", windowWeeks: 4, lang: "en",
+      week: [ev({ id: "w1", score: 60, reportData: blockBilingual })],
+      history: [],
+    });
+    expect(b.picks[0].criterionLabel).toBe("Closing Discipline");
+    expect(b.picks[0].shouldHaveSaid).toBe("I will call you tomorrow at 2 pm.");
   });
 
   it("her satır müşteri adı, tarih ve skoru taşır", () => {

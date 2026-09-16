@@ -49,6 +49,17 @@ describe("GET /api/reports/coaching-briefing", () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
+  it("geçersiz lang değerinde 400 döner, varsayılana düşmez", async () => {
+    const res = await GET(req(`${BASE}?lang=de`));
+    expect(res.status).toBe(400);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("lang verilmezse tr varsayılır ve sorgu çalışır", async () => {
+    const res = await GET(req(BASE));
+    expect(res.status).toBe(200);
+  });
+
   it("yetki hatası scope katmanından gelirse onun durumunu yansıtır", async () => {
     resolveScopedAgentIds.mockResolvedValue({
       scopedAgentIds: null,

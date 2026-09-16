@@ -176,8 +176,11 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
     setLoading(true);
     setFailed(false);
     try {
-      const qs = week ? `?week=${encodeURIComponent(week)}` : "";
-      const res = await fetch(`/api/reports/coaching-briefing${qs}`);
+      // lang sunucuya gider: kriter etiketi ve "ne demeliydi" satırı karttan
+      // dile duyarlı okunuyor, istemcide çevrilemez.
+      const qs = new URLSearchParams({ lang });
+      if (week) qs.set("week", week);
+      const res = await fetch(`/api/reports/coaching-briefing?${qs}`);
       if (!res.ok) throw new Error(String(res.status));
       const json = await res.json();
       // Daha yeni bir istek başladıysa bu yanıt bayattır; yazma.
@@ -189,7 +192,7 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
     } finally {
       if (myId === reqId.current) setLoading(false);
     }
-  }, [week]);
+  }, [week, lang]);
 
   useEffect(() => { load(); }, [load]);
 

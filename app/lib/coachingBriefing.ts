@@ -14,6 +14,7 @@
  */
 
 import { buildReportCard } from "./reportCard";
+import type { Lang } from "./i18n";
 
 export type ReasonCode =
   | "RECURRING_WEAKNESS"
@@ -261,8 +262,16 @@ function toEvidence(list: { speakerLabel: string | null; ts: string | null; text
  * kırık maddeden gelir. RECURRING_WEAKNESS aranan kriteri bulamazsa en çok
  * puan kaybettiren maddeye düşer — blok değişmiş ya da eski kayıt olabilir.
  */
-export function pickEvidence(e: BriefingEval, reason: ReasonCode, reasonData: ReasonData): PickDetail {
-  const card = buildReportCard({ reportData: e.reportData, weakCriteria: e.weakCriteria });
+export function pickEvidence(
+  e: BriefingEval,
+  reason: ReasonCode,
+  reasonData: ReasonData,
+  lang: Lang = "tr"
+): PickDetail {
+  // Kartın "<alan>En" alanları yalnızca lang="en" geçildiğinde okunuyor;
+  // criterionLabel ve shouldHaveSaid İngilizce kullanıcıya bu yolla ulaşıyor.
+  // Alıntılar dile duyarlı DEĞİL — tasarım gereği hep orijinal dilinde kalır.
+  const card = buildReportCard({ reportData: e.reportData, weakCriteria: e.weakCriteria, lang });
 
   if (isPositiveReason(reason)) {
     const best = card.passed.find((p) => p.evidence.length > 0) ?? card.passed[0];
@@ -321,6 +330,8 @@ export interface BuildBriefingInput {
   /** Geçmiş pencere — brifing haftası DAHİL (spec: 4 hafta). */
   history: BriefingEval[];
   windowWeeks: number;
+  /** Kanıt/etiket metinlerinin dili. Seçim mantığı dilden etkilenmez. */
+  lang?: Lang;
 }
 
 /**
@@ -334,7 +345,7 @@ export interface BuildBriefingInput {
  * görmemeli (bkz. spec, "Az çağrı hâli").
  */
 export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
-  const { agentId, agentName, windowWeeks } = input;
+  const { agentId, agentName, windowWeeks, lang = "tr" } = input;
 
   // Puanlanamayan çağrılar en başta elenir: seçicilere, çağrı sayısına,
   // ortalamaya ve geçmiş penceresine hiç girmezler. Tek yerde elemek
@@ -373,7 +384,7 @@ export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
   if (!chosen.some((c) => isPositiveReason(c.reason))) {
     const candidate = week
       .filter((e) => !used.has(e.id))
-      .map((e) => ({ e, detail: pickEvidence(e, "GOOD_EXAMPLE", {}) }))
+      .map((e) => ({ e, detail: pickEvidence(e, "GOOD_EXAMPLE", {}, lang) }))
       .filter(({ detail }) => detail.evidence.length > 0)
       // Beraberlik id ile çözülür — hangi çağrının iyi örnek olacağı karar.
       .sort((a, b) => (b.e.score !== a.e.score ? b.e.score - a.e.score : a.e.id < b.e.id ? -1 : 1))[0];
@@ -395,7 +406,7 @@ export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
 
   const picks: BriefingPick[] = chosen.map((c) => {
     const e = byId.get(c.evaluationId)!;
-    const detail = pickEvidence(e, c.reason, c.reasonData);
+    const detail = pickEvidence(e, c.reason, c.reasonData, lang);
     return {
       evaluationId: e.id,
       customerName: e.customerName,
