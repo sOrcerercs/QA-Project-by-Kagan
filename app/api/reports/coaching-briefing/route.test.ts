@@ -96,6 +96,29 @@ describe("GET /api/reports/coaching-briefing", () => {
     expect(body.agents[0].picks.length).toBeGreaterThan(0);
   });
 
+  it("sorguyu kapsanan danışmanlarla ve 4 haftalık pencereyle sınırlar", async () => {
+    // agentId: { in: scopedAgentIds } bu ucun YETKİ SINIRI; o spread'i düşüren
+    // bir refactor her takım liderine her takımın verisini açardı.
+    resolveScopedAgentIds.mockResolvedValue({ scopedAgentIds: ["a1", "a2"] });
+    await GET(req(`${BASE}?week=2026-W38`));
+    const arg = findMany.mock.calls[0][0];
+    expect(arg.where.agentId).toEqual({ in: ["a1", "a2"] });
+    expect(arg.where.unassigned).toBe(false);
+
+    // Pencere aritmetiği, elle türetme:
+    //   gte = weekStart − (WINDOW_WEEKS − 1) × 7 gün = weekStart − 21 gün
+    //   lte = weekEnd  = weekStart + 7 gün − 1 ms
+    //   fark = 28 gün − 1 ms → güne yuvarlanınca 28
+    const { gte, lte } = arg.where.callDate;
+    expect(Math.round((lte.getTime() - gte.getTime()) / 86400000)).toBe(28);
+  });
+
+  it("kapsam null iken agentId koşulu hiç eklenmez", async () => {
+    resolveScopedAgentIds.mockResolvedValue({ scopedAgentIds: null });
+    await GET(req(`${BASE}?week=2026-W38`));
+    expect(findMany.mock.calls[0][0].where).not.toHaveProperty("agentId");
+  });
+
   it("kadroda olup hiç çağrısı olmayan danışman da listede görünür", async () => {
     resolveScopedAgentIds.mockResolvedValue({ scopedAgentIds: ["a1", "a2"] });
     userFindMany.mockResolvedValue([
