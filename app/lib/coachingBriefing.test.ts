@@ -308,6 +308,26 @@ describe("pickEvidence", () => {
     expect(d).toEqual({ evidence: [], shouldHaveSaid: null, criterionLabel: null });
   });
 
+  it("kayıp bilinmiyorsa alfabetik ilkini değil en kötü kriteri etiketler", () => {
+    // Eski kayıtlarda madde ağırlığı yok → toFault loss: null, altScore: score.
+    // buildReportCard bunları altScore ARTAN sıralıyor, yani C3 (20) önce.
+    // Eskiden pickEvidence null kaybı 0'a çekip id alfabetiğine düşüyordu
+    // ve "Selamlama" (A1) etiketleniyordu.
+    const d = pickEvidence(
+      ev({
+        reportData: {
+          weakCriteria: [
+            { id: "A1", label: "Selamlama", score: 80 },
+            { id: "C3", label: "Kapanış", score: 20 },
+          ],
+        },
+      }),
+      "BIGGEST_LOSS",
+      {}
+    );
+    expect(d.criterionLabel).toBe("Kapanış");
+  });
+
   it("lang=en etiketi ve shouldHaveSaid'i İngilizce alanlardan okur", () => {
     const tr = pickEvidence(ev({ reportData: blockBilingual }), "BIGGEST_LOSS", {});
     expect(tr.criterionLabel).toBe("Kapanış Disiplini");

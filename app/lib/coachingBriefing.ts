@@ -282,12 +282,12 @@ export function pickEvidence(
   const byId = reasonData.criterionId
     ? card.faults.find((f) => f.id === reasonData.criterionId)
     : undefined;
-  // Beraberlik kriter id'siyle çözülür — hangi maddenin kanıtı gösterileceği
-  // karar olduğu için sıralama toplam olmalı.
-  const byLoss = [...card.faults].sort(
-    (a, b) => ((b.loss ?? 0) !== (a.loss ?? 0) ? (b.loss ?? 0) - (a.loss ?? 0) : a.id < b.id ? -1 : 1)
-  )[0];
-  const fault = byId ?? byLoss;
+  // buildReportCard faults'u zaten belirlenimci sıralı veriyor: kayıp azalan,
+  // kaybı bilinmeyenler sonda ve aralarında altScore ARTAN (en kötü kriter
+  // önce), sonra id. Burada yeniden sıralamak null kaybı 0'a çekip id
+  // alfabetiğine düşürüyordu; eski kayıtlarda (her fault loss: null) brifing
+  // bu yüzden en kötü kriteri değil alfabetik ilkini etiketliyordu.
+  const fault = byId ?? card.faults[0];
   if (!fault) return EMPTY;
 
   return {
