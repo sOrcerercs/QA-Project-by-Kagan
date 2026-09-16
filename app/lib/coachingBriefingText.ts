@@ -58,8 +58,9 @@ export function reasonText(reason: ReasonCode, data: ReasonData, lang: Lang): st
         : `Something was done well here; worth sharing with the team.`;
 
     case "ONLY_CALL":
-      return tr
-        ? `Bu hafta ${num(data.callCount, lang)} çağrı var; hepsi listede.`
+      if (tr) return `Bu hafta ${num(data.callCount, lang)} çağrı var; hepsi listede.`;
+      return data.callCount === 1
+        ? "1 call this week; it is listed."
         : `${num(data.callCount, lang)} calls this week; all of them are listed.`;
   }
 }

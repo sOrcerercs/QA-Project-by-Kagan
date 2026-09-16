@@ -44,4 +44,10 @@ describe("reasonText", () => {
     expect(() => reasonText("RECURRING_WEAKNESS", {}, "tr")).not.toThrow();
     expect(reasonText("BIGGEST_LOSS", {}, "tr").length).toBeGreaterThan(0);
   });
+
+  it("ONLY_CALL İngilizcesi tek çağrıda tekil yazar", () => {
+    expect(reasonText("ONLY_CALL", { callCount: 1 }, "en")).toContain("1 call this week");
+    expect(reasonText("ONLY_CALL", { callCount: 1 }, "en")).not.toContain("1 calls");
+    expect(reasonText("ONLY_CALL", { callCount: 3 }, "en")).toContain("3 calls");
+  });
 });
