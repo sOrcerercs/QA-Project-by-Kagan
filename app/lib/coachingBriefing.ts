@@ -300,6 +300,15 @@ export function pickEvidence(
 /** Üç seçiciden alınan en fazla satır. Pozitif garantisi bunun üstüne 1 ekleyebilir. */
 export const MAX_SELECTOR_PICKS = 3;
 
+/**
+ * Danışmanın o haftaki çağrılarının HEPSİNİN listelendiği üst sınır (dahil).
+ *
+ * Bugün seçim tavanıyla aynı sayı, ama AYRI bir ürün kuralı: tavan 4'e
+ * çekilseydi az-çağrı eşiğinin de kaymasını kimse istemezdi. Ayrı sabit,
+ * ayrı karar.
+ */
+export const LOW_VOLUME_MAX_CALLS = MAX_SELECTOR_PICKS;
+
 export interface BriefingPick {
   evaluationId: string;
   customerName: string;
@@ -340,9 +349,9 @@ export interface BuildBriefingInput {
  * Sıra: tekrar eden zayıflık → en büyük kayıp → sapma. Her seçiciden
  * kullanılmamış ilk aday alınır; en fazla MAX_SELECTOR_PICKS satır.
  * Sonra pozitif garantisi: listede hiç pozitif yoksa bir tane eklenir.
- * Son olarak, danışmanın o hafta MAX_SELECTOR_PICKS'ten az çağrısı varsa
- * geri kalanlar ONLY_CALL olarak eklenir — az çağrılı danışman boş ekran
- * görmemeli (bkz. spec, "Az çağrı hâli").
+ * Son olarak, danışmanın o hafta LOW_VOLUME_MAX_CALLS ya da daha az çağrısı
+ * varsa geri kalanlar ONLY_CALL olarak eklenir — az çağrılı danışman boş
+ * ekran görmemeli (bkz. spec, "Az çağrı hâli").
  */
 export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
   const { agentId, agentName, windowWeeks, lang = "tr" } = input;
@@ -394,9 +403,10 @@ export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
     }
   }
 
-  // Az çağrı hâli: 3'ten az çağrısı olan danışmanda kalanlar da listelensin.
-  // Çok çağrılı danışmanda bu adım hiç çalışmaz — seçim zaten anlamlı.
-  if (week.length <= MAX_SELECTOR_PICKS) {
+  // Az çağrı hâli: 3 ya da daha az çağrısı olan danışmanda kalanlar da
+  // listelensin. Çok çağrılı danışmanda bu adım hiç çalışmaz — seçim zaten
+  // anlamlı.
+  if (week.length <= LOW_VOLUME_MAX_CALLS) {
     for (const e of week) {
       if (used.has(e.id)) continue;
       used.add(e.id);
