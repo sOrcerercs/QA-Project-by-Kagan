@@ -1872,7 +1872,7 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
 
             {/* ── COACHING BRIEFING ── */}
             {activeTab === "briefing" && (isManagerLike || user.role === "TEAM_LEADER") && (
-              <CoachingBriefingView lang={lang} />
+              <CoachingBriefingView lang={lang} userRole={user.role} />
             )}
 
             {/* ── TEAM ── */}

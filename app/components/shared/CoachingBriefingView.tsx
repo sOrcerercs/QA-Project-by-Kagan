@@ -31,6 +31,8 @@ const L = {
     shouldHave: "Ne demeliydi:",
     open: "Değerlendirmeyi aç",
     print: "Yazdır",
+    allOrg: "Tüm organizasyon",
+    lensLabel: "Takım lideri merceği",
     markDone: "Koçluk yapıldı işaretle",
     done: "Koçluk yapıldı",
     saving: "Kaydediliyor…",
@@ -52,6 +54,8 @@ const L = {
     shouldHave: "Should have said:",
     open: "Open evaluation",
     print: "Print",
+    allOrg: "Whole organisation",
+    lensLabel: "Team leader lens",
     markDone: "Mark coaching done",
     done: "Coaching done",
     saving: "Saving…",
@@ -178,16 +182,69 @@ function PickRow({ pick, lang }: { pick: BriefingPick; lang: "tr" | "en" }) {
   );
 }
 
-export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
+export default function CoachingBriefingView({
+  lang,
+  userRole,
+}: {
+  lang: "tr" | "en";
+  userRole: string;
+}) {
   const t = L[lang];
+  // Mercek yalnızca kapsamı tüm organizasyon olan rollere gösterilir. Takım
+  // lideri zaten kendi takımını görüyor; ona seçici vermek anlamsız olurdu.
+  const isManagerLike = userRole === "ADMIN" || userRole === "MANAGER";
   const [week, setWeek] = useState<string | null>(null);
+  const [teams, setTeams] = useState<Array<{ id: string; name: string; leaderId: string }>>([]);
+  const [leaderId, setLeaderId] = useState("");
+  // null → tüm organizasyon. Mercek seçilince takımın id'leriyle dolar.
+  const [scopeIds, setScopeIds] = useState<string[] | null>(null);
+  // Mercek değişti ama üyeler henüz gelmedi: bu arada istek ATILMAZ, yoksa
+  // seçim yapılırken bir an tüm organizasyon görünür.
+  const [scopePending, setScopePending] = useState(false);
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
   const reqId = useRef(0);
 
+  useEffect(() => {
+    if (!isManagerLike) return;
+    let alive = true;
+    fetch("/api/teams")
+      .then((r) => (r.ok ? r.json() : { teams: [] }))
+      .then((d: { teams?: Array<{ id: string; name: string; leader: { id: string } | null }> }) => {
+        if (!alive) return;
+        setTeams(
+          (d.teams ?? [])
+            .filter((tm) => tm.leader)
+            .map((tm) => ({ id: tm.id, name: tm.name, leaderId: tm.leader!.id })),
+        );
+      })
+      .catch(() => { /* mercek yoksa ekran yine çalışır */ });
+    return () => { alive = false; };
+  }, [isManagerLike]);
+
+  useEffect(() => {
+    if (!leaderId) { setScopeIds(null); setScopePending(false); return; }
+    let alive = true;
+    setScopePending(true);
+    fetch(`/api/team/members?leaderId=${encodeURIComponent(leaderId)}`)
+      .then((r) => (r.ok ? r.json() : { members: [] }))
+      .then((d: { members?: Array<{ id: string }> }) => {
+        if (!alive) return;
+        // Takım lideri kendi takımının da bir üyesi sayılır: kendi çağrıları
+        // da değerlendiriliyor ve 1-1'de konuşulabilir olmalı.
+        setScopeIds([leaderId, ...(d.members ?? []).map((m) => m.id)]);
+      })
+      .catch(() => { if (alive) setScopeIds([leaderId]); })
+      .finally(() => { if (alive) setScopePending(false); });
+    return () => { alive = false; };
+  }, [leaderId]);
+
+  const scopeKey = scopeIds ? scopeIds.join(",") : "";
+
   const load = useCallback(async () => {
+    if (scopePending) return;
     const myId = ++reqId.current;
     setLoading(true);
     setFailed(false);
@@ -196,6 +253,10 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
       // dile duyarlı okunuyor, istemcide çevrilemez.
       const qs = new URLSearchParams({ lang });
       if (week) qs.set("week", week);
+      // Mercek `agentIds` ile geçer; route'a yeni parametre eklenmedi, çünkü
+      // resolveScopedAgentIds bunu ZATEN yetkiye göre süzüyor: bir takım lideri
+      // başka takımın id'lerini geçse bile düşerler.
+      if (scopeKey) qs.set("agentIds", scopeKey);
       const res = await fetch(`/api/reports/coaching-briefing?${qs}`);
       if (!res.ok) throw new Error(String(res.status));
       const json = await res.json();
@@ -208,7 +269,7 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
     } finally {
       if (myId === reqId.current) setLoading(false);
     }
-  }, [week, lang]);
+  }, [week, lang, scopeKey, scopePending]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -252,6 +313,19 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
         </div>
 
         <div className={`${styles.controls} ${styles.noPrint}`}>
+          {isManagerLike && teams.length > 0 && (
+            <select
+              className={styles.select}
+              aria-label={t.lensLabel}
+              value={leaderId}
+              onChange={(e) => setLeaderId(e.target.value)}
+            >
+              <option value="">{t.allOrg}</option>
+              {teams.map((tm) => (
+                <option key={tm.id} value={tm.leaderId}>{tm.name}</option>
+              ))}
+            </select>
+          )}
           <div className={styles.segment}>
             <button type="button" className={styles.segBtn} onClick={() => shiftWeek(-1)} title={t.prev}>
               ‹
