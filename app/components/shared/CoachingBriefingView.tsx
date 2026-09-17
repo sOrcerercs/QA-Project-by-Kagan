@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { reasonBadge, reasonText } from "@/app/lib/coachingBriefingText";
-import type { AgentBriefing, BriefingPick } from "@/app/lib/coachingBriefing";
+import type { AgentBriefing, BriefingPick, ReasonCode } from "@/app/lib/coachingBriefing";
 import { isoWeekKey } from "@/app/lib/isoWeek";
 import styles from "./CoachingBriefingView.module.css";
 
@@ -27,11 +27,11 @@ const L = {
     empty: "Bu hafta hiç değerlendirme yok.",
     noCalls: "Bu hafta çağrı yok.",
     calls: (n: number) => `${n} çağrı`,
-    avg: (n: number) => `ortalama ${n}`,
+    avgLabel: "ort.",
     shouldHave: "Ne demeliydi:",
     open: "Değerlendirmeyi aç",
     print: "Yazdır",
-    markDone: "Koçluk yapıldı olarak işaretle",
+    markDone: "Koçluk yapıldı işaretle",
     done: "Koçluk yapıldı",
     saving: "Kaydediliyor…",
     saveFailed: "Kaydedilemedi",
@@ -48,7 +48,7 @@ const L = {
     empty: "No evaluations this week.",
     noCalls: "No calls this week.",
     calls: (n: number) => `${n} calls`,
-    avg: (n: number) => `avg ${n}`,
+    avgLabel: "avg",
     shouldHave: "Should have said:",
     open: "Open evaluation",
     print: "Print",
@@ -59,14 +59,29 @@ const L = {
   },
 };
 
-const BADGE_TONE: Record<string, string> = {
-  RECURRING_WEAKNESS: "#c2410c",
-  BIGGEST_LOSS: "#b91c1c",
-  STANDOUT_DOWN: "#b45309",
-  STANDOUT_UP: "#15803d",
-  GOOD_EXAMPLE: "#15803d",
-  ONLY_CALL: "#4b5563",
+/**
+ * Gerekçe tonu. Değerler CSS değişkeni — sabit hex YAZILMAZ, yoksa koyu/açık
+ * temanın birinde kontrast düşer (önceki sürümde #b91c1c koyu temada ~2.5:1
+ * kalıyordu). Tonlar uygulamanın mevcut skor skalasıyla aynı ailedir, böylece
+ * brifing uygulamanın dilini konuşur.
+ *
+ * Record<ReasonCode, …>: yeni bir gerekçe kodu eklenirse derleme hatası verir.
+ */
+const TONE: Record<ReasonCode, string> = {
+  RECURRING_WEAKNESS: "var(--tone-warn)",
+  BIGGEST_LOSS: "var(--tone-bad)",
+  STANDOUT_DOWN: "var(--tone-warn)",
+  STANDOUT_UP: "var(--tone-good)",
+  GOOD_EXAMPLE: "var(--tone-good)",
+  ONLY_CALL: "var(--tone-flat)",
 };
+
+/** Skor rengi — LandingPage'deki mevcut konvansiyonun aynısı. */
+const scoreTone = (s: number) =>
+  s >= 85 ? "var(--tone-good)"
+    : s >= 70 ? "var(--accent)"
+      : s >= 55 ? "var(--tone-warn)"
+        : "var(--tone-bad)";
 
 function PickRow({ pick, lang }: { pick: BriefingPick; lang: "tr" | "en" }) {
   const t = L[lang];
@@ -103,46 +118,34 @@ function PickRow({ pick, lang }: { pick: BriefingPick; lang: "tr" | "en" }) {
     }
   };
 
+  const locale = lang === "tr" ? "tr-TR" : "en-GB";
+
   return (
-    <div style={{ borderTop: "1px solid var(--rule)", padding: "12px 0" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span
-          style={{
-            fontSize: 11, fontWeight: 600, letterSpacing: 0.3, textTransform: "uppercase",
-            color: BADGE_TONE[pick.reason] ?? "#4b5563",
-          }}
-        >
-          {reasonBadge(pick.reason, lang)}
+    // --pick-tone sol rayı ve rozeti birlikte besler; ton tek yerde durur.
+    <div className={styles.pick} style={{ ["--pick-tone" as string]: TONE[pick.reason] }}>
+      <div className={styles.pickHead}>
+        <span className={styles.badge}>{reasonBadge(pick.reason, lang)}</span>
+        {pick.criterionLabel && <span className={styles.criterion}>{pick.criterionLabel}</span>}
+        <span className={styles.customer}>{pick.customerName}</span>
+        <span className={styles.pickMeta}>
+          {new Date(pick.callDate).toLocaleDateString(locale, { day: "numeric", month: "short" })}
         </span>
-        {pick.criterionLabel && (
-          <span style={{ fontSize: 11, opacity: 0.7 }}>· {pick.criterionLabel}</span>
-        )}
-        <span style={{ fontSize: 13, fontWeight: 600 }}>{pick.customerName}</span>
-        <span style={{ fontSize: 12, opacity: 0.6 }}>
-          {new Date(pick.callDate).toLocaleDateString(lang === "tr" ? "tr-TR" : "en-GB")}
+        <span className={styles.pickMeta} style={{ color: scoreTone(pick.score) }}>
+          {pick.score}
         </span>
-        <span style={{ fontSize: 12, opacity: 0.6 }}>· {pick.score}</span>
-        <a href={`/evaluation/${pick.evaluationId}`} style={{ fontSize: 12, marginLeft: "auto" }}>
-          {t.open}
+        <a className={`${styles.openLink} ${styles.noPrint}`} href={`/evaluation/${pick.evaluationId}`}>
+          {t.open} →
         </a>
       </div>
 
-      <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: 1.5 }}>
-        {reasonText(pick.reason, pick.reasonData, lang)}
-      </p>
+      <p className={styles.reason}>{reasonText(pick.reason, pick.reasonData, lang)}</p>
 
       {pick.evidence.length > 0 && (
-        <ul style={{ margin: "8px 0 0", padding: 0, listStyle: "none" }}>
+        <ul className={styles.evidence}>
           {pick.evidence.map((ev, i) => (
-            <li
-              key={i}
-              style={{
-                fontSize: 12, lineHeight: 1.5, opacity: 0.85,
-                borderLeft: "2px solid var(--rule)", paddingLeft: 10, marginTop: 4,
-              }}
-            >
-              {ev.ts && <span style={{ fontFamily: "var(--font-mono, monospace)", opacity: 0.7 }}>{ev.ts} </span>}
-              {ev.speakerLabel && <strong>{ev.speakerLabel}: </strong>}
+            <li key={i} className={styles.quote}>
+              {ev.ts && <span className={styles.ts}>{ev.ts}</span>}
+              {ev.speakerLabel && <span className={styles.speaker}>{ev.speakerLabel}: </span>}
               {ev.text}
             </li>
           ))}
@@ -150,21 +153,26 @@ function PickRow({ pick, lang }: { pick: BriefingPick; lang: "tr" | "en" }) {
       )}
 
       {pick.shouldHaveSaid && (
-        <p style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5 }}>
-          <strong>{t.shouldHave} </strong>
+        <p className={styles.shouldHave}>
+          <span className={styles.shouldHaveLabel}>{t.shouldHave} </span>
           {pick.shouldHaveSaid}
         </p>
       )}
 
-      <div style={{ marginTop: 8, fontSize: 12 }}>
+      <div className={styles.pickFoot}>
         {done ? (
-          <span style={{ color: "#15803d" }}>✓ {t.done}</span>
+          <span className={styles.doneMark}>✓ {t.done}</span>
         ) : (
-          <button className={styles.noPrint} onClick={markDone} disabled={saving}>
+          <button
+            type="button"
+            className={`${styles.primaryBtn} ${styles.noPrint}`}
+            onClick={markDone}
+            disabled={saving}
+          >
             {saving ? t.saving : t.markDone}
           </button>
         )}
-        {saveFailed && <span style={{ marginLeft: 8, color: "#b91c1c" }}>{t.saveFailed}</span>}
+        {saveFailed && <span className={styles.failMark}>{t.saveFailed}</span>}
       </div>
     </div>
   );
@@ -225,53 +233,72 @@ export default function CoachingBriefingView({ lang }: { lang: "tr" | "en" }) {
     setWeek(isoWeekKey(d));
   };
 
+  const locale = lang === "tr" ? "tr-TR" : "en-GB";
+  const dayMonth: Intl.DateTimeFormatOptions = { day: "numeric", month: "long" };
+
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+    <div className={styles.root}>
+      <div className={styles.head}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 18 }}>{t.title}</h2>
-          <p style={{ margin: "2px 0 0", fontSize: 13, opacity: 0.65 }}>{t.subtitle}</p>
+          <h2 className={styles.title}>{t.title}</h2>
+          <p className={styles.subtitle}>{t.subtitle}</p>
+          {data && (
+            <p className={styles.weekLine}>
+              {data.week} · {new Date(data.weekStart).toLocaleDateString(locale, dayMonth)}
+              {" – "}
+              {new Date(data.weekEnd).toLocaleDateString(locale, dayMonth)}
+            </p>
+          )}
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }} className={styles.noPrint}>
-          <button onClick={() => shiftWeek(-1)}>{t.prev}</button>
-          <button onClick={() => setWeek(null)}>{t.thisWeek}</button>
-          <button onClick={() => shiftWeek(1)}>{t.next}</button>
-          <button onClick={handlePrint}>{t.print}</button>
+
+        <div className={`${styles.controls} ${styles.noPrint}`}>
+          <div className={styles.segment}>
+            <button type="button" className={styles.segBtn} onClick={() => shiftWeek(-1)} title={t.prev}>
+              ‹
+            </button>
+            <button type="button" className={styles.segBtn} onClick={() => setWeek(null)}>
+              {t.thisWeek}
+            </button>
+            <button type="button" className={styles.segBtn} onClick={() => shiftWeek(1)} title={t.next}>
+              ›
+            </button>
+          </div>
+          <button type="button" className={styles.ghostBtn} onClick={handlePrint}>
+            {t.print}
+          </button>
         </div>
       </div>
 
-      {data && (
-        <p style={{ fontSize: 12, opacity: 0.6, marginTop: 8 }}>
-          {data.week} ·{" "}
-          {new Date(data.weekStart).toLocaleDateString(lang === "tr" ? "tr-TR" : "en-GB")} –{" "}
-          {new Date(data.weekEnd).toLocaleDateString(lang === "tr" ? "tr-TR" : "en-GB")}
-        </p>
-      )}
-
-      {loading && <p style={{ fontSize: 13, opacity: 0.6 }}>{t.loading}</p>}
+      {loading && <p className={styles.quiet}>{t.loading}</p>}
 
       {failed && !loading && (
-        <p style={{ fontSize: 13 }}>
-          {t.error} <button onClick={load}>{t.retry}</button>
+        <p className={styles.quiet}>
+          {t.error}{" "}
+          <button type="button" className={styles.ghostBtn} onClick={load}>
+            {t.retry}
+          </button>
         </p>
       )}
 
       {!loading && !failed && data && data.agents.length === 0 && (
-        <p style={{ fontSize: 13, opacity: 0.6 }}>{t.empty}</p>
+        <p className={styles.quiet}>{t.empty}</p>
       )}
 
       {!loading && !failed && data?.agents.map((a) => (
         <section key={a.agentId} className={styles.agentCard}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <h3 style={{ margin: 0, fontSize: 15 }}>{a.agentName}</h3>
-            <span style={{ fontSize: 12, opacity: 0.6 }}>
-              {t.calls(a.callCount)}
-              {a.averageScore !== null && ` · ${t.avg(a.averageScore)}`}
-            </span>
+          <div className={styles.agentHead}>
+            <h3 className={styles.agentName}>{a.agentName}</h3>
+            <span className={styles.agentMeta}>{t.calls(a.callCount)}</span>
+            {a.averageScore !== null && (
+              <span className={styles.avgScore} style={{ color: scoreTone(a.averageScore) }}>
+                {a.averageScore}
+                <span className={styles.avgLabel}>{t.avgLabel}</span>
+              </span>
+            )}
           </div>
 
           {a.picks.length === 0 ? (
-            <p style={{ fontSize: 13, opacity: 0.6, marginTop: 8 }}>{t.noCalls}</p>
+            <p className={styles.quiet}>{t.noCalls}</p>
           ) : (
             a.picks.map((p) => <PickRow key={p.evaluationId} pick={p} lang={lang} />)
           )}

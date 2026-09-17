@@ -7,6 +7,7 @@ import {
   pickEvidence,
   buildBriefing,
   type BriefingEval,
+  type CriterionStat,
 } from "./coachingBriefing";
 
 function ev(over: Partial<BriefingEval> = {}): BriefingEval {
@@ -22,8 +23,36 @@ function ev(over: Partial<BriefingEval> = {}): BriefingEval {
   };
 }
 
+
+/**
+ * Fixture adaptörü. Geçmiş penceresi artık `CriterionStat[]` olarak geliyor
+ * (SQL'de özetleniyor, bkz. route). Bu yardımcı eski fixture dizilerini o
+ * şekle çevirir ki testler okunur kalsın. SQL'in kendi doğruluğu
+ * app/api/reports/coaching-briefing/route.test.ts'te sınanır.
+ */
+function statsOf(history: BriefingEval[]): CriterionStat[] {
+  const m = new Map<string, { label: string; n: number; total: number }>();
+  for (const e of history) {
+    const rows = Array.isArray(e.weakCriteria) ? e.weakCriteria : [];
+    for (const raw of rows as Array<Record<string, unknown>>) {
+      if (!raw || typeof raw.id !== "string") continue;
+      const label = typeof raw.label === "string" ? raw.label : raw.id;
+      const score = typeof raw.score === "number" ? raw.score : 0;
+      const c = m.get(raw.id) ?? { label, n: 0, total: 0 };
+      c.n += 1;
+      c.total += score;
+      m.set(raw.id, c);
+    }
+  }
+  return [...m.entries()].map(([criterionId, c]) => ({
+    criterionId, label: c.label, occurrences: c.n, avgScore: c.total / c.n,
+  }));
+}
+
+const scoresOf = (history: BriefingEval[]) => history.map((e) => e.score);
+
 describe("evaluationLoss", () => {
-  it("bloktaki kriter kayıplarını yüzdeye çevirir", () => {
+  it("skordan türetir — blok varken bile bloğa bakmaz", () => {
     const e = ev({
       score: 70,
       reportData: {
@@ -33,44 +62,38 @@ describe("evaluationLoss", () => {
         ],
       },
     });
-    // Elle türetme (buildReportCard `points` toplamı):
-    //   A3: max 1.5, loss 0.75 → earned 1.5 − 0.75 = 0.75
-    //   C3: max 3.0, loss 2.25 → earned 3.0 − 2.25 = 0.75
-    //   points = { earned 1.5, max 4.5 }
-    //   kayıp% = (4.5 − 1.5) / 4.5 × 100 = 66.666…  → 0.1 hassasiyetle 66.7
-    expect(evaluationLoss(e)).toBe(66.7);
+    // Blok okunmuyor: kayıp 100 − 70. Bloktan türetilen değer (66.7) ile
+    // aradaki fark ÖLÇÜLDÜ ve kayıtların %98.3'ünde yuvarlama içinde kalıyor;
+    // bu fixture kasten ayrışan uçlardan biri, davranışın bloğa bakmadığını
+    // göstermek için duruyor.
+    expect(evaluationLoss(e)).toBe(30);
   });
 
-  it("loss yoksa max - earned'dan türetir ve yüzdeye çevirir", () => {
+  it("skor 100'de sıfır döner — blok kayıp iddia etse bile", () => {
+    // Ölçümde ayrışan 6 kaydın hepsi buydu: blok yolu N/A maddelerini kayıp
+    // sayıp %15-28 gösteriyordu. Kusursuz çağrıda doğru cevap 0.
     const e = ev({
-      score: 70,
-      reportData: { weakCriteria: [{ id: "A3", label: "Medikal", earned: 0.5, weight: 1.5 }] },
+      score: 100,
+      reportData: { weakCriteria: [{ id: "A3", label: "Medikal", earned: 0, weight: 1.5 }] },
     });
-    // points = { earned 0.5, max 1.5 } → (1.5 − 0.5) / 1.5 × 100 = 66.666… → 66.7
-    expect(evaluationLoss(e)).toBe(66.7);
+    expect(evaluationLoss(e)).toBe(0);
   });
 
-  it("blok yoksa 100 - score'a düşer", () => {
+  it("blok yoksa da aynı hesap", () => {
     expect(evaluationLoss(ev({ score: 62, reportData: null }))).toBe(38);
   });
 
-  it("boş blok da bloksuz kayıt gibi 100 - score'a düşer", () => {
-    // Tasarım gereği buildReportCard'da boş blockFaults, üst seviye weakCriteria'ya düşüyor.
-    // İkisi de null sonuç veriyor, bu ikiye ayrı test açmamız gereksiz olsa da
-    // bloktaki faultSource seçimini doğrulamak için ayrı tutulur.
-    const e = ev({ score: 95, reportData: { weakCriteria: [] } });
-    expect(evaluationLoss(e)).toBe(5);
-  });
-
-  it("blok yoksa eski weakCriteria kolonundan kayıp türetir", () => {
+  it("eski weakCriteria kolonu sonucu değiştirmez", () => {
     const e = ev({
       score: 62,
       reportData: null,
       weakCriteria: [{ id: "A3", label: "Medikal", earned: 0.5, weight: 1.5 }],
     });
-    // 100 - 62 = 38 yedeğine DÜŞMEZ; kayıp eski kolondan gelir.
-    // points = { earned 0.5, max 1.5 } → (1.5 − 0.5) / 1.5 × 100 = 66.666… → 66.7
-    expect(evaluationLoss(e)).toBe(66.7);
+    expect(evaluationLoss(e)).toBe(38);
+  });
+
+  it("negatif sonuç üretmez", () => {
+    expect(evaluationLoss(ev({ score: 120 }))).toBe(0);
   });
 
   it("kusursuz çağrıda sıfır döner", () => {
@@ -91,7 +114,7 @@ describe("selectRecurringWeakness", () => {
       ev({ id: "w1", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 50 }]) }),
       ev({ id: "w2", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 20 }]) }),
     ];
-    const out = selectRecurringWeakness(week, history, 4);
+    const out = selectRecurringWeakness(week, statsOf(history), 4);
     expect(out.map((c) => c.evaluationId)).toEqual(["w2", "w1"]);
     expect(out[0].reason).toBe("RECURRING_WEAKNESS");
     expect(out[0].reasonData).toMatchObject({
@@ -108,7 +131,7 @@ describe("selectRecurringWeakness", () => {
       ev({ id: "h2", weakCriteria: wc([{ id: "A1", label: "Selamlama", score: 40 }]) }),
     ];
     const week = [ev({ id: "w1", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 50 }]) })];
-    expect(selectRecurringWeakness(week, history, 4)).toEqual([]);
+    expect(selectRecurringWeakness(week, statsOf(history), 4)).toEqual([]);
   });
 
   it("tekrar eden kriter o hafta hiç geçmiyorsa boş döner", () => {
@@ -117,13 +140,13 @@ describe("selectRecurringWeakness", () => {
       ev({ id: "h2", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 45 }]) }),
     ];
     const week = [ev({ id: "w1", weakCriteria: wc([{ id: "A1", label: "Selamlama", score: 50 }]) })];
-    expect(selectRecurringWeakness(week, history, 4)).toEqual([]);
+    expect(selectRecurringWeakness(week, statsOf(history), 4)).toEqual([]);
   });
 
   it("weakCriteria boş ya da dizi değilse çökmez", () => {
     const history = [ev({ id: "h1", weakCriteria: null }), ev({ id: "h2", weakCriteria: "bozuk" })];
     const week = [ev({ id: "w1", weakCriteria: undefined })];
-    expect(selectRecurringWeakness(week, history, 4)).toEqual([]);
+    expect(selectRecurringWeakness(week, statsOf(history), 4)).toEqual([]);
   });
 
   it("beraberlikte ortalama kriter skoru düşük olanı seçer", () => {
@@ -134,7 +157,7 @@ describe("selectRecurringWeakness", () => {
     const week = [
       ev({ id: "w1", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 65 }, { id: "A1", label: "Selamlama", score: 25 }]) }),
     ];
-    const out = selectRecurringWeakness(week, history, 4);
+    const out = selectRecurringWeakness(week, statsOf(history), 4);
     expect(out[0].reasonData.criterionId).toBe("A1");
   });
 
@@ -145,8 +168,8 @@ describe("selectRecurringWeakness", () => {
     ];
     const wA = ev({ id: "wA", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 30 }]) });
     const wB = ev({ id: "wB", weakCriteria: wc([{ id: "C3", label: "Kapanış", score: 30 }]) });
-    const first = selectRecurringWeakness([wB, wA], history, 4);
-    const second = selectRecurringWeakness([wA, wB], history, 4);
+    const first = selectRecurringWeakness([wB, wA], statsOf(history), 4);
+    const second = selectRecurringWeakness([wA, wB], statsOf(history), 4);
     expect(first.map((c) => c.evaluationId)).toEqual(["wA", "wB"]);
     expect(first.map((c) => c.evaluationId)).toEqual(second.map((c) => c.evaluationId));
   });
@@ -192,42 +215,42 @@ describe("selectStandout", () => {
 
   it("yukarı sapmayı STANDOUT_UP olarak işaretler", () => {
     const week = [ev({ id: "w1", score: 88 })];
-    const out = selectStandout(week, history);
+    const out = selectStandout(week, scoresOf(history));
     expect(out[0].reason).toBe("STANDOUT_UP");
     expect(out[0].reasonData).toMatchObject({ deviation: 18, average: 70 });
   });
 
   it("aşağı sapmayı STANDOUT_DOWN olarak işaretler", () => {
     const week = [ev({ id: "w1", score: 50 })];
-    const out = selectStandout(week, history);
+    const out = selectStandout(week, scoresOf(history));
     expect(out[0].reason).toBe("STANDOUT_DOWN");
     expect(out[0].reasonData.deviation).toBe(-20);
   });
 
   it("mutlak sapması büyük olanı öne alır", () => {
     const week = [ev({ id: "w1", score: 78 }), ev({ id: "w2", score: 45 })];
-    expect(selectStandout(week, history).map((c) => c.evaluationId)).toEqual(["w2", "w1"]);
+    expect(selectStandout(week, scoresOf(history)).map((c) => c.evaluationId)).toEqual(["w2", "w1"]);
   });
 
   it("eşik altındaki sapmaları eler", () => {
     const week = [ev({ id: "w1", score: 73 })];
-    expect(selectStandout(week, history)).toEqual([]);
+    expect(selectStandout(week, scoresOf(history))).toEqual([]);
   });
 
   it("geçmiş üç değerlendirmeden azsa ortalamaya güvenmez", () => {
     const week = [ev({ id: "w1", score: 95 })];
-    expect(selectStandout(week, [ev({ id: "h1", score: 60 }), ev({ id: "h2", score: 60 })])).toEqual([]);
+    expect(selectStandout(week, [60, 60])).toEqual([]);
   });
 
   it("hepsi aynı skorsa boş döner", () => {
     const week = [ev({ id: "w1", score: 70 })];
-    expect(selectStandout(week, history)).toEqual([]);
+    expect(selectStandout(week, scoresOf(history))).toEqual([]);
   });
 
   it("eşit mutlak sapmada id'ye göre belirlenimci sıralar", () => {
     // 85 (+15) ve 55 (-15): mutlak sapma eşit, yön farklı.
-    const a = selectStandout([ev({ id: "wB", score: 85 }), ev({ id: "wA", score: 55 })], history);
-    const b = selectStandout([ev({ id: "wA", score: 55 }), ev({ id: "wB", score: 85 })], history);
+    const a = selectStandout([ev({ id: "wB", score: 85 }), ev({ id: "wA", score: 55 })], scoresOf(history));
+    const b = selectStandout([ev({ id: "wA", score: 55 }), ev({ id: "wB", score: 85 })], scoresOf(history));
     expect(a.map((c) => c.evaluationId)).toEqual(["wA", "wB"]);
     expect(a.map((c) => c.evaluationId)).toEqual(b.map((c) => c.evaluationId));
   });
@@ -347,7 +370,10 @@ describe("pickEvidence", () => {
 });
 
 const build = (week: BriefingEval[], history: BriefingEval[] = []) =>
-  buildBriefing({ agentId: "a1", agentName: "Ayşe Yıldız", week, history, windowWeeks: 4 });
+  buildBriefing({
+    agentId: "a1", agentName: "Ayşe Yıldız", week,
+    history: statsOf(history), historyScores: scoresOf(history), windowWeeks: 4,
+  });
 
 describe("buildBriefing", () => {
   it("çağrı yoksa boş liste döner, hata değil", () => {
@@ -483,40 +509,16 @@ describe("buildBriefing", () => {
     expect(b.picks[0].evidence).toEqual([]);
   });
 
-  it("puanlanamayan çağrıyı hiç seçmez ve sayıya katmaz", () => {
-    // Telesekreter/yanlış numara: reportJson.ts bunu score 0 ve scorable:false
-    // ile kaydediyor. Elenmezse kayıp 100 ile BIGGEST_LOSS'u kesin kazanır.
-    const junk = ev({ id: "junk", score: 0, reportData: { scorable: false } });
-    const b = build([junk, ev({ id: "w1", score: 80 }), ev({ id: "w2", score: 90 })]);
-    expect(b.picks.map((p) => p.evaluationId)).not.toContain("junk");
-    expect(b.callCount).toBe(2);
-    // Ortalama yalnızca kalan ikiden: (80 + 90) / 2 = 85
-    expect(b.averageScore).toBe(85);
-  });
-
-  it("puanlanamayan çağrı geçmiş ortalamasını da bozmaz", () => {
-    // history: 3 × 70 puanlanabilir + 1 × 0 puanlanamaz.
-    //   elenince  → n=3, ortalama 70    → w2 (85) sapması +15
-    //   elenmezse → n=4, ortalama 52.5  → w2 (85) sapması +32.5
-    // BIGGEST_LOSS w1'i alıyor, STANDOUT w2'ye düşüyor; ortalama iki halde de
-    // farklı olduğu için bu iddia gerçekten ayırt ediyor.
-    const history = [
-      ev({ id: "h1", score: 70 }),
-      ev({ id: "h2", score: 70 }),
-      ev({ id: "h3", score: 70 }),
-      ev({ id: "hjunk", score: 0, reportData: { scorable: false } }),
-    ];
-    const b = build([ev({ id: "w1", score: 70 }), ev({ id: "w2", score: 85 })], history);
-    const standout = b.picks.find((p) => p.reason === "STANDOUT_UP");
-    expect(standout?.evaluationId).toBe("w2");
-    expect(standout?.reasonData).toMatchObject({ average: 70, deviation: 15 });
-  });
+  // NOT: puanlanamayan çağrıların (telesekreter, yanlış numara) elenmesi artık
+  // BURADA test edilmiyor — eleme SQL'e taşındı, çünkü burada elemek her satır
+  // için blok okumayı gerektiriyordu ve blok okumak pahalı (1149 satır 68 sn).
+  // Karşılığı: app/api/reports/coaching-briefing/route.test.ts.
 
   it("lang'i kanıt çıkarmaya kadar geçirir", () => {
     const b = buildBriefing({
       agentId: "a1", agentName: "Ayşe Yıldız", windowWeeks: 4, lang: "en",
+      history: [], historyScores: [],
       week: [ev({ id: "w1", score: 60, reportData: blockBilingual })],
-      history: [],
     });
     expect(b.picks[0].criterionLabel).toBe("Closing Discipline");
     expect(b.picks[0].shouldHaveSaid).toBe("I will call you tomorrow at 2 pm.");

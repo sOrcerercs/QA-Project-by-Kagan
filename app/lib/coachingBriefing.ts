@@ -63,37 +63,39 @@ export interface Candidate {
 }
 
 /**
- * Bir çağrıda kaybedilen puan — YÜZDE olarak.
+ * Bir danışmanın geçmiş penceresindeki kriter istatistiği.
  *
- * Blok varsa kayıp `card.points` üzerinden hesaplanır (`(max − earned) / max`),
- * blok yoksa `100 − score`'a düşülür — 3 Eylül 2026 öncesi kayıtlarda blok yok,
- * bu yol onlar için gerekli.
- *
- * Blok puanı HAM rubrik ölçeğinde (ör. 18 üzerinden), yedek yol ise yüzde.
- * `selectBiggestLoss` ikisini tek listede sıraladığı için ikisi de yüzdeye
- * çevrilir; yoksa bloksuz kayıtlar her zaman kazanır ve "en büyük kayıp"
- * satırı sistematik olarak kanıtsız çıkar. Prod'da ölçüldü (son 28 gün,
- * 1132 kayıt): yedek/blok medyan oranı 3.2x.
+ * NEDEN ÖNCEDEN HESAPLANMIŞ GELİYOR: eskiden bu sayım geçmişin tüm
+ * `weakCriteria` kolonları çekilerek bellekte yapılıyordu. Ölçüldü: 1149
+ * satırın `weakCriteria`'sı 18 sn, aynı satırların skalerleri 0.6 sn. Sayım
+ * SQL'e taşındı (route, jsonb_array_elements); bu modül saf kalsın diye
+ * sonucu parametre olarak alıyor.
  */
-export function evaluationLoss(e: BriefingEval): number {
-  const card = buildReportCard({ reportData: e.reportData, weakCriteria: e.weakCriteria });
-  if (card.points && card.points.max > 0) {
-    const { earned, max } = card.points;
-    return Math.max(0, Math.round(((max - earned) / max) * 1000) / 10);
-  }
-  return Math.max(0, 100 - e.score);
+export interface CriterionStat {
+  criterionId: string;
+  label: string;
+  occurrences: number;
+  /** Kriterin pencere boyunca ortalama skoru; beraberlik çözümünde kullanılır. */
+  avgScore: number;
 }
 
 /**
- * Puanlanamayan çağrı (telesekreter, yanlış numara) koçluk konusu değildir.
+ * Bir çağrıda kaybedilen puan — 0-100 ölçeğinde.
  *
- * reportJson.ts böyle bir çağrıyı `score: 0` ve kriteri olmayan blokla
- * kaydediyor. Elenmezse brifingde iki negatif seçiciyi birden kazanır
- * (kayıp 100, sapma ≈ −75) ve kanıtsız gelir; üstelik 4 haftalık ortalamayı
- * aşağı çekip herkesin sapmasını kaydırır. Prod'da %1.4 (1132'de 16).
+ * ÖLÇÜLDÜ (prod, son 14 gün, points hesaplanabilen 353 kayıt): bloktan
+ * türetilen `(max−earned)/max*100` ile `100 − score` kayıtların %98.3'ünde
+ * yuvarlama farkı içinde AYNI (medyan fark 0.25, p90 0.50). Ayrışan 6 kaydın
+ * hepsi skor 100 olanlar; orada blok yolu %15-28 kayıp gösteriyor (N/A
+ * maddelerini kayıp sayarak), `100 − score` ise 0 diyor. Kusursuz bir çağrıda
+ * doğru cevap 0 — yani basit yol aynı zamanda DAHA doğru.
+ *
+ * Mimari sonucu: kayıp sıralaması reportData GEREKTİRMEZ. Bu yüzden uç,
+ * haftanın tüm çağrıları yerine yalnızca SEÇİLEN çağrılar için blok çeker.
+ * Blok çekmek pahalı — prod'da 1149 satırın reportData'sı 68 sn, aynı
+ * satırların skalerleri 0.6 sn.
  */
-export function isScorable(e: BriefingEval): boolean {
-  return buildReportCard({ reportData: e.reportData, weakCriteria: e.weakCriteria }).scorable;
+export function evaluationLoss(e: BriefingEval): number {
+  return Math.max(0, 100 - e.score);
 }
 
 /** Bir kriterin "tekrar ediyor" sayılması için gereken en az çağrı sayısı. */
@@ -133,31 +135,21 @@ function weakRows(raw: unknown): WeakRow[] {
  */
 export function selectRecurringWeakness(
   week: BriefingEval[],
-  history: BriefingEval[],
+  history: CriterionStat[],
   windowWeeks: number
 ): Candidate[] {
-  const stats = new Map<string, { label: string; count: number; total: number }>();
-  for (const e of history) {
-    for (const row of weakRows(e.weakCriteria)) {
-      const s = stats.get(row.id) ?? { label: row.label, count: 0, total: 0 };
-      s.count += 1;
-      s.total += row.score;
-      stats.set(row.id, s);
-    }
-  }
-
-  const ranked = [...stats.entries()]
-    .filter(([, s]) => s.count >= RECURRENCE_MIN_OCCURRENCES)
+  const ranked = history
+    .filter((s) => s.occurrences >= RECURRENCE_MIN_OCCURRENCES)
+    .slice()
     .sort((a, b) => {
-      if (b[1].count !== a[1].count) return b[1].count - a[1].count;
-      const avgA = a[1].total / a[1].count;
-      const avgB = b[1].total / b[1].count;
-      if (avgA !== avgB) return avgA - avgB;
-      return a[0] < b[0] ? -1 : 1;
+      if (b.occurrences !== a.occurrences) return b.occurrences - a.occurrences;
+      if (a.avgScore !== b.avgScore) return a.avgScore - b.avgScore;
+      return a.criterionId < b.criterionId ? -1 : 1;
     });
 
   if (ranked.length === 0) return [];
-  const [criterionId, stat] = ranked[0];
+  const stat = ranked[0];
+  const criterionId = stat.criterionId;
 
   return week
     .map((e) => {
@@ -172,7 +164,7 @@ export function selectRecurringWeakness(
       reasonData: {
         criterionId,
         criterionLabel: row.label || stat.label,
-        occurrences: stat.count,
+        occurrences: stat.occurrences,
         windowWeeks,
       },
     }));
@@ -201,9 +193,9 @@ export const STANDOUT_MIN_DEVIATION = 5;
  * Danışmanın kendi 4 haftalık ortalamasından en çok sapan çağrıları sıralar.
  * İki yönlü: yukarı sapma "burada ne farklı yaptı", aşağı sapma "burada ne oldu".
  */
-export function selectStandout(week: BriefingEval[], history: BriefingEval[]): Candidate[] {
-  if (history.length < STANDOUT_MIN_HISTORY) return [];
-  const average = history.reduce((s, e) => s + e.score, 0) / history.length;
+export function selectStandout(week: BriefingEval[], historyScores: number[]): Candidate[] {
+  if (historyScores.length < STANDOUT_MIN_HISTORY) return [];
+  const average = historyScores.reduce((s, n) => s + n, 0) / historyScores.length;
 
   return week
     .map((e) => ({ e, deviation: e.score - average }))
@@ -336,8 +328,10 @@ export interface BuildBriefingInput {
   agentName: string;
   /** Brifing haftasındaki değerlendirmeler. */
   week: BriefingEval[];
-  /** Geçmiş pencere — brifing haftası DAHİL (spec: 4 hafta). */
-  history: BriefingEval[];
+  /** Geçmiş penceredeki kriter istatistikleri (SQL'de hesaplanır). */
+  history: CriterionStat[];
+  /** Geçmiş penceredeki skorlar — sapma ortalaması için; yalnızca sayı. */
+  historyScores: number[];
   windowWeeks: number;
   /** Kanıt/etiket metinlerinin dili. Seçim mantığı dilden etkilenmez. */
   lang?: Lang;
@@ -356,11 +350,11 @@ export interface BuildBriefingInput {
 export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
   const { agentId, agentName, windowWeeks, lang = "tr" } = input;
 
-  // Puanlanamayan çağrılar en başta elenir: seçicilere, çağrı sayısına,
-  // ortalamaya ve geçmiş penceresine hiç girmezler. Tek yerde elemek
-  // seçicilerin her birine ayrı koşul eklemekten daha güvenli.
-  const week = input.week.filter(isScorable);
-  const history = input.history.filter(isScorable);
+  // Puanlanamayan çağrılar (telesekreter, yanlış numara) buraya HİÇ gelmez:
+  // eleme SQL'de yapılıyor (route: reportData->>'scorable' predicate'i).
+  // Burada elemek blok okumayı gerektirirdi; bkz. evaluationLoss yorumu.
+  const week = input.week;
+  const { history, historyScores } = input;
 
   const base = {
     agentId,
@@ -379,7 +373,7 @@ export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
   const selectors: Candidate[][] = [
     selectRecurringWeakness(week, history, windowWeeks),
     selectBiggestLoss(week),
-    selectStandout(week, history),
+    selectStandout(week, historyScores),
   ];
   for (const ranked of selectors) {
     if (chosen.length >= MAX_SELECTOR_PICKS) break;
@@ -432,4 +426,54 @@ export function buildBriefing(input: BuildBriefingInput): AgentBriefing {
   });
 
   return { ...base, picks };
+}
+
+/**
+ * Seçilen satırlara kanıtı sonradan ekler.
+ *
+ * NEDEN AYRI ADIM: kanıt `reportData` ister ve blok çekmek pahalı — prod'da
+ * 1149 satırın reportData'sı 68 sn, skalerleri 0.6 sn. Seçim artık blok
+ * gerektirmediği için (bkz. evaluationLoss) uç önce ucuz veriyle SEÇİYOR,
+ * sonra yalnızca seçilen ~4 satırın bloğunu çekip burada dolduruyor.
+ *
+ * Bloğu bulunamayan satır sessizce kanıtsız kalır — kart bunu zaten
+ * gösterebiliyor; eksik blok yüzünden tüm brifingi düşürmek yanlış olurdu.
+ */
+export function enrichPicks(
+  briefings: AgentBriefing[],
+  detailsById: Map<string, { reportData: unknown; weakCriteria: unknown }>,
+  lang: Lang = "tr",
+): AgentBriefing[] {
+  return briefings.map((b) => ({
+    ...b,
+    picks: b.picks.map((p) => {
+      const d = detailsById.get(p.evaluationId);
+      if (!d) return p;
+      const detail = pickEvidence(
+        { ...emptyEval(p.evaluationId), reportData: d.reportData, weakCriteria: d.weakCriteria },
+        p.reason,
+        p.reasonData,
+        lang,
+      );
+      return {
+        ...p,
+        evidence: detail.evidence,
+        shouldHaveSaid: detail.shouldHaveSaid,
+        criterionLabel: detail.criterionLabel,
+      };
+    }),
+  }));
+}
+
+/** pickEvidence yalnızca blok alanlarını okur; kalanlar için nötr iskelet. */
+function emptyEval(id: string): BriefingEval {
+  return {
+    id,
+    customerName: "",
+    callDate: "",
+    score: 0,
+    weakCriteria: null,
+    reportData: null,
+    coachingDone: false,
+  };
 }
