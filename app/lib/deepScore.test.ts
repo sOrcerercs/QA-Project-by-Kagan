@@ -57,6 +57,26 @@ describe("pendingWhere — kapsam", () => {
     expect(w.deepScoredAt).toBeNull();
   });
 
+  it("elle refine edilmiş kaydı kuyruğa ALMAZ", () => {
+    // Bu değişikliğin bütün amacı. Kuyruk bir kaydı yeniden puanlarken
+    // raporun tamamını yeniden yazıyor; yöneticinin elle yaptığı cerrahi
+    // düzeltme silinirdi. Koruma refinedAt üzerinden, deepScoredAt üzerinden
+    // DEĞİL — refine düşünme KAPALI çalıştığı için deepScoredAt damgalamak
+    // veriye yalan yazmak olurdu (bkz. şemadaki alan tanımı).
+    const w = pendingWhere() as { refinedAt: unknown };
+    expect(w.refinedAt).toBeNull();
+  });
+
+  it("iki damga AYRI koşul olarak aranır — biri diğerinin yerine geçmez", () => {
+    // Kuyruğa girmek için kaydın HEM düşünmeli üretilmemiş HEM de elle refine
+    // edilmemiş olması gerekir. Tek koşula indirgemek iki olgudan birini
+    // kaybederdi: refine edilmiş ama düşünmeli üretilmemiş bir kayıt yeniden
+    // puanlanıp yöneticinin düzeltmesini silerdi.
+    const w = pendingWhere() as Record<string, unknown>;
+    expect(w).toHaveProperty("deepScoredAt", null);
+    expect(w).toHaveProperty("refinedAt", null);
+  });
+
   it("deneme hakkı dolanları dışarıda bırakır", () => {
     const w = pendingWhere() as { deepScoreAttempts: { lt: number } };
     expect(w.deepScoreAttempts.lt).toBe(DEEP_SCORE_MAX_ATTEMPTS);
