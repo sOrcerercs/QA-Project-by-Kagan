@@ -39,6 +39,12 @@
 //   npx tsx scripts/reclassify-range.ts --from 2026-09-01 --to 2026-09-02 --apply
 //   npx tsx scripts/reclassify-range.ts --from 2026-09-01 --apply --resume
 //   npx tsx scripts/reclassify-range.ts --id cmtk3z021000104l6q56m2hjs --apply
+//   npx tsx scripts/reclassify-range.ts --stuck
+//   npx tsx scripts/reclassify-range.ts --stuck --apply
+//
+// --stuck: düşünmeli kuyruğunda 3 denemeyi de tüketmiş kayıtları kendisi
+// seçer; tarih vermeye gerek yok. Panelin "3 denemede de tamamlanamadı"
+// uyarısının karşılığıdır. --id/--from/--to ile birlikte kullanılmaz.
 //   npx tsx scripts/reclassify-range.ts --from 2026-09-01 --limit 5 --dump /tmp/rapor
 //   npx tsx scripts/reclassify-range.ts --from 2026-09-01 --apply --allow-hardfail
 //
@@ -51,6 +57,10 @@ config({ path: ".env" });
 
 import { PrismaClient } from "../app/generated/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
+// DİKKAT: sabitler ./rescoreStep'ten alınır, deepScore'dan DEĞİL. deepScore
+// prisma import ediyor ve bu dosyanın başındaki config() çağrılarından önce
+// hoist edilirdi — DATABASE_URL okunmamış olurdu.
+import { DEEP_SCORE_FROM, DEEP_SCORE_MAX_ATTEMPTS } from "../app/lib/rescoreStep";
 import { callGemini, SCORING_THINKING_BUDGET } from "../app/lib/gemini";
 import { extractReportJson, reportJsonFields } from "../app/lib/reportJson";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -100,6 +110,7 @@ async function main() {
   const apply = args.includes("--apply");
   const resume = args.includes("--resume");
   const allowHardFail = args.includes("--allow-hardfail");
+  const stuck = args.includes("--stuck");
   const singleId = arg(args, "--id");
   const fromRaw = arg(args, "--from");
   const toRaw = arg(args, "--to");
@@ -115,13 +126,31 @@ async function main() {
     }
   }
 
-  if (!singleId && !fromRaw) {
-    console.error("--from YYYY-MM-DD veya --id <evaluationId> ver.");
+  if (!singleId && !fromRaw && !stuck) {
+    console.error("--from YYYY-MM-DD, --id <evaluationId> veya --stuck ver.");
+    process.exit(1);
+  }
+  if (stuck && (singleId || fromRaw || toRaw)) {
+    console.error("--stuck kendi seçimini yapar; --id/--from/--to ile birlikte kullanma.");
     process.exit(1);
   }
 
   let where: any;
-  if (singleId) {
+  if (stuck) {
+    // Düşünmeli kuyruğunun deneme hakkını tüketmiş kayıtlar. Panel bunları
+    // "3 denemede de tamamlanamadı" diye listeler ve buraya yönlendirir;
+    // bu bayrak o listeyi elle taşımayı gereksiz kılar.
+    //
+    // NEDEN reportData'ya BAKMIYOR: blok düşünme KAPALIYKEN de üretiliyor,
+    // yani reportData'nın varlığı kaydın düşünmeli üretildiği anlamına
+    // gelmez. Tek güvenilir işaret deepScoredAt'in NULL olmasıdır.
+    // Bkz. app/lib/deepScore.ts, Evaluation.deepScoredAt yorumu.
+    where = {
+      deepScoredAt: null,
+      deepScoreAttempts: { gte: DEEP_SCORE_MAX_ATTEMPTS },
+      callDate: { gte: DEEP_SCORE_FROM },
+    };
+  } else if (singleId) {
     where = { id: singleId };
   } else {
     const from = parseDay(fromRaw!, "--from");

@@ -12,35 +12,21 @@
  */
 
 import prisma from "./prisma";
-
-/**
- * Kuyruk YALNIZCA bu tarihten itibaren çağrıları kapsar (TR günü).
- *
- * Kullanıcı kararı: kural 3 Eylül 2026'dan geçerli, öncesindeki ~4500 kayıt
- * bilinçli olarak kapsam dışı. Bu sınır VERİYE yazılmadı — eski kayıtları
- * "düşünmeli üretildi" diye damgalamak yalan olurdu ve ileride "hangileri
- * gerçekten düşünmeli?" sorusuna yanlış cevap verirdi. Sınır burada duruyor,
- * veri gerçeği söylemeye devam ediyor.
- */
-export const DEEP_SCORE_FROM = new Date("2026-09-03T00:00:00.000+03:00");
+// Sabitler rescoreStep'te (prisma'sız) duruyor ki terminal script'leri ve
+// istemci onları prisma'yı çekmeden import edebilsin. Aşağıdaki export bloğu
+// aynı isimleri dışarıya da açıyor; bu import onları BU dosyanın içinde
+// kullanılabilir kılıyor.
+import { DEEP_SCORE_FROM, DEEP_SCORE_MAX_ATTEMPTS } from "./rescoreStep";
 
 /** Bu süreden eski kilit, ölmüş bir istekten kalmıştır; yeniden alınabilir. */
 export const DEEP_SCORE_STALE_LOCK_MS = 5 * 60 * 1000;
-
-/**
- * Bu kadar denemeden sonra kayıt otomatik alınmaz.
- *
- * ÖLÇÜLDÜ: prod'da tek düşünmeli çağrı ~52 sn, tavan 60 sn, kayıtların
- * ~%28'i aşıyor. Uzun transkriptli bir kayıt HER denemede aşabilir; sayaç
- * olmasa kuyruğu sonsuza kadar tıkardı. Takılanlar tavansız yoldan
- * (scripts/reclassify-range.ts) düzeltilir.
- */
-export const DEEP_SCORE_MAX_ATTEMPTS = 3;
 
 /* Zaman bütçesi ve yanıt sınıflandırması SAF mantıktır ve İSTEMCİ de kullanır
    (AdminPanel). Bu dosya prisma import ettiği için o kod ./rescoreStep'te
    duruyor — buradan import edilse Prisma tarayıcı paketine girerdi. */
 export {
+  DEEP_SCORE_FROM,
+  DEEP_SCORE_MAX_ATTEMPTS,
   DEEP_SCORE_REQUEST_CAP_MS,
   DEEP_SCORE_RESERVE_MS,
   DEEP_SCORE_GEMINI_MAX_ATTEMPTS,

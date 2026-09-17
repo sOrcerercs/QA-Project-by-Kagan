@@ -7,6 +7,27 @@
 import { QUOTA_ERROR_CODE } from "./geminiQuota";
 
 /**
+ * Kuyruk YALNIZCA bu tarihten itibaren çağrıları kapsar (TR günü).
+ *
+ * Kullanıcı kararı: kural 3 Eylül 2026'dan geçerli, öncesindeki ~4500 kayıt
+ * bilinçli olarak kapsam dışı. Bu sınır VERİYE yazılmadı — eski kayıtları
+ * "düşünmeli üretildi" diye damgalamak yalan olurdu ve ileride "hangileri
+ * gerçekten düşünmeli?" sorusuna yanlış cevap verirdi. Sınır burada duruyor,
+ * veri gerçeği söylemeye devam ediyor.
+ */
+export const DEEP_SCORE_FROM = new Date("2026-09-03T00:00:00.000+03:00");
+
+/**
+ * Bu kadar denemeden sonra kayıt otomatik alınmaz.
+ *
+ * ÖLÇÜLDÜ: prod'da tek düşünmeli çağrı ~52 sn, tavan 60 sn, kayıtların
+ * ~%28'i aşıyor. Uzun transkriptli bir kayıt HER denemede aşabilir; sayaç
+ * olmasa kuyruğu sonsuza kadar tıkardı. Takılanlar tavansız yoldan
+ * (scripts/reclassify-range.ts --stuck) düzeltilir.
+ */
+export const DEEP_SCORE_MAX_ATTEMPTS = 3;
+
+/**
  * Platformun tek istek için verdiği tavan (ms). Vercel Hobby'de 60 sn.
  * Rotalardaki `maxDuration = 300` bu tavanı BÜYÜTMEZ — plan neyse o geçerli.
  * Pro'ya geçilirse DEEP_SCORE_REQUEST_CAP_MS=300000 ile genişletilir.
