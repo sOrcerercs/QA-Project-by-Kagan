@@ -92,6 +92,13 @@ async function processTranscript(transcript: FirefliesTranscript, unassignedUser
   const existing = await prisma.evaluation.findUnique({ where: { externalCallId } });
   if (existing) return { status: "skipped" as const, reason: "already_imported" };
 
+  // filterAnalyzableTranscripts deşifresizleri zaten eliyor; bu yalnızca
+  // invaryantı kodda görünür kılıyor. Sessizce çökmek yerine kaydı atla:
+  // tek bir deşifresiz kayıt tüm senkronizasyonu düşürmemeli.
+  if (!transcript.sentences) {
+    return { status: "skipped" as const, reason: "no_sentences" };
+  }
+
   const speakerNames = extractSpeakerNames(transcript.sentences);
   const matched = await matchAgentFromSpeakers(speakerNames);
   const agentId = matched?.id ?? unassignedUserId;
@@ -244,7 +251,7 @@ export async function GET(req: NextRequest) {
         skipped: transcripts.length - analyzable.length,
         sample: transcripts.slice(0, 3).map(t => ({
           id: t.id, title: t.title, duration: t.duration,
-          sentences: t.sentences.length, date: new Date(t.date).toISOString(),
+          sentences: t.sentences?.length ?? null, date: new Date(t.date).toISOString(),
         })),
       });
     } catch (e: any) {

@@ -15,7 +15,12 @@ export interface FirefliesTranscript {
   duration: number | null; // dakika cinsinden, bazen null
   host_email: string | null;
   participants: string[];  // email adresleri
-  sentences: FirefliesSentence[];
+  /**
+   * DEŞİFRE EDİLMEMİŞ kayıtta null gelir. Tip eskiden null'suzdu ve gece
+   * cron'u iki farklı yerde bu yüzden düşüyordu ("reading 'reduce'" ve
+   * "reading 'length'"). Fireflies 13-17 Eylül arası hiç senkronize olmadı.
+   */
+  sentences: FirefliesSentence[] | null;
 }
 
 const FIREFLIES_ENDPOINT = "https://api.fireflies.ai/graphql";
@@ -99,6 +104,7 @@ export async function fetchTranscriptsByDate(date: string): Promise<FirefliesTra
  */
 export function resolveDurationMinutes(t: FirefliesTranscript): number | null {
   if (t.duration != null) return t.duration;
+  if (!t.sentences) return null;
   const maxEndSec = t.sentences.reduce(
     (m, s) => Math.max(m, s.end_time ?? 0, s.start_time ?? 0),
     0
@@ -113,10 +119,13 @@ export function filterAnalyzableTranscripts(
   // Süre bilinmiyorsa (Fireflies bazen null döndürür) end_time'dan tahmin edilir;
   // o da yoksa transcript içeriğine güvenilir (boşlar cümle/metin kontrolüyle elenir).
   return transcripts.filter(t => {
+    // Deşifresi hazır olmayan kayıt analiz edilebilir değildir; burada elenir.
+    // Bu, fonksiyonun zaten işi — eskiden null'a çarpıp tüm senkronizasyonu
+    // düşürüyordu, oysa tek bir kaydın atlanması yeterliydi.
+    if (!t.sentences || t.sentences.length === 0) return false;
     const dur = resolveDurationMinutes(t);
     return (
       (dur == null || dur >= minDurationMinutes) &&
-      t.sentences.length > 0 &&
       buildTranscriptText(t.sentences).trim().length > 50
     );
   });
