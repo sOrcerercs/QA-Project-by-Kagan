@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { safeNextPath } from "@/app/lib/nextPath";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -33,7 +34,10 @@ export default function LoginPage() {
       if (data.mustChangePassword) {
         router.push("/change-password");
       } else {
-        router.push("/");
+        // Deep-link'ten gelindiyse oraya dön. safeNextPath open-redirect'i
+        // engeller: yalnızca kendi kökümüzden başlayan yollar kabul edilir.
+        const next = new URLSearchParams(window.location.search).get("next");
+        router.push(safeNextPath(next));
       }
     } catch {
       setError("Bağlantı hatası.");
