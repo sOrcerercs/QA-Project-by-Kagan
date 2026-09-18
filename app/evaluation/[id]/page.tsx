@@ -330,6 +330,13 @@ export default function EvaluationDetailPage({
   const fetchCurrentUser = async () => {
     try {
       const res = await fetch("/api/auth/me");
+      if (res.status === 401) {
+        // Giriş yok → login'e yönlendir, giriş sonrası bu değerlendirmeye dön.
+        // Entegrasyondan gelen deep-link'in çalışması buna bağlı: aksi hâlde
+        // res.ok false kalıyor ve kullanıcı sessizce boş sayfa görüyordu.
+        router.push("/login?next=" + encodeURIComponent("/evaluation/" + id));
+        return;
+      }
       const data = await res.json();
       if (res.ok) {
         setCurrentUser(data.user);
