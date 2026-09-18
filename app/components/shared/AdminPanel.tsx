@@ -99,6 +99,13 @@ const PANEL_T = {
     krikoFilter: "Filtre: süre ≥ 2 dk.",
     manualSync: "Manuel Senkronizasyon", labelDate: "Tarih (boş = dün)",
     syncing: "Senkronize Ediliyor...", syncNow: "Şimdi Senkronize Et",
+    krikoQueue: "Kuyrukla Senkronize Et",
+    krikoQueueHint: "Her istek tek çağrı işler; 60 sn tavanına takılmaz.",
+    krikoQueueProgress: (alinan: number, kalan: number) =>
+      `${alinan} çağrı alındı · ${kalan} kaldı`,
+    krikoQueueDone: (n: number) => `✅ Kuyruk bitti — ${n} çağrı alındı.`,
+    krikoQueueStopped: (n: number) => `Durduruldu — ${n} çağrı alındı.`,
+    krikoQueueFail: "Kuyruk üst üste hata aldı, durduruldu.",
     syncStarted: "Senkronizasyon başlatıldı, lütfen bekleyin (1-3 dakika sürebilir)...",
     rsTitle: "Düşünmeli Yeniden Değerlendirme",
     rsPending: "düzeltilmemiş değerlendirme",
@@ -229,6 +236,13 @@ const PANEL_T = {
     krikoFilter: "Filter: duration ≥ 2 min.",
     manualSync: "Manual Sync", labelDate: "Date (empty = yesterday)",
     syncing: "Syncing...", syncNow: "Sync Now",
+    krikoQueue: "Sync with queue",
+    krikoQueueHint: "One call per request; never hits the 60s ceiling.",
+    krikoQueueProgress: (alinan: number, kalan: number) =>
+      `${alinan} imported · ${kalan} left`,
+    krikoQueueDone: (n: number) => `✅ Queue finished — ${n} calls imported.`,
+    krikoQueueStopped: (n: number) => `Stopped — ${n} calls imported.`,
+    krikoQueueFail: "Queue failed repeatedly and stopped.",
     syncStarted: "Sync started, please wait (may take 1–3 minutes)...",
     rsTitle: "Deep Re-scoring",
     rsPending: "evaluations not yet deep-scored",
@@ -588,6 +602,10 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
 
   /* ── google meet (itme modeli — keşif yok, kuyruk admin panelden çevrilir) ── */
   const [meetStatus, setMeetStatus] = useState<MeetStatus | null>(null);
+  const [krikoQueueRunning, setKrikoQueueRunning] = useState(false);
+  const [krikoQueueDone, setKrikoQueueDone] = useState(0);
+  const [krikoQueueRemaining, setKrikoQueueRemaining] = useState(0);
+  const [krikoQueueMsg, setKrikoQueueMsg] = useState("");
   const [meetRunning, setMeetRunning] = useState(false);
   const [meetPending, setMeetPending] = useState(0);
   const [meetRequeuing, setMeetRequeuing] = useState(false);
@@ -602,6 +620,7 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
   const [meetAssignSel, setMeetAssignSel] = useState<Record<string, string>>({});
   const [meetAssigningId, setMeetAssigningId] = useState<string | null>(null);
   const [meetAssignMsg, setMeetAssignMsg] = useState<Record<string, string>>({});
+  const krikoStopRef = useRef(false);
   const meetStopRef = useRef(false);
 
   /* ── recent calls ── */
@@ -956,6 +975,79 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
       fetchKrikoStatus(); fetchUnassigned();
     }
     setKrikoSyncing(false);
+  };
+
+  /**
+   * Parçalı Kriko senkronizasyonu. Toplu sync 60 sn tavanını aşıyor
+   * (ölçüldü: çağrı başına ~20.7 sn, neredeyse tamamı Gemini), bu yüzden
+   * her istek TEK çağrı işliyor ve döngü BURADA kuruluyor — Meet kuyruğu
+   * ve yeniden puanlama kuyruğuyla aynı desen.
+   */
+  const handleKrikoQueue = async () => {
+    krikoStopRef.current = false;
+    setKrikoQueueRunning(true);
+    setKrikoQueueMsg("");
+    setKrikoQueueDone(0);
+    setKrikoQueueRemaining(0);
+
+    // İşlenen HER id buraya eklenir. Sunucu bunları aday saymaz; böylece her
+    // tur adaylardan tam olarak birini düşürür ve döngünün bitmesi garanti
+    // olur. Olmasaydı, kalıcı olarak atlanan bir çağrı (transkript yok,
+    // analiz hatası) her turda yine sıranın başına gelir ve döngü sonsuza
+    // kadar aynı çağrıyı döverdi.
+    const skip: string[] = [];
+    const ARDISIK_HATA_SINIRI = 3;
+    let ardisik = 0;
+    let alinan = 0;
+    // State DEĞİL yerel değişken: setKrikoQueueMsg'in yazdığı değer bu
+    // closure'da görünmez, dolayısıyla hata mesajı "bitti" mesajıyla ezilirdi.
+    let hataMesaji = "";
+
+    try {
+      while (!krikoStopRef.current) {
+        let res: Response;
+        try {
+          res = await fetch("/api/calls/sync/next", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...(krikoSyncDate ? { date: krikoSyncDate } : {}), skip }),
+          });
+        } catch {
+          // Ağ koptu. Uç durumsuz: düğmeye tekrar basmak kaldığı yerden
+          // devam ettirir, çünkü alınmışlar veritabanından okunuyor.
+          break;
+        }
+
+        const body = await res.json().catch(() => null);
+
+        if (!res.ok || !body) {
+          ardisik++;
+          if (ardisik >= ARDISIK_HATA_SINIRI) {
+            hataMesaji = body?.error ?? t.krikoQueueFail;
+            break;
+          }
+          continue;
+        }
+
+        ardisik = 0;
+        if (!body.processed) break;            // sunucu AÇIKÇA "aday kalmadı" dedi
+        skip.push(body.callId);
+        if (body.status === "imported" || body.status === "unassigned") alinan++;
+        setKrikoQueueDone(alinan);
+        setKrikoQueueRemaining(body.remaining);
+        if (body.remaining === 0) break;
+      }
+
+      setKrikoQueueMsg(
+        hataMesaji ||
+          (krikoStopRef.current ? t.krikoQueueStopped(alinan) : t.krikoQueueDone(alinan)),
+      );
+    } finally {
+      setKrikoQueueRunning(false);
+      krikoStopRef.current = false;
+      fetchKrikoStatus();
+      fetchUnassigned();
+    }
   };
 
   const handleReassign = async (evalId: string, driveEmail?: string) => {
@@ -1542,10 +1634,27 @@ export default function AdminPanel({ user, lang, initialTab = "users" }: Props) 
                 <label className={styles.fbLabel}>{t.labelDate}</label>
                 <input type="date" className={styles.formInput} value={krikoSyncDate} onChange={e => setKrikoSyncDate(e.target.value)} />
               </div>
-              <button onClick={handleKrikoSync} disabled={krikoSyncing || krikoStatus?.configured === false} className={`${styles.btn} ${styles.btnPrimary}`} style={{ borderRadius: 9, opacity: (krikoSyncing || krikoStatus?.configured === false) ? 0.5 : 1 }}>
+              <button onClick={handleKrikoSync} disabled={krikoSyncing || krikoQueueRunning || krikoStatus?.configured === false} className={`${styles.btn} ${styles.btnPrimary}`} style={{ borderRadius: 9, opacity: (krikoSyncing || krikoQueueRunning || krikoStatus?.configured === false) ? 0.5 : 1 }}>
                 <Icon name={krikoSyncing ? "refresh" : "cloud"} size={14} /><span>{krikoSyncing ? t.syncing : t.syncNow}</span>
               </button>
+              <button onClick={handleKrikoQueue} disabled={krikoSyncing || krikoQueueRunning || krikoStatus?.configured === false} className={`${styles.btn}`} style={{ borderRadius: 9, opacity: (krikoSyncing || krikoQueueRunning || krikoStatus?.configured === false) ? 0.5 : 1 }}>
+                <Icon name={krikoQueueRunning ? "refresh" : "cloud"} size={14} /><span>{krikoQueueRunning ? t.syncing : t.krikoQueue}</span>
+              </button>
+              {krikoQueueRunning && (
+                <button onClick={() => { krikoStopRef.current = true; }} className={styles.btnSmall}>{t.rsStop}</button>
+              )}
             </div>
+            <p style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 8 }}>{t.krikoQueueHint}</p>
+            {krikoQueueRunning && (
+              <p style={{ fontSize: 13, marginTop: 8, color: "var(--accent)" }}>
+                {t.krikoQueueProgress(krikoQueueDone, krikoQueueRemaining)}
+              </p>
+            )}
+            {krikoQueueMsg && !krikoQueueRunning && (
+              <p style={{ fontSize: 13, marginTop: 8, color: krikoQueueMsg.startsWith("✅") ? "#34d399" : "var(--fg-faint)" }}>
+                {krikoQueueMsg}
+              </p>
+            )}
             {krikoSyncing && (
               <div style={{ marginTop: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
