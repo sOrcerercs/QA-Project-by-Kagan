@@ -765,7 +765,7 @@ export default function EvaluationDetailPage({
               </div>
             ) : (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-                <p className="text-sm font-semibold text-on-surface">{evaluation.agent?.name || "—"}</p>
+                <p className="min-w-0 break-words text-sm font-semibold text-on-surface">{evaluation.agent?.name || "—"}</p>
                 {canEdit && (
                   <button
                     onClick={() => setReassignOpen(true)}
@@ -796,11 +796,11 @@ export default function EvaluationDetailPage({
             { label: t.callDateLabel, icon: <Calendar className="w-3 h-3" />, value: new Date(evaluation.callDate).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR") },
             { label: t.evaluationDate, icon: <Calendar className="w-3 h-3" />, value: new Date(evaluation.createdAt).toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR") },
           ].map(({ label, icon, value }) => (
-            <div key={label} className="bg-surface-container border border-outline-variant rounded-2xl p-4">
+            <div key={label} className="min-w-0 bg-surface-container border border-outline-variant rounded-2xl p-4">
               <div className="text-[10px] text-on-surface-variant font-bold uppercase flex items-center gap-1.5 mb-2">
                 {icon} {label}
               </div>
-              <p className="text-sm font-semibold text-on-surface">{value}</p>
+              <p className="break-words text-sm font-semibold text-on-surface">{value}</p>
             </div>
           ))}
         </div>
@@ -1303,7 +1303,7 @@ export default function EvaluationDetailPage({
                       {t.coachingBy}: <span className="text-on-surface font-semibold">{evaluation.coachingByName}</span>
                     </p>
                   )}
-                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">
+                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap break-words">
                     {evaluation.coachingNotes || t.coachingEmpty}
                   </p>
                 </div>
@@ -1349,7 +1349,7 @@ export default function EvaluationDetailPage({
                 </div>
               ) : (
                 <div className="max-h-[40vh] overflow-y-auto">
-                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">{evaluation.agentFeedback || t.afEmpty}</p>
+                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap break-words">{evaluation.agentFeedback || t.afEmpty}</p>
                 </div>
               )}
             </motion.div>
@@ -1393,7 +1393,7 @@ export default function EvaluationDetailPage({
                 </div>
               ) : (
                 <div className="max-h-[40vh] overflow-y-auto">
-                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">{evaluation.objectionText || t.objEmpty}</p>
+                  <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap break-words">{evaluation.objectionText || t.objEmpty}</p>
                 </div>
               )}
             </motion.div>
@@ -1431,7 +1431,7 @@ export default function EvaluationDetailPage({
                     ✕
                   </button>
                 </div>
-                <div className="overflow-y-auto px-6 py-5 leading-relaxed">
+                <div className="min-w-0 break-words overflow-y-auto px-6 py-5 leading-relaxed">
                   {readMore === "report" ? reportBody : transcriptBody}
                 </div>
               </motion.div>
