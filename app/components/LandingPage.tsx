@@ -18,6 +18,7 @@ import PeerComparisonView from "@/app/components/shared/PeerComparisonView";
 import NegativeKeywordsReport from "@/app/components/shared/NegativeKeywordsReport";
 import LeaderboardView from "@/app/components/shared/LeaderboardView";
 import CoachingTrackingView from "@/app/components/shared/CoachingTrackingView";
+import CoachingBriefingView from "@/app/components/shared/CoachingBriefingView";
 import SearchView from "@/app/components/shared/SearchView";
 import PromptsView from "@/app/components/shared/PromptsView";
 import KnownIssuesView from "./shared/KnownIssuesView";
@@ -50,6 +51,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     coachingTracking: "Coaching Takibi",
     leaderboard: "Sıralama",
     advisor: "Danışman Paneli",
+    briefing: "Koçluk Brifingi",
     search: "Arama",
     phoneStandards: "Phone Quality Standards",
     comparison: "Karşılaştırma",
@@ -67,6 +69,7 @@ const NAV_LABELS: Record<"tr" | "en", Record<string, string>> = {
     coachingTracking: "Coaching Tracking",
     leaderboard: "Rankings",
     advisor: "Advisor Dashboard",
+    briefing: "Coaching Briefing",
     search: "Search",
     phoneStandards: "Phone Quality Standards",
     comparison: "Comparison",
@@ -649,6 +652,9 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
   }
   if (isManagerLike || user.role === "TEAM_LEADER") {
     mainNavItems.push({ key: "status", icon: "trendUp" });
+  }
+  if (isManagerLike || user.role === "TEAM_LEADER") {
+    mainNavItems.push({ key: "briefing", icon: "spark" });
   }
   if (user.role === "TEAM_LEADER") {
     mainNavItems.push({ key: "team", icon: "users" });
@@ -1863,6 +1869,11 @@ export default function LandingPage({ user, lang: initialLang, onLogout }: Landi
                 </div>
               );
             })()}
+
+            {/* ── COACHING BRIEFING ── */}
+            {activeTab === "briefing" && (isManagerLike || user.role === "TEAM_LEADER") && (
+              <CoachingBriefingView lang={lang} userRole={user.role} />
+            )}
 
             {/* ── TEAM ── */}
             {activeTab === "team" && (
